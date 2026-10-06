@@ -1,0 +1,21 @@
+name: dual_camera
+description: Camera control for stitchable recording. Locked exposure, focus and white balance, no stabilization, ultra-wide lens, segmented output.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.sportsballvideo.dual_camera
+        pluginClass: DualCameraPlugin
+      ios:
+        pluginClass: DualCameraPlugin

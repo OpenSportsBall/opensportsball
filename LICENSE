@@ -1,0 +1,18 @@
+SportsBallVideo is split-licensed. There is no single license for the whole
+repository.
+
+  processing/  and  ml/      GNU Affero General Public License v3.0 only
+                             (see processing/LICENSE, ml/LICENSE)
+
+  everything else            Apache License, Version 2.0
+                             (see app/LICENSE, web/LICENSE, api/LICENSE,
+                              infra/LICENSE, shared/LICENSE, and
+                              LICENSES/Apache-2.0.txt for root files)
+
+Each source file declares its license with an SPDX-License-Identifier
+header, and REUSE.toml covers files that cannot carry a header. Where a
+file's header and this summary disagree, the header governs.
+
+Full license texts are in the LICENSES/ directory.
+
+See docs/LICENSING.md for the rules that keep the two halves separate.

@@ -1,0 +1,15 @@
+version = 1
+
+# Files that cannot carry an SPDX header (Markdown, JSON, YAML, TOML, ...).
+# When several annotations match a file, the last one wins, and a header
+# inside the file always takes precedence over these.
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 The SportsBallVideo Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = ["processing/**", "ml/**"]
+SPDX-FileCopyrightText = "2026 The SportsBallVideo Authors"
+SPDX-License-Identifier = "AGPL-3.0-only"
