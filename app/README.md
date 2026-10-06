@@ -46,8 +46,9 @@ Not built yet:
   background `URLSession` (iOS), handing parts to the OS. The state in
   `upload.json` is designed so a background worker can pick up the same
   queue.
-- Recordings the app was killed in the middle of (no `stoppedAtMs`) are not
-  uploaded.
+- Recordings the app was killed in the middle of are recovered at the next
+  launch (`AppStore.recoverInterruptedRecordings`) and their segments
+  upload, but Main has no manifest for them, so they are not processed.
 
 ## Layout
 

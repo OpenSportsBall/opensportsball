@@ -51,3 +51,4 @@ local.properties
 web/.svelte-kit/
 web/build/
 web/static/config.json
+.claude/
