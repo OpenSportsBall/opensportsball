@@ -19,7 +19,8 @@ android {
         applicationId = "dev.sportsballvideo.sportsballvideo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // dual_camera needs API 26 (MediaRecorder.setNextOutputFile for gap-free segments).
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)

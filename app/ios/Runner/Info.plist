@@ -26,6 +26,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Records the game video.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Records game audio, used to synchronize the two phones' videos</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Connects the two phones so one can control the other's recording</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

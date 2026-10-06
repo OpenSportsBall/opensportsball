@@ -45,7 +45,8 @@ android {
     }
 
     defaultConfig {
-        minSdk = 24
+        // MediaRecorder.setNextOutputFile (gap-free segments) needs API 26.
+        minSdk = 26
     }
 
     testOptions {

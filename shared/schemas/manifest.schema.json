@@ -60,6 +60,7 @@
             "codec": { "enum": ["hevc", "h264"] },
             "bitrateBps": { "type": "integer" },
             "lens": { "enum": ["ultrawide", "wide"] },
+            "horizontalFovDeg": { "type": "number", "exclusiveMinimum": 0, "description": "Recorded horizontal field of view as reported by the camera. Seeds stitching." },
             "stabilization": { "type": "boolean", "description": "Must be false; stabilization breaks the fixed stitch." }
           }
         },

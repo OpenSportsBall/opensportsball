@@ -1,4 +1,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Recording (dual_camera plugin). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Pairing the two phones over Bluetooth LE. Android 12+ (API 31): -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <!-- Android 11 and lower: -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
     <application
         android:label="sportsballvideo"
         android:name="${applicationName}"

@@ -31,8 +31,12 @@ possible to keep costs low.
 - Main shows a pairing QR code; Secondary scans it and connects over BLE.
 - BLE carries: start, stop, heartbeat, battery / storage / thermal status,
   and clock-sync ping/pong.
-- Each phone records 5-minute segments with exposure, focus and white
-  balance locked and stabilization off. A crash loses at most one segment.
+- Each phone records 5-minute segments with focus and white balance locked
+  and stabilization off. Exposure stays automatic by default (light changes
+  over a game; processing matches brightness frame by frame), with a
+  setting to lock it. A crash loses at most one segment.
+- Segments switch files without dropping frames: Camera2 + MediaRecorder
+  `setNextOutputFile` on Android, AVAssetWriter rotation on iOS.
 - About 35 Mbps 4K HEVC is 20-25 GB per phone per game.
 - Upload: S3 multipart through presigned URLs, Wi-Fi only by default.
   Android WorkManager (unmetered constraint); iOS background `URLSession`
