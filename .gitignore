@@ -42,3 +42,7 @@ build/
 .flutter-plugins
 .flutter-plugins-dependencies
 pubspec.lock
+
+# Machine-local Android / IDE files
+local.properties
+*.iml
