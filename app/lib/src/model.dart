@@ -89,6 +89,33 @@ class RecordingSettings {
       };
 }
 
+/// This phone's upload preferences. Not sent over BLE.
+class UploadSettings {
+  const UploadSettings({this.wifiOnly = true, this.lastApiUrl});
+
+  factory UploadSettings.fromJson(Map<String, Object?> j) => UploadSettings(
+        wifiOnly: j['wifiOnly'] as bool? ?? true,
+        lastApiUrl: j['lastApiUrl'] as String?,
+      );
+
+  /// Upload only on Wi-Fi (or Ethernet), never on mobile data.
+  final bool wifiOnly;
+
+  /// API of the most recent link, kept after unlinking so a code can be
+  /// typed instead of scanned next time.
+  final String? lastApiUrl;
+
+  UploadSettings copyWith({bool? wifiOnly, String? lastApiUrl}) => UploadSettings(
+        wifiOnly: wifiOnly ?? this.wifiOnly,
+        lastApiUrl: lastApiUrl ?? this.lastApiUrl,
+      );
+
+  Map<String, Object?> toJson() => {
+        'wifiOnly': wifiOnly,
+        if (lastApiUrl != null) 'lastApiUrl': lastApiUrl,
+      };
+}
+
 enum Resolution {
   uhd4k('4K', 3840, 2160, 35000000),
   hd1080('1080p', 1920, 1080, 16000000);

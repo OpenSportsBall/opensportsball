@@ -2,10 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sportsballvideo.dev/schemas/manifest.schema.json",
   "title": "Recording manifest",
-  "description": "Written by the Main phone and uploaded after recording stops. Lists every segment both phones are expected to upload; processing starts only once every listed segment is in S3.",
+  "description": "Written by the Main phone and uploaded after recording stops. Lists every segment the phones are expected to upload; processing starts only once every listed segment is in S3. A recording made on the Main phone alone has one device and no clockSync.",
   "type": "object",
-  "required": ["schemaVersion", "gameId", "sessionId", "createdAt", "devices", "clockSync"],
+  "required": ["schemaVersion", "gameId", "sessionId", "createdAt", "devices"],
   "additionalProperties": false,
+  "if": { "properties": { "devices": { "minItems": 2 } } },
+  "then": { "required": ["clockSync"] },
   "properties": {
     "schemaVersion": { "const": 1 },
     "gameId": { "type": "string", "description": "Game this recording belongs to. A game can have several sessions (e.g. one per half)." },
@@ -13,7 +15,7 @@
     "createdAt": { "type": "string", "format": "date-time" },
     "devices": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 1,
       "maxItems": 2,
       "items": { "$ref": "#/$defs/device" }
     },
@@ -77,7 +79,7 @@
       "additionalProperties": false,
       "properties": {
         "index": { "type": "integer", "minimum": 0 },
-        "objectKey": { "type": "string", "description": "S3 key the segment uploads to." },
+        "objectKey": { "type": "string", "pattern": "^[0-9a-f-]{36}/[0-9a-f-]{36}_[0-9]{3}\\.mp4$", "description": "Path relative to the recording, <deviceId>/<fileName>. The server places it under the uploading account; phones never choose full bucket keys." },
         "bytes": { "type": "integer", "minimum": 0 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "startedAtDeviceMs": { "type": "integer", "description": "Device clock (ms since epoch) when the first frame was captured." },

@@ -1,0 +1,100 @@
+// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import { randomUUID } from 'node:crypto';
+import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { handler as authorizer } from '../src/handlers/authorizer.js';
+import { config, ddb, keys } from '../src/lib/store.js';
+import { callDevice, callWeb, linkPhone, resetAws } from './helpers.js';
+
+const authorize = (token: string) => authorizer({ headers: { authorization: `Bearer ${token}` } } as any);
+
+describe('linking phones', () => {
+  beforeEach(resetAws);
+  const alice = randomUUID();
+  const bob = randomUUID();
+
+  it('creates a single-use code that links a phone', async () => {
+    const code = await callWeb(alice, 'POST /link-codes');
+    expect(code.status).toBe(201);
+    expect(code.body.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
+    expect(code.body.linkUri).toBe(
+      `sportsballvideo://link?v=1&api=${encodeURIComponent('https://abc123.execute-api.us-east-1.amazonaws.com')}&code=${code.body.code}`,
+    );
+
+    const deviceId = randomUUID();
+    const link = (id = deviceId) =>
+      callDevice(null, 'POST /devices/link', { body: { code: code.body.code, deviceId: id, platform: 'android', model: 'Pixel 9' } });
+    const first = await link();
+    expect(first.status).toBe(200);
+    expect(first.body.accountId).toBe(alice);
+    expect(first.body.deviceToken).toMatch(/^sbvd_[A-Za-z0-9_-]{43}$/);
+
+    expect((await link(randomUUID())).status).toBe(410); // used
+
+    const auth = await authorize(first.body.deviceToken);
+    expect(auth).toEqual({ isAuthorized: true, context: { accountId: alice, deviceId } });
+
+    const devices = await callWeb(alice, 'GET /devices');
+    expect(devices.body.devices).toMatchObject([{ deviceId, platform: 'android', model: 'Pixel 9' }]);
+    expect((await callWeb(bob, 'GET /devices')).body.devices).toEqual([]);
+  });
+
+  it('rejects unknown and expired codes', async () => {
+    const body = (code: string) => ({ body: { code, deviceId: randomUUID(), platform: 'ios', model: 'iPhone' } });
+    expect((await callDevice(null, 'POST /devices/link', body('ABCDEFGH'))).status).toBe(404);
+
+    await ddb.send(
+      new PutCommand({
+        TableName: config.table,
+        Item: { ...keys.linkCode('HJKMNPQR'), accountId: alice, expiresAtMs: Date.now() - 1000 },
+      }),
+    );
+    expect((await callDevice(null, 'POST /devices/link', body('HJKMNPQR'))).status).toBe(410);
+    expect((await callDevice(null, 'POST /devices/link', body('bad'))).status).toBe(400);
+  });
+
+  it('will not move a phone to a second account', async () => {
+    const phone = await linkPhone(alice);
+    const code = await callWeb(bob, 'POST /link-codes');
+    const r = await callDevice(null, 'POST /devices/link', {
+      body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
+    });
+    expect(r.status).toBe(409);
+    expect((await authorize(phone.token)).isAuthorized).toBe(true);
+  });
+
+  it('re-linking to the same account replaces the old token', async () => {
+    const phone = await linkPhone(alice);
+    const code = await callWeb(alice, 'POST /link-codes');
+    const again = await callDevice(null, 'POST /devices/link', {
+      body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
+    });
+    expect(again.status).toBe(200);
+    expect((await authorize(phone.token)).isAuthorized).toBe(false);
+    expect((await authorize(again.body.deviceToken)).isAuthorized).toBe(true);
+    expect((await callWeb(alice, 'GET /devices')).body.devices).toHaveLength(1);
+  });
+
+  it('unlinking revokes the token immediately, and only the owner can unlink', async () => {
+    const phone = await linkPhone(alice);
+    expect((await callWeb(bob, 'DELETE /devices/{deviceId}', { path: { deviceId: phone.deviceId } })).status).toBe(404);
+    expect((await callWeb(alice, 'DELETE /devices/{deviceId}', { path: { deviceId: phone.deviceId } })).status).toBe(204);
+    expect((await authorize(phone.token)).isAuthorized).toBe(false);
+    expect((await callWeb(alice, 'GET /devices')).body.devices).toEqual([]);
+
+    // Free to join another account now.
+    const code = await callWeb(bob, 'POST /link-codes');
+    const r = await callDevice(null, 'POST /devices/link', {
+      body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it('the authorizer rejects malformed and unknown tokens', async () => {
+    expect((await authorize('nope')).isAuthorized).toBe(false);
+    expect((await authorize(`sbvd_${'A'.repeat(43)}`)).isAuthorized).toBe(false);
+    expect((await authorizer({ headers: {} } as any)).isAuthorized).toBe(false);
+  });
+});

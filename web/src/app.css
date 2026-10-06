@@ -1,0 +1,234 @@
+/* SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors */
+/* SPDX-License-Identifier: Apache-2.0 */
+
+:root {
+	color-scheme: light dark;
+	--bg: #f5f7f6;
+	--surface: #ffffff;
+	--surface-2: #eef2f0;
+	--border: #d8dfdb;
+	--text: #18201c;
+	--text-muted: #5b6862;
+	--accent: #0f7a3d;
+	--accent-strong: #0b5f2f;
+	--accent-text: #ffffff;
+	--focus: #2b7de9;
+	--danger: #b42318;
+	--danger-bg: #fdecea;
+	--danger-border: #f4b8b0;
+	--ok: #0f7a3d;
+	--ok-bg: #e3f4ea;
+	--warn: #8a5a00;
+	--warn-bg: #fff3d6;
+	--info: #1d5fa8;
+	--info-bg: #e3eefb;
+	--track: #e1e7e4;
+	--radius: 12px;
+	--shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 8px rgb(0 0 0 / 4%);
+	--font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	--mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0f1412;
+		--surface: #18201c;
+		--surface-2: #212b26;
+		--border: #2e3a34;
+		--text: #e7ede9;
+		--text-muted: #9aa8a1;
+		--accent: #3fbf74;
+		--accent-strong: #5fd18e;
+		--accent-text: #06210f;
+		--focus: #6aa8ff;
+		--danger: #ff8a80;
+		--danger-bg: #3a1714;
+		--danger-border: #6b2a24;
+		--ok: #5fd18e;
+		--ok-bg: #143322;
+		--warn: #f3c25b;
+		--warn-bg: #3a2c0c;
+		--info: #8ab8f5;
+		--info-bg: #15263c;
+		--track: #2a3530;
+		--shadow: none;
+	}
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	-webkit-text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: 16px;
+	line-height: 1.5;
+}
+
+a {
+	color: var(--accent);
+}
+
+h1,
+h2,
+h3 {
+	line-height: 1.25;
+	margin: 0 0 0.5rem;
+}
+
+h1 {
+	font-size: 1.6rem;
+}
+
+h2 {
+	font-size: 1.2rem;
+}
+
+p {
+	margin: 0 0 0.75rem;
+}
+
+:focus-visible {
+	outline: 3px solid var(--focus);
+	outline-offset: 2px;
+}
+
+.container {
+	max-width: 880px;
+	margin: 0 auto;
+	padding: 1.25rem 16px 3rem;
+}
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	padding: 1rem;
+}
+
+.stack > * + * {
+	margin-top: 0.75rem;
+}
+
+.muted {
+	color: var(--text-muted);
+}
+
+.small {
+	font-size: 0.875rem;
+}
+
+.mono {
+	font-family: var(--mono);
+}
+
+.page-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.page-head h1 {
+	margin: 0;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.4rem;
+	min-height: 44px;
+	padding: 0.5rem 1rem;
+	border-radius: 10px;
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.btn:hover {
+	background: var(--surface-2);
+}
+
+.btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.btn-primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-text);
+}
+
+.btn-primary:hover {
+	background: var(--accent-strong);
+	border-color: var(--accent-strong);
+}
+
+.btn-danger {
+	color: var(--danger);
+	border-color: var(--danger-border);
+}
+
+.btn-danger:hover {
+	background: var(--danger-bg);
+}
+
+.btn-danger-solid {
+	background: var(--danger);
+	border-color: var(--danger);
+	color: var(--surface);
+}
+
+.btn-danger-solid:hover {
+	background: var(--danger);
+	filter: brightness(0.92);
+}
+
+.btn-small {
+	min-height: 36px;
+	padding: 0.25rem 0.75rem;
+	font-size: 0.9rem;
+}
+
+.empty {
+	text-align: center;
+	padding: 2rem 1rem;
+}
+
+.empty ol {
+	text-align: left;
+	display: inline-block;
+	margin: 0.5rem 0 1rem;
+	padding-left: 1.25rem;
+}
+
+.empty li + li {
+	margin-top: 0.35rem;
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}

@@ -9,17 +9,18 @@ library;
 import '../model.dart';
 import 'store.dart';
 
-/// S3 key each segment uploads to.
-String objectKey(String gameId, String recordingId, String deviceId, String fileName) =>
-    'games/$gameId/recordings/$recordingId/$deviceId/$fileName';
+/// Segment path relative to the recording. The server decides the full
+/// bucket key (it adds the account, game and recording).
+String objectKey(String deviceId, String fileName) => '$deviceId/$fileName';
 
-/// Returns null until Main has everything: its own stopped recording and
-/// all of Secondary's segments.
+/// Returns null until Main has everything: its own stopped recording and,
+/// if a Secondary took part, all of its segments. A recording made on Main
+/// alone gets a one-device manifest.
 Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
   final peer = main.peer;
   final mainVideo = main.video;
   if (!main.stopped || mainVideo == null || main.segments.isEmpty) return null;
-  if (peer == null || !peer.complete || peer.video == null || peer.clock == null) {
+  if (peer != null && (!peer.complete || peer.video == null || peer.clock == null)) {
     return null;
   }
 
@@ -50,7 +51,7 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
           for (final s in segments)
             {
               'index': s.index,
-              'objectKey': objectKey(main.gameId, main.recordingId, id.deviceId, s.fileName),
+              'objectKey': objectKey(id.deviceId, s.fileName),
               'bytes': s.bytes,
               'sha256': s.sha256,
               'startedAtDeviceMs': s.startedAtDeviceMs,
@@ -59,21 +60,22 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
         ],
       };
 
-  final peerSegments = [for (final i in peer.segments.keys.toList()..sort()) peer.segments[i]!];
-  final clock = peer.clock!;
-  return {
+  final manifest = <String, Object?>{
     'schemaVersion': 1,
     'gameId': main.gameId,
     'sessionId': main.recordingId,
     'createdAt': (now ?? DateTime.now()).toUtc().toIso8601String(),
-    'devices': [
-      device(main.device, 'main', mainVideo, main.segments),
-      device(peer.device, 'secondary', peer.video!, peerSegments),
-    ],
-    'clockSync': {
+    'devices': [device(main.device, 'main', mainVideo, main.segments)],
+  };
+  if (peer != null) {
+    final peerSegments = [for (final i in peer.segments.keys.toList()..sort()) peer.segments[i]!];
+    final clock = peer.clock!;
+    (manifest['devices']! as List).add(device(peer.device, 'secondary', peer.video!, peerSegments));
+    manifest['clockSync'] = {
       'secondaryOffsetMs': clock.secondaryOffsetMs,
       'medianRttMs': clock.medianRttMs,
       'samples': clock.samples,
-    },
-  };
+    };
+  }
+  return manifest;
 }

@@ -20,8 +20,34 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   when it reconnects. Main writes `manifest.json` once both phones' segments
   are known (`shared/schemas/manifest.schema.json`).
 - Recordings screen with sharing, for getting test footage off the phones.
+- Account linking (`lib/src/upload/account.dart`, `ui/account_screen.dart`):
+  scan the website's `sportsballvideo://link?...` QR code, or type the
+  8-character code once the phone knows the API from an earlier link. The
+  device token is kept with `flutter_secure_storage` (Keychain / Android
+  Keystore). "Unlink this phone" only forgets it locally.
+- Upload queue (`lib/src/upload/upload_service.dart`, `ui/uploads_screen.dart`),
+  following `docs/API.md`: oldest stopped recording first, Main uploads
+  `manifest.json`, then each of this phone's segments as an S3 multipart
+  upload (part size from the server, 64 MiB; parts streamed from disk).
+  Progress is saved per recording in `upload.json` next to `recording.json`
+  (format in `upload_state.dart`), so an upload resumes after a restart
+  using that file plus the server's `completedParts`. Expired URLs are
+  re-requested, network and 5xx errors back off from 5 s to 10 min, and a
+  401 stops the queue until the phone is linked again. Uploads pause while
+  this phone is recording, wait for Wi-Fi by default ("Upload on Wi-Fi
+  only", with a one-time "Upload now using mobile data"), and keep the
+  screen awake while sending.
 
-Not built yet: the Wi-Fi-only upload queue (needs the Phase 2 API).
+Not built yet:
+
+- **Background upload.** The queue runs only while the app is open (in the
+  foreground). Uploading with the app closed needs WorkManager (Android,
+  with a foreground-service notification for long transfers) and a
+  background `URLSession` (iOS), handing parts to the OS. The state in
+  `upload.json` is designed so a background worker can pick up the same
+  queue.
+- Recordings the app was killed in the middle of (no `stoppedAtMs`) are not
+  uploaded.
 
 ## Layout
 
@@ -31,8 +57,10 @@ Not built yet: the Wi-Fi-only upload queue (needs the Phase 2 API).
 | `lib/src/link/` | `PeerLink` interface and its BLE implementation |
 | `lib/src/session/` | Recorder, Main and Secondary controllers |
 | `lib/src/storage/` | Identity, settings, recordings on disk, manifest builder |
+| `lib/src/upload/` | Account linking, network monitor, upload queue |
 | `lib/src/ui/` | Screens |
 | `plugins/dual_camera/` | Native camera plugin; contract in `CHANNEL.md` |
 
-`flutter test` runs the protocol tests and an end-to-end session test with
-fake cameras and an in-memory link.
+`flutter test` runs the protocol tests, an end-to-end session test with
+fake cameras and an in-memory link, and the linking / upload queue tests
+against a fake API and S3 (`test/upload_fakes.dart`).

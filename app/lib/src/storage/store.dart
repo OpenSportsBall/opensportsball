@@ -10,6 +10,8 @@
 ///   <deviceId>_000.mp4, <deviceId>_001.mp4, ...
 ///   recording.json     this phone's record (LocalRecording)
 ///   manifest.json      Main only, once both phones' segments are known
+///   upload.json        upload progress (UploadState); never written by
+///                      the recorder, so the two never race
 /// ```
 ///
 /// Recordings live where the user can copy them off during testing: the
@@ -19,7 +21,9 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,7 +33,8 @@ import '../model.dart';
 import '../role.dart';
 
 class AppStore {
-  AppStore._(this._supportDir, this.recordingsRoot, this.identity, this._settings);
+  AppStore._(this._supportDir, this.recordingsRoot, this.identity, this._settings,
+      this._uploadSettings);
 
   @visibleForTesting
   AppStore.forTest({
@@ -37,8 +42,10 @@ class AppStore {
     required this.recordingsRoot,
     required this.identity,
     RecordingSettings settings = const RecordingSettings(),
+    UploadSettings uploadSettings = const UploadSettings(),
   })  : _supportDir = supportDir,
-        _settings = settings;
+        _settings = settings,
+        _uploadSettings = uploadSettings;
 
   static Future<AppStore> open() async {
     final support = await getApplicationSupportDirectory();
@@ -51,11 +58,13 @@ class AppStore {
     await root.create(recursive: true);
     final identity = await _loadIdentity(support);
     final settings = await _readJson(File('${support.path}/settings.json'));
+    final upload = await _readJson(File('${support.path}/upload_settings.json'));
     return AppStore._(
       support,
       root,
       identity,
       settings == null ? const RecordingSettings() : RecordingSettings.fromJson(settings),
+      upload == null ? const UploadSettings() : UploadSettings.fromJson(upload),
     );
   }
 
@@ -63,6 +72,7 @@ class AppStore {
   final Directory recordingsRoot;
   final DeviceIdentity identity;
   RecordingSettings _settings;
+  UploadSettings _uploadSettings;
 
   RecordingSettings get settings => _settings;
 
@@ -70,6 +80,22 @@ class AppStore {
     _settings = s;
     await _writeJson(File('${_supportDir.path}/settings.json'), s.toJson());
   }
+
+  /// This phone's upload preferences. Kept apart from [settings], which
+  /// Main sends to Secondary.
+  UploadSettings get uploadSettings => _uploadSettings;
+
+  Future<void> saveUploadSettings(UploadSettings s) async {
+    _uploadSettings = s;
+    await _writeJson(File('${_supportDir.path}/upload_settings.json'), s.toJson());
+  }
+
+  /// Contents of `upload.json` for a recording, or null if none yet.
+  Future<Map<String, Object?>?> readUploadJson(Directory recordingDir) =>
+      _readJson(File('${recordingDir.path}/upload.json'));
+
+  Future<void> writeUploadJson(Directory recordingDir, Map<String, Object?> json) =>
+      _writeJson(File('${recordingDir.path}/upload.json'), json);
 
   Directory recordingDir(String gameId, String recordingId) =>
       Directory('${recordingsRoot.path}/$gameId/$recordingId');
@@ -104,6 +130,51 @@ class AppStore {
     }
     out.sort((a, b) => b.recording.createdAtMs.compareTo(a.recording.createdAtMs));
     return out;
+  }
+
+  /// Finishes recordings the app was killed in the middle of, so their
+  /// footage still uploads: adds segment files that reached disk but were
+  /// never hashed, then marks the recording stopped. Call at startup, when
+  /// nothing can be recording.
+  Future<int> recoverInterruptedRecordings() async {
+    var recovered = 0;
+    for (final r in await listRecordings()) {
+      final rec = r.recording;
+      if (rec.stopped) continue;
+      final known = {for (final s in rec.segments) s.fileName};
+      final prefix = '${rec.device.deviceId}_';
+      final orphans = <File>[
+        await for (final f in r.dir.list())
+          if (f is File) f,
+      ].where((f) {
+        final name = f.uri.pathSegments.last;
+        return name.startsWith(prefix) && name.endsWith('.mp4') && !known.contains(name);
+      }).toList();
+      for (final f in orphans) {
+        final bytes = await f.length();
+        // iOS creates the next segment file ahead of time; skip empty ones.
+        if (bytes < 1024) continue;
+        final name = f.uri.pathSegments.last;
+        final index = int.tryParse(name.substring(prefix.length, name.length - 4));
+        if (index == null) continue;
+        final path = f.path;
+        rec.segments.add(SegmentRecord(
+          index: index,
+          fileName: name,
+          bytes: bytes,
+          sha256: await Isolate.run(() async => (await sha256.bind(File(path).openRead()).first).toString()),
+          // Unknown after a crash; processing reads timing from the file.
+          startedAtDeviceMs: 0,
+          durationMs: 0,
+        ));
+      }
+      rec.segments.sort((a, b) => a.index.compareTo(b.index));
+      rec.stoppedAtMs = DateTime.now().millisecondsSinceEpoch;
+      rec.endReason ??= 'app closed while recording';
+      await saveRecording(rec);
+      recovered++;
+    }
+    return recovered;
   }
 
   Future<void> deleteRecording(StoredRecording r) async {

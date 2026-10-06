@@ -1,0 +1,7 @@
+{
+  "apiUrl": "mock",
+  "region": "us-east-1",
+  "userPoolId": "mock",
+  "userPoolClientId": "mock",
+  "cognitoDomain": "mock"
+}

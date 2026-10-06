@@ -5,6 +5,16 @@ mount record the field, the cloud stitches and follows the play, and the
 result goes to a configured YouTube account. The backend is as ephemeral as
 possible to keep costs low.
 
+## Status (2026-10-06)
+
+- Phase 1 (capture app): built, not yet tested on phones. See
+  [TESTING-APPS.md](TESTING-APPS.md).
+- Phase 2 (cloud ingest + accounts): built and tested locally (API against a
+  local AWS emulator, infrastructure synthesized), **not deployed**. See
+  [API.md](API.md) and `infra/README.md`. Uploads run while the app is open;
+  background upload is still to do.
+- Phase 0 (feasibility on real footage): waiting for a game.
+
 ## Decisions so far
 
 | Decision | Choice | Why |

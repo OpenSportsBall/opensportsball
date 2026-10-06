@@ -162,12 +162,10 @@ class _MainScreenState extends State<MainScreen> {
         if (rec.stopped)
           InfoRow(
             'Manifest',
-            peer == null
-                ? 'this phone only'
-                : c.manifestsWritten.contains(rec.recordingId)
-                    ? 'ready'
-                    : 'waiting for Secondary',
-            warn: peer != null && !c.manifestsWritten.contains(rec.recordingId),
+            c.manifestsWritten.contains(rec.recordingId)
+                ? (peer == null ? 'ready (this phone only)' : 'ready')
+                : 'waiting for Secondary',
+            warn: !c.manifestsWritten.contains(rec.recordingId),
           ),
       ]),
     );

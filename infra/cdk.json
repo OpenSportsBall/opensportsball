@@ -1,0 +1,7 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "context": {
+    "devOrigins": "http://localhost:5173",
+    "@aws-cdk/customresources:installLatestAwsSdkDefault": false
+  }
+}

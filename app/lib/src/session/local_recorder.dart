@@ -12,16 +12,25 @@ import 'package:flutter/widgets.dart';
 import '../model.dart';
 import '../role.dart';
 import '../storage/store.dart';
+import 'activity.dart';
 
 /// Drives this phone's camera for one game: opens it, records, and turns
 /// each finished segment file into a hashed [SegmentRecord] saved in
 /// `recording.json`. Used by both the Main and Secondary controllers.
 class LocalRecorder {
-  LocalRecorder({required this.camera, required this.store, required this.role});
+  LocalRecorder({
+    required this.camera,
+    required this.store,
+    required this.role,
+    DeviceActivity? activity,
+  }) : activity = activity ?? DeviceActivity.instance;
 
   final DualCamera camera;
   final AppStore store;
   final DeviceRole role;
+
+  /// Told when recording starts and ends, so uploads pause meanwhile.
+  final DeviceActivity activity;
 
   OpenResult? opened;
   CaptureConfig? config;
@@ -55,6 +64,7 @@ class LocalRecorder {
           'Camera and microphone access are both needed. Allow them in Settings.');
     }
     if (opened != null) await camera.close();
+    activity.setCameraOpen(this, true);
     _events ??= camera.events.listen(_onEvent);
     opened = await camera.open(c);
     config = c;
@@ -107,10 +117,17 @@ class LocalRecorder {
     final dir = store.recordingDir(gameId, recordingId);
     await dir.create(recursive: true);
     current = rec;
-    rec.startedAtDeviceMs = await camera.startRecording(
-      directory: dir.path,
-      filePrefix: store.identity.deviceId,
-    );
+    activity.setRecording(this, true);
+    try {
+      rec.startedAtDeviceMs = await camera.startRecording(
+        directory: dir.path,
+        filePrefix: store.identity.deviceId,
+      );
+    } on Object {
+      current = null;
+      activity.setRecording(this, false);
+      rethrow;
+    }
     await store.saveRecording(rec);
     return rec;
   }
@@ -135,6 +152,7 @@ class LocalRecorder {
     rec.stoppedAtMs ??= DateTime.now().millisecondsSinceEpoch;
     rec.endReason ??= reason;
     await store.saveRecording(rec);
+    activity.setRecording(this, false);
   }
 
   void _onEvent(CameraEvent e) {
@@ -187,12 +205,18 @@ class LocalRecorder {
     _needsReopen = false;
     _lifecycle?.dispose();
     _lifecycle = null;
-    if (recording) await stop();
-    await _events?.cancel();
-    _events = null;
-    if (opened != null) {
-      opened = null;
-      await camera.close();
+    try {
+      if (recording) await stop();
+      await _events?.cancel();
+      _events = null;
+      if (opened != null) {
+        opened = null;
+        await camera.close();
+      }
+    } finally {
+      activity
+        ..setRecording(this, false)
+        ..setCameraOpen(this, false);
     }
   }
 }

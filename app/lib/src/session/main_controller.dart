@@ -244,7 +244,7 @@ class MainController extends ChangeNotifier {
   }
 
   Future<void> _maybeFinish(LocalRecording rec) async {
-    if (rec.peer != null) await store.saveRecording(rec);
+    await store.saveRecording(rec);
     if (manifestsWritten.contains(rec.recordingId)) return;
     final manifest = buildManifest(rec);
     if (manifest == null) return;

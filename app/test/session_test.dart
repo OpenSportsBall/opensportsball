@@ -89,8 +89,7 @@ void main() {
       expect(segs.length, 2);
       expect(segs.map((s) => s['index']), [0, 1]);
       expect(segs.every((s) => RegExp(r'^[0-9a-f]{64}$').hasMatch(s['sha256'] as String)), isTrue);
-      expect(segs.first['objectKey'],
-          'games/${main.gameId}/recordings/$id/${d['deviceId']}/${d['deviceId']}_000.mp4');
+      expect(segs.first['objectKey'], '${d['deviceId']}/${d['deviceId']}_000.mp4');
     }
     expect(devices[1]['platform'], 'android');
     expect((manifest['clockSync'] as Map)['samples'], greaterThan(0));
@@ -143,7 +142,13 @@ void main() {
     final rec = main.current!;
     expect(rec.peer, isNull);
     expect(rec.segments.length, 1);
-    expect(main.manifestsWritten, isEmpty);
+    await eventually(() => main.manifestsWritten.contains(rec.recordingId));
+    final dir = mainStore.recordingDir(main.gameId, rec.recordingId);
+    final manifest = jsonDecode(File('${dir.path}/manifest.json').readAsStringSync()) as Map;
+    expect((manifest['devices'] as List).length, 1);
+    expect(manifest.containsKey('clockSync'), isFalse);
+    final out = Platform.environment['SBV_SOLO_MANIFEST_OUT'];
+    if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));
   });
 
   test('an interruption ends the recording and tells Main', () async {
@@ -164,6 +169,27 @@ void main() {
     await eventually(() => !identical(sec.opened, before),
         timeout: const Duration(seconds: 5), reason: 'reopened');
     expect(sec.phase, SecondaryPhase.ready);
+  });
+
+  test('a recording the app died during is recovered at startup', () async {
+    expect(await main.startRecording(alone: true), isTrue);
+    await mainCam.finishSegment(); // hashed and recorded
+    final rec = main.current!;
+    final dir = mainStore.recordingDir(main.gameId, rec.recordingId);
+    // A segment that reached disk but was never hashed, and an empty
+    // pre-created next file (iOS), then the app dies.
+    final orphan = File('${dir.path}/${mainStore.identity.deviceId}_001.mp4')
+      ..writeAsBytesSync(List.filled(5000, 7));
+    File('${dir.path}/${mainStore.identity.deviceId}_002.mp4').writeAsBytesSync([]);
+
+    expect(await mainStore.recoverInterruptedRecordings(), 1);
+    final [stored] = await mainStore.listRecordings();
+    expect(stored.recording.stopped, isTrue);
+    expect(stored.recording.endReason, 'app closed while recording');
+    expect(stored.recording.segments.map((s) => s.fileName),
+        ['${mainStore.identity.deviceId}_000.mp4', orphan.uri.pathSegments.last]);
+    expect(stored.recording.segments[1].bytes, 5000);
+    expect(await mainStore.recoverInterruptedRecordings(), 0);
   });
 
   test('link state drives the Secondary phase', () async {
