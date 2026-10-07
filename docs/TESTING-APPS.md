@@ -72,7 +72,13 @@ quickly.
 6. **Interruption.** Call one phone while it records. It should stop,
    save the segment in progress, and the Main phone should show an error.
 7. **Mixed pair.** Repeat 2-3 with one iPhone and one Android phone.
-8. **Full length.** 90 minutes at 4K on power banks, phones on the mount in
+8. **Dark screen.** Start a paired recording and wait 15 seconds: both
+   screens should go black at minimum brightness with a dim "REC" line.
+   Tap: the normal screen returns, and that tap must not press anything.
+   It darkens again 15 seconds after the last touch. Stopping restores the
+   screen. Check the recorded file has no gap or glitch where the screen
+   went dark (only the preview pauses).
+9. **Full length.** 90 minutes at 4K on power banks, phones on the mount in
    the sun if possible. Watch temperature and storage on the Main screen.
 
 ## Checking files

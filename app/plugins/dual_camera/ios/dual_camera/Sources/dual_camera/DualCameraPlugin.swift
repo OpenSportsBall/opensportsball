@@ -76,6 +76,12 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       stopRecording(result)
     case "status":
       result(status())
+    case "setScreenBrightness":
+      setScreenBrightness((args["level"] as? NSNumber).map { CGFloat(truncating: $0) })
+      result(nil)
+    case "setPreviewPaused":
+      preview?.setPaused((args["paused"] as? NSNumber)?.boolValue ?? false)
+      result(nil)
     case "setKeepScreenOn":
       UIApplication.shared.isIdleTimerDisabled = (args["on"] as? NSNumber)?.boolValue ?? false
       result(nil)
@@ -241,6 +247,34 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         }
       }
     }
+  }
+
+  // On iOS screen brightness is a system-wide setting that outlives the app,
+  // so remember the user's level and put it back whenever we leave.
+  private var savedBrightness: CGFloat?
+  private var brightnessObservers: [NSObjectProtocol] = []
+
+  private func setScreenBrightness(_ level: CGFloat?) {
+    if let level {
+      if savedBrightness == nil {
+        savedBrightness = UIScreen.main.brightness
+        let restore: (Notification) -> Void = { [weak self] _ in self?.restoreBrightness() }
+        brightnessObservers = [
+          UIApplication.willResignActiveNotification,
+          UIApplication.willTerminateNotification,
+        ].map { NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main, using: restore) }
+      }
+      UIScreen.main.brightness = min(max(level, 0), 1)
+    } else {
+      restoreBrightness()
+    }
+  }
+
+  private func restoreBrightness() {
+    if let saved = savedBrightness { UIScreen.main.brightness = saved }
+    savedBrightness = nil
+    brightnessObservers.forEach(NotificationCenter.default.removeObserver)
+    brightnessObservers = []
   }
 
   private func releaseCamera(ifCurrent session: CameraSession) {

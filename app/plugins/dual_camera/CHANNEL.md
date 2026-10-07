@@ -29,6 +29,8 @@ codes: `permission_denied`, `camera_unavailable`, `unsupported_config`,
 | `stopRecording` | none | `{}`. Returns only after the last segment is finalized and its `segment` event has been sent. |
 | `status` | none | `{batteryPercent: int, charging: bool, freeStorageBytes: int, thermalState: String, recording: bool}` |
 | `setKeepScreenOn` | `{on: bool}` | `null` |
+| `setScreenBrightness` | `{level: double?}` | `null`. 0..1 overrides the screen brightness while the app is in front; `null` hands it back to the system. iOS restores the user's level when the app leaves the foreground. |
+| `setPreviewPaused` | `{paused: bool}` | `null`. Stops (or resumes) drawing preview frames; the camera and any recording keep running. |
 | `close` | none | `null`. Stops recording first if needed (finalizing segments), releases the camera and the preview texture. |
 
 `thermalState` is one of `nominal`, `fair`, `serious`, `critical`.

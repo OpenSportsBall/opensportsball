@@ -10,6 +10,7 @@ import '../link/peer_link.dart';
 import '../session/main_controller.dart';
 import '../storage/store.dart';
 import 'common.dart';
+import 'dark_while_recording.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key, required this.store});
@@ -60,11 +61,29 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  Widget _darkened(Widget child) => DarkWhileRecording(
+        enabled: widget.store.settings.darkenScreen,
+        recording: c.phase == MainPhase.recording,
+        camera: c.recorder.camera,
+        status: () {
+          final rec = c.current;
+          final started = rec?.startedAtDeviceMs;
+          final elapsed = started == null
+              ? ''
+              : formatElapsed(DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)));
+          final peer = rec?.peer == null
+              ? 'this phone only'
+              : (c.secondaryStale ? 'no contact with Secondary' : 'Secondary OK');
+          return 'REC $elapsed · $peer';
+        },
+        child: child,
+      );
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: c,
-      builder: (context, _) => PopScope(
+      builder: (context, _) => _darkened(PopScope(
         canPop: !_recording,
         child: Scaffold(
           body: SafeArea(
@@ -93,7 +112,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 

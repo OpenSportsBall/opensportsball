@@ -10,6 +10,7 @@ import '../link/peer_link.dart';
 import '../session/secondary_controller.dart';
 import '../storage/store.dart';
 import 'common.dart';
+import 'dark_while_recording.dart';
 
 /// Scans Main's pairing code, then hands the camera over to the recorder.
 class SecondaryScreen extends StatefulWidget {
@@ -116,11 +117,26 @@ class _SecondarySessionState extends State<_SecondarySession> {
     }
   }
 
+  Widget _darkened(Widget child) => DarkWhileRecording(
+        // Main's setting wins once paired.
+        enabled: c.welcome?.settings.darkenScreen ?? widget.store.settings.darkenScreen,
+        recording: c.phase == SecondaryPhase.recording,
+        camera: c.recorder.camera,
+        status: () {
+          final started = c.current?.startedAtDeviceMs;
+          final elapsed = started == null
+              ? ''
+              : formatElapsed(DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)));
+          return 'REC $elapsed · ${c.connected ? 'Main OK' : 'Main out of range'}';
+        },
+        child: child,
+      );
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: c,
-      builder: (context, _) => PopScope(
+      builder: (context, _) => _darkened(PopScope(
         canPop: !_recording,
         child: Scaffold(
           body: SafeArea(
@@ -156,7 +172,7 @@ class _SecondarySessionState extends State<_SecondarySession> {
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 

@@ -111,6 +111,8 @@ class DualCameraPlugin :
                 "stopRecording" -> session().stopRecording(reply)
                 "status" -> reply.success(status())
                 "setKeepScreenOn" -> setKeepScreenOn(call.argument<Boolean>("on") == true, reply)
+                "setScreenBrightness" -> setScreenBrightness((call.argument<Any>("level") as? Number)?.toFloat(), reply)
+                "setPreviewPaused" -> session().setPreviewPaused(call.argument<Boolean>("paused") == true, reply)
                 "close" -> session().close(reply)
                 else -> result.notImplemented()
             }
@@ -222,6 +224,19 @@ class DualCameraPlugin :
             } else {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
+        }
+        reply.success(null)
+    }
+
+    /** Overrides this app's screen brightness (0..1), or hands it back to the
+     *  system with null. Applies only while this activity is in front. */
+    private fun setScreenBrightness(level: Float?, reply: Reply) {
+        val window = activity?.window
+        if (window != null) {
+            val lp = window.attributes
+            lp.screenBrightness = level?.coerceIn(0.01f, 1f)
+                ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            window.attributes = lp
         }
         reply.success(null)
     }

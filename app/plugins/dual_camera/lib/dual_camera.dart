@@ -287,6 +287,15 @@ class DualCamera {
   Future<void> setKeepScreenOn(bool on) =>
       _methods.invokeMethod('setKeepScreenOn', {'on': on});
 
+  /// Overrides screen brightness (0..1) while the app is in front; null
+  /// hands it back to the system.
+  Future<void> setScreenBrightness(double? level) =>
+      _methods.invokeMethod('setScreenBrightness', {'level': level});
+
+  /// Stops drawing preview frames; the camera and recording keep running.
+  Future<void> setPreviewPaused(bool paused) =>
+      _methods.invokeMethod('setPreviewPaused', {'paused': paused});
+
   Future<void> close() => _methods.invokeMethod('close');
 }
 

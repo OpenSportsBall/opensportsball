@@ -202,6 +202,12 @@ internal class CameraSession(
         }
     }
 
+    /** Stops (or resumes) drawing preview frames. Recording is unaffected. */
+    fun setPreviewPaused(paused: Boolean, reply: Reply) = post(reply) {
+        opened?.renderer?.paused = paused
+        reply.success(null)
+    }
+
     fun lockSettings(reply: Reply) = post(reply) {
         val o = readyOrThrow()
         // Re-meter from scratch: release any previous locks first.

@@ -169,6 +169,15 @@ class FakeCamera implements DualCamera {
 
   @override
   Future<void> setKeepScreenOn(bool on) async {}
+
+  /// Every brightness override requested; null means "back to the system".
+  final brightness = <double?>[];
+  bool previewPaused = false;
+
+  @override
+  Future<void> setScreenBrightness(double? level) async => brightness.add(level);
+  @override
+  Future<void> setPreviewPaused(bool paused) async => previewPaused = paused;
   @override
   Future<void> close() async {}
 }

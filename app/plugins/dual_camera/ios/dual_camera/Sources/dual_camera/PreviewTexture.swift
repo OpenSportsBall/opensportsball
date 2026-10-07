@@ -16,6 +16,7 @@ final class PreviewTexture: NSObject, FlutterTexture {
   private let lock = NSLock()
   private var latest: CVPixelBuffer?
   private var notifyPending = false
+  private var paused = false
   private let onFrameAvailable: () -> Void
 
   /// `onFrameAvailable` is called on the main thread, at most once per
@@ -24,8 +25,20 @@ final class PreviewTexture: NSObject, FlutterTexture {
     self.onFrameAvailable = onFrameAvailable
   }
 
+  /// While paused, frames are dropped instead of shown: saves GPU work and
+  /// heat while the screen is dark. Recording is unaffected.
+  func setPaused(_ value: Bool) {
+    lock.lock()
+    paused = value
+    lock.unlock()
+  }
+
   func update(_ pixelBuffer: CVPixelBuffer) {
     lock.lock()
+    if paused {
+      lock.unlock()
+      return
+    }
     latest = pixelBuffer
     let shouldNotify = !notifyPending
     notifyPending = true

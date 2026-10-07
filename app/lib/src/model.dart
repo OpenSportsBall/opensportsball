@@ -47,6 +47,7 @@ class RecordingSettings {
     this.resolution = Resolution.uhd4k,
     this.lockExposure = false,
     this.segmentMinutes = 5,
+    this.darkenScreen = true,
   });
 
   factory RecordingSettings.fromJson(Map<String, Object?> j) =>
@@ -54,11 +55,17 @@ class RecordingSettings {
         resolution: Resolution.values.byName(j['resolution'] as String),
         lockExposure: j['lockExposure'] as bool,
         segmentMinutes: j['segmentMinutes'] as int,
+        // Absent in settings saved (or sent over BLE) by older versions.
+        darkenScreen: j['darkenScreen'] as bool? ?? true,
       );
 
   final Resolution resolution;
   final bool lockExposure;
   final int segmentMinutes;
+
+  /// Black out the screen at minimum brightness 15 s into a recording, to
+  /// save battery and heat. Tap to wake. Main sends this to Secondary.
+  final bool darkenScreen;
 
   CaptureConfig toCaptureConfig() => CaptureConfig(
         width: resolution.width,
@@ -75,17 +82,20 @@ class RecordingSettings {
     Resolution? resolution,
     bool? lockExposure,
     int? segmentMinutes,
+    bool? darkenScreen,
   }) =>
       RecordingSettings(
         resolution: resolution ?? this.resolution,
         lockExposure: lockExposure ?? this.lockExposure,
         segmentMinutes: segmentMinutes ?? this.segmentMinutes,
+        darkenScreen: darkenScreen ?? this.darkenScreen,
       );
 
   Map<String, Object?> toJson() => {
         'resolution': resolution.name,
         'lockExposure': lockExposure,
         'segmentMinutes': segmentMinutes,
+        'darkenScreen': darkenScreen,
       };
 }
 

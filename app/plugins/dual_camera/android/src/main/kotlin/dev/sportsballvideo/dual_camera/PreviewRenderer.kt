@@ -60,6 +60,10 @@ internal class PreviewRenderer(
     private lateinit var texCoords: FloatBuffer
     @Volatile private var released = false
 
+    /** While true, frames are still consumed (so the camera keeps flowing)
+     *  but not drawn: saves GPU work and heat while the screen is dark. */
+    @Volatile var paused = false
+
     /** Surface the camera writes preview frames into. */
     lateinit var cameraSurface: Surface
         private set
@@ -226,7 +230,7 @@ internal class PreviewRenderer(
             Log.w(TAG, "updateTexImage: ${e.message}")
             return
         }
-        if (target != window) return
+        if (target != window || paused) return
         st.getTransformMatrix(stMatrix)
         GLES20.glViewport(0, 0, outputSize.width, outputSize.height)
         GLES20.glClearColor(0f, 0f, 0f, 1f)

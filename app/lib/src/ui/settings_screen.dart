@@ -66,6 +66,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _s.lockExposure,
             onChanged: (v) => _set(_s.copyWith(lockExposure: v)),
           ),
+          SwitchListTile(
+            title: const Text('Darken screens while recording'),
+            subtitle: const Text(
+                'After 15 seconds of recording, both phones go black at minimum '
+                'brightness to save battery and heat. Recording continues. Tap the '
+                'screen to see it again.'),
+            value: _s.darkenScreen,
+            onChanged: (v) => _set(_s.copyWith(darkenScreen: v)),
+          ),
         ],
       ),
     );
