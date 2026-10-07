@@ -4,11 +4,13 @@
 import { randomUUID } from 'node:crypto';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { handler as authorizer } from '../src/handlers/authorizer.js';
+import { ANONYMOUS, handler as authorizer } from '../src/handlers/authorizer.js';
 import { config, ddb, keys } from '../src/lib/store.js';
 import { callDevice, callWeb, linkPhone, resetAws } from './helpers.js';
 
 const authorize = (token: string) => authorizer({ headers: { authorization: `Bearer ${token}` } } as any);
+/** Whether the token identifies a phone (unknown tokens pass with no identity). */
+const valid = async (token: string) => (await authorize(token)).context.deviceId !== '';
 
 describe('linking phones', () => {
   beforeEach(resetAws);
@@ -62,7 +64,7 @@ describe('linking phones', () => {
       body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
     });
     expect(r.status).toBe(409);
-    expect((await authorize(phone.token)).isAuthorized).toBe(true);
+    expect(await valid(phone.token)).toBe(true);
   });
 
   it('re-linking to the same account replaces the old token', async () => {
@@ -72,8 +74,8 @@ describe('linking phones', () => {
       body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
     });
     expect(again.status).toBe(200);
-    expect((await authorize(phone.token)).isAuthorized).toBe(false);
-    expect((await authorize(again.body.deviceToken)).isAuthorized).toBe(true);
+    expect(await valid(phone.token)).toBe(false);
+    expect(await valid(again.body.deviceToken)).toBe(true);
     expect((await callWeb(alice, 'GET /devices')).body.devices).toHaveLength(1);
   });
 
@@ -81,7 +83,7 @@ describe('linking phones', () => {
     const phone = await linkPhone(alice);
     expect((await callWeb(bob, 'DELETE /devices/{deviceId}', { path: { deviceId: phone.deviceId } })).status).toBe(404);
     expect((await callWeb(alice, 'DELETE /devices/{deviceId}', { path: { deviceId: phone.deviceId } })).status).toBe(204);
-    expect((await authorize(phone.token)).isAuthorized).toBe(false);
+    expect(await valid(phone.token)).toBe(false);
     expect((await callWeb(alice, 'GET /devices')).body.devices).toEqual([]);
 
     // Free to join another account now.
@@ -92,9 +94,11 @@ describe('linking phones', () => {
     expect(r.status).toBe(200);
   });
 
-  it('the authorizer rejects malformed and unknown tokens', async () => {
-    expect((await authorize('nope')).isAuthorized).toBe(false);
-    expect((await authorize(`sbvd_${'A'.repeat(43)}`)).isAuthorized).toBe(false);
-    expect((await authorizer({ headers: {} } as any)).isAuthorized).toBe(false);
+  it('malformed and unknown tokens get no identity, and phone routes answer 401', async () => {
+    expect(await authorize('nope')).toEqual(ANONYMOUS);
+    expect(await authorize(`sbvd_${'A'.repeat(43)}`)).toEqual(ANONYMOUS);
+    expect(await authorizer({ headers: {} } as any)).toEqual(ANONYMOUS);
+    const r = await callDevice(`sbvd_${'A'.repeat(43)}`, 'POST /uploads', { body: {} });
+    expect(r).toEqual({ status: 401, body: { error: 'unauthorized', message: 'Device token required.' } });
   });
 });
