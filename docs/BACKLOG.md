@@ -21,14 +21,10 @@ Footage and logs from these tests decide several items below.
 
 ## Bugs and small fixes
 
-- [ ] **Before the next backend deploy:** the OpenSportsBall rebrand changed
-      the default stack name to `OpenSportsBall` and the device token
-      prefix to `osbd_`. The live stack is `SportsBallVideo` (us-west-2) and
-      issues `sbvd_` tokens. A plain `cdk deploy` would create a second
-      stack. Deploy with `-c stackName=SportsBallVideo -c
-      authDomainPrefix=sportsballvideo-<account-id>` (or migrate
-      deliberately), and accept both token prefixes in the authorizer until
-      linked phones re-link.
+- [ ] Delete the old `SportsBallVideo` stack (us-west-2) now that
+      `OpenSportsBall` is live (deployed 2026-10-11, verified end to end).
+      Its footage bucket, table and user pool are retained by design and
+      must be deleted separately; all three are empty.
 - [ ] Uninstall the old `dev.sportsballvideo.sportsballvideo` app from the
       Pixel 11 once its test recordings are no longer needed (the rebrand
       changed the application id, so both are installed).
