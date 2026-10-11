@@ -29,3 +29,9 @@ SPDX-License-Identifier = "OFL-1.1"
 path = ["web/static/fonts/IBMPlexMono-*", "app/assets/fonts/IBMPlexMono-*"]
 SPDX-FileCopyrightText = "2017 IBM Corp. with Reserved Font Name \"Plex\""
 SPDX-License-Identifier = "OFL-1.1"
+
+# Vendored third-party code; see app/third_party/README.md.
+[[annotations]]
+path = "app/third_party/bluetooth_low_energy_android/**"
+SPDX-FileCopyrightText = "2025 zeekr.dev"
+SPDX-License-Identifier = "MIT"

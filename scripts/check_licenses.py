@@ -29,6 +29,8 @@ BOUNDARY = re.compile(
     r"|from\s+processing\b|import\s+processing\b"
 )
 HEADER_LINES = 10
+# Vendored code keeps its upstream license, declared in REUSE.toml.
+THIRD_PARTY = Path("app/third_party")
 
 
 def tracked_files():
@@ -51,6 +53,8 @@ def main():
         if path.suffix not in SOURCE_SUFFIXES or not path.is_file():
             continue
         rel = path.relative_to(ROOT)
+        if rel.is_relative_to(THIRD_PARTY):
+            continue
         text = path.read_text(encoding="utf-8", errors="replace")
         head = "\n".join(text.splitlines()[:HEADER_LINES])
         want = expected_license(path)

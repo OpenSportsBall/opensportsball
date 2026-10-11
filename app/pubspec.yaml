@@ -26,7 +26,13 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
+
+# Vendored copy that builds with Flutter's built-in Kotlin; see
+# third_party/README.md.
+dependency_overrides:
+  bluetooth_low_energy_android:
+    path: third_party/bluetooth_low_energy_android
 
 flutter:
   uses-material-design: true
