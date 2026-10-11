@@ -410,6 +410,8 @@ internal class CameraSession(
      */
     private fun createRecorderSurface(o: Opened): Surface {
         val surface = MediaCodec.createPersistentInputSurface()
+        // configureRecorder() reads it from here.
+        o.recorderSurface = surface
         val probe = File(context.cacheDir, "dual_camera_probe.mp4")
         val codecs = if (o.mode.codec == Codec.HEVC) listOf(Codec.HEVC, Codec.H264) else listOf(Codec.H264)
         var lastError: Exception? = null
@@ -429,6 +431,7 @@ internal class CameraSession(
                 probe.delete()
             }
         }
+        o.recorderSurface = null
         surface.release()
         throw CameraError(Codes.UNSUPPORTED_CONFIG, "The video encoder rejected ${o.mode.size}@${o.mode.fps}: ${lastError?.message}", lastError)
     }
