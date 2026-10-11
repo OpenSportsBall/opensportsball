@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<resources>
+    <!-- Brand token: pitch -->
+    <color name="ic_launcher_background">#1D3B2A</color>
+</resources>
