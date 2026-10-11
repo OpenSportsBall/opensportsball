@@ -22,6 +22,7 @@ codes: `permission_denied`, `camera_unavailable`, `unsupported_config`,
 |---|---|---|
 | `checkPermissions` | none | `{camera: bool, microphone: bool}` |
 | `requestPermissions` | none | `{camera: bool, microphone: bool}` (prompts if not yet decided) |
+| `requestBluetoothPermission` | none | `bool`: granted. Android asks for Nearby devices (12+) or location (older) if needed; iOS returns `true` (the system asks on first Bluetooth use). Call this before creating any Bluetooth manager. |
 | `availableLenses` | none | `List<String>` of back lenses present: `"ultrawide"`, `"wide"` |
 | `open` | see below | see below. Opens the camera and starts the preview. |
 | `lockSettings` | none | `{exposureLocked: bool, whiteBalanceLocked: bool, focusLocked: bool}` |

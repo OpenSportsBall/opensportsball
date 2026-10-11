@@ -20,10 +20,11 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  final _camera = DualCamera();
   late final MainController c = MainController(
     store: widget.store,
-    camera: DualCamera(),
-    linkFactory: (gameId) => MainBleLink(gameId: gameId),
+    camera: _camera,
+    linkFactory: (gameId) => MainBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
   );
 
   @override

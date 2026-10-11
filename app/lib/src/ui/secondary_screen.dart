@@ -84,11 +84,12 @@ class _SecondarySession extends StatefulWidget {
 }
 
 class _SecondarySessionState extends State<_SecondarySession> {
+  final _camera = DualCamera();
   late final SecondaryController c = SecondaryController(
     store: widget.store,
-    camera: DualCamera(),
+    camera: _camera,
     gameId: widget.gameId,
-    linkFactory: (gameId) => SecondaryBleLink(gameId: gameId),
+    linkFactory: (gameId) => SecondaryBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
   );
 
   @override

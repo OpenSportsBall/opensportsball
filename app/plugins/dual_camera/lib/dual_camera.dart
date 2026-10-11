@@ -249,6 +249,12 @@ class DualCamera {
   Future<Permissions> requestPermissions() async => Permissions.fromMap(
       (await _methods.invokeMapMethod('requestPermissions'))!);
 
+  /// Asks for the Bluetooth permission ("Nearby devices" on Android 12+)
+  /// if needed, and returns whether it is granted. On iOS the system asks on
+  /// first use, so this returns true.
+  Future<bool> requestBluetoothPermission() async =>
+      await _methods.invokeMethod<bool>('requestBluetoothPermission') ?? false;
+
   Future<List<Lens>> availableLenses() async {
     final names = await _methods.invokeListMethod<String>('availableLenses');
     return [for (final n in names ?? const <String>[]) Lens.values.byName(n)];

@@ -76,6 +76,9 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       stopRecording(result)
     case "status":
       result(status())
+    case "requestBluetoothPermission":
+      // iOS asks for Bluetooth itself when the app first uses it.
+      result(true)
     case "setScreenBrightness":
       setScreenBrightness((args["level"] as? NSNumber).map { CGFloat(truncating: $0) })
       result(nil)

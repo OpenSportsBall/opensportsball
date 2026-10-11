@@ -100,6 +100,8 @@ class FakeCamera implements DualCamera {
   @override
   Future<Permissions> requestPermissions() => checkPermissions();
   @override
+  Future<bool> requestBluetoothPermission() async => true;
+  @override
   Future<List<Lens>> availableLenses() async => [Lens.ultrawide, Lens.wide];
 
   @override

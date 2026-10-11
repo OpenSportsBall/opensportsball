@@ -54,12 +54,36 @@ abstract class _BleLinkBase implements PeerLink {
   }
 
   /// Waits until the adapter is on, asking for permission first.
+  /// Asks for the Bluetooth permission before any manager exists. The
+  /// library's managers are app-wide singletons that read their permission
+  /// state once, when created: made before the permission is granted, they
+  /// stay "unauthorized" until Bluetooth is toggled.
+  Future<bool> Function() get _ensurePermission;
+
+  Future<bool> _permitted() async {
+    if (await _ensurePermission()) return true;
+    _problem.value = 'Allow "Nearby devices" for SportsBallVideo in Settings, then try again.';
+    return false;
+  }
+
   Future<bool> _ready(BluetoothLowEnergyManager manager) async {
     if (!await manager.authorize()) {
       _problem.value = 'Bluetooth permission was denied.';
       return false;
     }
+    // A new manager reports `unknown` until its first state arrives.
+    if (manager.state == BluetoothLowEnergyState.unknown) {
+      try {
+        await manager.stateChanged.first.timeout(const Duration(seconds: 3));
+      } on TimeoutException {
+        // fall through with whatever state it has
+      }
+    }
     if (manager.state == BluetoothLowEnergyState.poweredOn) return true;
+    if (manager.state == BluetoothLowEnergyState.unauthorized) {
+      _problem.value = 'Allow "Nearby devices" for SportsBallVideo in Settings, then reopen this screen.';
+      return false;
+    }
     _problem.value = 'Turn on Bluetooth.';
     await manager.stateChanged
         .firstWhere((e) => e.state == BluetoothLowEnergyState.poweredOn);
@@ -94,12 +118,20 @@ abstract class _BleLinkBase implements PeerLink {
 }
 
 class MainBleLink extends _BleLinkBase {
-  MainBleLink({required String gameId, PeripheralManager? manager})
-      : _serviceUuid = UUID.fromString(gameId),
-        _manager = manager ?? PeripheralManager();
+  MainBleLink({
+    required String gameId,
+    required Future<bool> Function() ensurePermission,
+    PeripheralManager Function()? manager,
+  })  : _serviceUuid = UUID.fromString(gameId),
+        _ensurePermission = ensurePermission,
+        _createManager = manager ?? PeripheralManager.new;
 
   final UUID _serviceUuid;
-  final PeripheralManager _manager;
+  @override
+  final Future<bool> Function() _ensurePermission;
+  final PeripheralManager Function() _createManager;
+  PeripheralManager? _mgr;
+  PeripheralManager get _manager => _mgr!;
   Central? _central;
 
   late final _toSecondary = GATTCharacteristic.mutable(
@@ -117,6 +149,8 @@ class MainBleLink extends _BleLinkBase {
 
   @override
   Future<void> start() async {
+    if (!await _permitted()) return;
+    _mgr = _createManager();
     if (!await _ready(_manager)) return;
     _subs
       ..add(_manager.characteristicWriteRequested.listen((e) async {
@@ -205,6 +239,7 @@ class MainBleLink extends _BleLinkBase {
   @override
   Future<void> dispose() async {
     await super.dispose();
+    if (_mgr == null) return;
     try {
       await _manager.stopAdvertising();
       await _manager.removeAllServices();
@@ -215,18 +250,28 @@ class MainBleLink extends _BleLinkBase {
 }
 
 class SecondaryBleLink extends _BleLinkBase {
-  SecondaryBleLink({required String gameId, CentralManager? manager})
-      : _serviceUuid = UUID.fromString(gameId),
-        _manager = manager ?? CentralManager();
+  SecondaryBleLink({
+    required String gameId,
+    required Future<bool> Function() ensurePermission,
+    CentralManager Function()? manager,
+  })  : _serviceUuid = UUID.fromString(gameId),
+        _ensurePermission = ensurePermission,
+        _createManager = manager ?? CentralManager.new;
 
   final UUID _serviceUuid;
-  final CentralManager _manager;
+  @override
+  final Future<bool> Function() _ensurePermission;
+  final CentralManager Function() _createManager;
+  CentralManager? _mgr;
+  CentralManager get _manager => _mgr!;
   Peripheral? _peripheral;
   GATTCharacteristic? _toMain;
   bool _connecting = false;
 
   @override
   Future<void> start() async {
+    if (!await _permitted()) return;
+    _mgr = _createManager();
     if (!await _ready(_manager)) return;
     _subs
       ..add(_manager.discovered.listen((e) {
@@ -317,6 +362,7 @@ class SecondaryBleLink extends _BleLinkBase {
   @override
   Future<void> dispose() async {
     await super.dispose();
+    if (_mgr == null) return;
     try {
       await _manager.stopDiscovery();
       final p = _peripheral;

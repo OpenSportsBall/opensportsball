@@ -46,6 +46,7 @@ class DualCameraPlugin :
 
     private var activityBinding: ActivityPluginBinding? = null
     private var pendingPermissions: Reply? = null
+    private var pendingBluetooth: Reply? = null
 
     // --- FlutterPlugin ------------------------------------------------------
 
@@ -96,6 +97,7 @@ class DualCameraPlugin :
             when (call.method) {
                 "checkPermissions" -> reply.success(permissionState())
                 "requestPermissions" -> requestPermissions(reply)
+                "requestBluetoothPermission" -> requestBluetoothPermission(reply)
                 "availableLenses" -> session().availableLenses(reply)
                 "open" -> open(call, reply)
                 "lockSettings" -> session().lockSettings(reply)
@@ -178,14 +180,47 @@ class DualCameraPlugin :
         a.requestPermissions(missing.toTypedArray(), PERMISSION_REQUEST_CODE)
     }
 
+    /** Android 12+: "Nearby devices" (scan, connect, advertise). Older
+     *  versions need location for BLE scanning. */
+    private val bluetoothPermissions: List<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADVERTISE,
+            )
+        } else {
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+
+    private fun requestBluetoothPermission(reply: Reply) {
+        val missing = bluetoothPermissions.filterNot { has(it) }
+        val a = activity
+        if (missing.isEmpty() || a == null) {
+            reply.success(missing.isEmpty())
+            return
+        }
+        pendingBluetooth?.success(false)
+        pendingBluetooth = reply
+        a.requestPermissions(missing.toTypedArray(), BLUETOOTH_REQUEST_CODE)
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray,
     ): Boolean {
-        if (requestCode != PERMISSION_REQUEST_CODE) return false
-        pendingPermissions?.success(permissionState())
-        pendingPermissions = null
+        when (requestCode) {
+            PERMISSION_REQUEST_CODE -> {
+                pendingPermissions?.success(permissionState())
+                pendingPermissions = null
+            }
+            BLUETOOTH_REQUEST_CODE -> {
+                pendingBluetooth?.success(bluetoothPermissions.all { has(it) })
+                pendingBluetooth = null
+            }
+            else -> return false
+        }
         return true
     }
 
@@ -245,5 +280,6 @@ class DualCameraPlugin :
         const val METHOD_CHANNEL = "dev.sportsballvideo/dual_camera"
         const val EVENT_CHANNEL = "dev.sportsballvideo/dual_camera/events"
         const val PERMISSION_REQUEST_CODE = 0x5B7C
+        const val BLUETOOTH_REQUEST_CODE = 0x5B7D
     }
 }
