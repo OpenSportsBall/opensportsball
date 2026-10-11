@@ -84,14 +84,22 @@ class MainController extends ChangeNotifier {
           timeout: const Duration(seconds: 60)));
       _notify();
     };
+    // Camera first, and never behind Bluetooth: Bluetooth can wait forever
+    // (switched off, permission prompt pending), and Main must still be able
+    // to aim and record alone. Sequential also keeps Android from showing
+    // two permission prompts at once, which cancels one of them.
     try {
-      await link.start();
       opened = await recorder.open(store.settings.toCaptureConfig());
       await recorder.camera.setKeepScreenOn(true);
       phase = MainPhase.idle;
     } on Object catch (e) {
       error = '$e';
     }
+    _notify();
+    unawaited(link.start().catchError((Object e) {
+      error = 'Bluetooth: $e';
+      _notify();
+    }));
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollStatus());
     unawaited(_pollStatus());
     _notify();

@@ -53,8 +53,12 @@ class FakeLink implements PeerLink {
   @override
   Stream<Msg> get messages => _messages.stream;
 
+  /// Completes start(); tests can hold it to simulate Bluetooth that never
+  /// becomes ready.
+  Completer<void> started = Completer<void>()..complete();
+
   @override
-  Future<void> start() async {}
+  Future<void> start() => started.future;
 
   @override
   Future<bool> send(Msg msg) async {

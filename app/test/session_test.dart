@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -57,6 +58,18 @@ void main() {
     await eventually(() => sec.phase == SecondaryPhase.ready, reason: 'secondary ready');
     await eventually(() => main.clock != null, reason: 'clock estimate');
   }
+
+  test('Main opens its camera even if Bluetooth never becomes ready', () async {
+    final stuck = FakeLinkPair();
+    stuck.main.started = Completer<void>(); // e.g. Bluetooth off
+    final m = MainController(store: mainStore, camera: FakeCamera(), linkFactory: (_) => stuck.main);
+    await m.init().timeout(const Duration(seconds: 2));
+    expect(m.opened, isNotNull);
+    expect(m.phase, MainPhase.idle);
+    expect(await m.startRecording(alone: true), isTrue);
+    await m.stopRecording();
+    await m.dispose();
+  });
 
   test('pairing opens the Secondary camera with Main settings', () async {
     await pair();
