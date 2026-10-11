@@ -45,8 +45,15 @@ are much slower and can drop frames.
 - **Android over USB:** `Android/data/dev.sportsballvideo.sportsballvideo/files/recordings/`
   (on a Mac, use Android File Transfer or `adb pull`).
 
-Each recording folder has the video segments, `recording.json`, and on the
-Main phone a `manifest.json` once both phones' segments are known.
+Each recording folder has the video segments, `recording.json`,
+`power.csv`, and on the Main phone a `manifest.json` once both phones'
+segments are known.
+
+`power.csv` has one row at start, one a minute while recording, and one at
+the end: battery %, charging, thermal state (`nominal` / `fair` / `serious`
+/ `critical`), free storage in MB, and a note (`start`, `stop`, or why
+recording ended). Use it to see how long a phone lasts at a given
+resolution and when heat sets in.
 
 ## Bench tests (no game needed)
 
@@ -80,6 +87,9 @@ quickly.
    went dark (only the preview pauses).
 9. **Full length.** 90 minutes at 4K on power banks, phones on the mount in
    the sun if possible. Watch temperature and storage on the Main screen.
+   For a battery run, start at 100% without a power bank and record until
+   the phone stops; `power.csv` gives the drain per hour and when the
+   thermal state rose.
 
 ## Checking files
 

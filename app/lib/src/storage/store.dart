@@ -10,6 +10,8 @@
 ///   <deviceId>_000.mp4, <deviceId>_001.mp4, ...
 ///   recording.json     this phone's record (LocalRecording)
 ///   manifest.json      Main only, once both phones' segments are known
+///   power.csv          battery / thermal / storage once a minute while
+///                      recording (PowerLog), for field tests
 ///   upload.json        upload progress (UploadState); never written by
 ///                      the recorder, so the two never race
 /// ```

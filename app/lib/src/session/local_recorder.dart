@@ -13,6 +13,7 @@ import '../model.dart';
 import '../role.dart';
 import '../storage/store.dart';
 import 'activity.dart';
+import 'power_log.dart';
 
 /// Drives this phone's camera for one game: opens it, records, and turns
 /// each finished segment file into a hashed [SegmentRecord] saved in
@@ -23,6 +24,7 @@ class LocalRecorder {
     required this.store,
     required this.role,
     DeviceActivity? activity,
+    this.powerLogEvery = const Duration(minutes: 1),
   }) : activity = activity ?? DeviceActivity.instance;
 
   final DualCamera camera;
@@ -31,6 +33,9 @@ class LocalRecorder {
 
   /// Told when recording starts and ends, so uploads pause meanwhile.
   final DeviceActivity activity;
+
+  /// How often `power.csv` gets a battery / thermal row while recording.
+  final Duration powerLogEvery;
 
   OpenResult? opened;
   CaptureConfig? config;
@@ -53,6 +58,7 @@ class LocalRecorder {
   AppLifecycleListener? _lifecycle;
   StreamSubscription<CameraEvent>? _events;
   Future<void>? _stopping;
+  PowerLog? _power;
 
   bool get recording => current != null && !current!.stopped;
 
@@ -128,6 +134,7 @@ class LocalRecorder {
       activity.setRecording(this, false);
       rethrow;
     }
+    _power = PowerLog(camera, File('${dir.path}/power.csv'), every: powerLogEvery)..start();
     await store.saveRecording(rec);
     return rec;
   }
@@ -148,6 +155,9 @@ class LocalRecorder {
   }
 
   Future<void> _finish(LocalRecording rec, String? reason) async {
+    final power = _power;
+    _power = null;
+    await power?.stop(reason ?? 'stop');
     await Future.wait(List.of(_hashing));
     rec.stoppedAtMs ??= DateTime.now().millisecondsSinceEpoch;
     rec.endReason ??= reason;

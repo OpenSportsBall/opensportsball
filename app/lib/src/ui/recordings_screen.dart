@@ -39,6 +39,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       ...r.segmentFiles.where((f) => f.existsSync()).map((f) => f.path),
       if (withManifest && r.hasManifest) '${r.dir.path}/manifest.json',
       '${r.dir.path}/recording.json',
+      if (File('${r.dir.path}/power.csv').existsSync()) '${r.dir.path}/power.csv',
     ];
     await SharePlus.instance.share(ShareParams(files: [for (final p in files) XFile(p)]));
   }

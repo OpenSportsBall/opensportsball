@@ -160,6 +160,9 @@ void main() {
     final manifest = jsonDecode(File('${dir.path}/manifest.json').readAsStringSync()) as Map;
     expect((manifest['devices'] as List).length, 1);
     expect(manifest.containsKey('clockSync'), isFalse);
+    final power = File('${dir.path}/power.csv').readAsLinesSync();
+    expect(power.first, startsWith('elapsed_s,'));
+    expect(power.skip(1).map((l) => l.split(',').last), ['start', 'stop']);
     final out = Platform.environment['SBV_SOLO_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));
   });

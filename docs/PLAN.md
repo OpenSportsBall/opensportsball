@@ -15,6 +15,8 @@ possible to keep costs low.
   background upload is still to do.
 - Phase 0 (feasibility on real footage): waiting for a game.
 
+Open work is tracked in [BACKLOG.md](BACKLOG.md).
+
 ## Decisions so far
 
 | Decision | Choice | Why |
