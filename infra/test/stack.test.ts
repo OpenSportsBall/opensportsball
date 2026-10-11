@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import { dirname, resolve } from 'node:path';
@@ -6,15 +6,15 @@ import { fileURLToPath } from 'node:url';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { SportsBallVideoStack } from '../lib/stack.js';
+import { OpenSportsBallStack } from '../lib/stack.js';
 
 let t: Template;
 
 beforeAll(() => {
   const app = new cdk.App({ context: { '@aws-cdk/customresources:installLatestAwsSdkDefault': false } });
-  const stack = new SportsBallVideoStack(app, 'Test', {
+  const stack = new OpenSportsBallStack(app, 'Test', {
     repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
-    authDomainPrefix: 'sbv-test',
+    authDomainPrefix: 'osb-test',
     devOrigins: ['http://localhost:5173'],
   });
   t = Template.fromStack(stack);
@@ -131,7 +131,7 @@ describe('accounts and website', () => {
 
   it('RecordingReady events are captured until processing exists', () => {
     t.hasResourceProperties('AWS::Events::Rule', {
-      EventPattern: { source: ['sportsballvideo'], 'detail-type': ['RecordingReady'] },
+      EventPattern: { source: ['opensportsball'], 'detail-type': ['RecordingReady'] },
     });
   });
 });

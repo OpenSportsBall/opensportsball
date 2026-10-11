@@ -3,5 +3,5 @@
   "region": "us-east-1",
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
-  "cognitoDomain": "https://sportsballvideo-xxxx.auth.us-east-1.amazoncognito.com"
+  "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }

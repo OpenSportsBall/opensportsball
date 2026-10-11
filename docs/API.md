@@ -1,4 +1,4 @@
-# SportsBallVideo API (v1)
+# OpenSportsBall API (v1)
 
 The contract between the phones, the website and the backend (`api/`,
 `infra/`). Change all sides together.
@@ -23,7 +23,7 @@ access token>`. The account id is the token's `sub`.
 
 **Phones.** A phone is linked to an account once, by scanning a QR code
 shown on the website. Linking returns a long-lived device token
-(`sbvd_` + 43 base64url characters). Calls carry
+(`osbd_` + 43 base64url characters). Calls carry
 `Authorization: Bearer <device token>`. The server stores only a SHA-256
 hash of the token. Unlinking the device on the website revokes it.
 
@@ -37,7 +37,7 @@ The deployed site serves `/config.json`:
   "region": "us-east-1",
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
-  "cognitoDomain": "https://sportsballvideo-xxxx.auth.us-east-1.amazoncognito.com"
+  "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }
 ```
 
@@ -46,7 +46,7 @@ The deployed site serves `/config.json`:
 Link QR code / URI (shown on the website):
 
 ```
-sportsballvideo://link?v=1&api=<url-encoded apiUrl>&code=<code>
+opensportsball://link?v=1&api=<url-encoded apiUrl>&code=<code>
 ```
 
 `code` is 8 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, shown to
@@ -59,7 +59,7 @@ for 10 minutes, single use.
 → `200 {"accountId": "...", "email": "..."}`
 
 ### `POST /link-codes`
-→ `201 {"code": "ABCDEFGH", "expiresAt": "...", "linkUri": "sportsballvideo://link?..."}`
+→ `201 {"code": "ABCDEFGH", "expiresAt": "...", "linkUri": "opensportsball://link?..."}`
 
 ### `GET /devices`
 → `200 {"devices": [{"deviceId", "platform", "model", "linkedAt", "lastSeenAt"}]}`
@@ -105,7 +105,7 @@ uploaded something, with `role`, `model`, `expectedSegments` and
 
 ### `POST /devices/link` (no token: the code is the credential)
 Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "model": "..."}`
-→ `200 {"deviceToken": "sbvd_...", "accountId": "..."}`
+→ `200 {"deviceToken": "osbd_...", "accountId": "..."}`
 - `404 not_found`: no such code. `410 gone`: expired or already used.
 - `409 conflict`: this deviceId is linked to a different account (unlink
   it there first).
@@ -169,7 +169,7 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
 - When the manifest is present and every segment it lists is in the
   bucket, the recording becomes `ready` (once) and an EventBridge event is
   published on the default bus:
-  - `source`: `sportsballvideo`
+  - `source`: `opensportsball`
   - `detail-type`: `RecordingReady`
   - `detail`: `{"accountId", "gameId", "recordingId", "bucket", "prefix", "manifestKey"}`
 

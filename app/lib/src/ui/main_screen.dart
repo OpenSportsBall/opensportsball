@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:dual_camera/dual_camera.dart';

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+# SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 # SPDX-License-Identifier: Apache-2.0
 """Enforce the split-license rules in docs/LICENSING.md.
 
@@ -25,7 +25,7 @@ SOURCE_SUFFIXES = {
 SPDX = re.compile(r"SPDX-License-Identifier:\s*(\S+)")
 # Apache code must not import or path-reference the AGPL tree.
 BOUNDARY = re.compile(
-    r"sbv_processing|(?:^|[\s'\"(/.])(?:processing|ml)/(?:src|data|runs)\b"
+    r"osb_processing|(?:^|[\s'\"(/.])(?:processing|ml)/(?:src|data|runs)\b"
     r"|from\s+processing\b|import\s+processing\b"
 )
 HEADER_LINES = 10

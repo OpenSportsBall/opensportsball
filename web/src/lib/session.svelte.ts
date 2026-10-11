@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { createApiClient, errorMessage, type ApiClient } from './api';
 import { createCognitoAuth, createMockAuth, currentPath, type Auth } from './auth';

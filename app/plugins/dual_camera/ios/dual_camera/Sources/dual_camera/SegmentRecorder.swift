@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import AVFoundation
@@ -36,7 +36,7 @@ final class SegmentRecorder {
   private let settings: Settings
   private let queue: DispatchQueue
   private let clock: CMClock
-  private let prepQueue = DispatchQueue(label: "dev.sportsballvideo.dual_camera.prepare")
+  private let prepQueue = DispatchQueue(label: "dev.opensportsball.dual_camera.prepare")
 
   /// Writer 0, created eagerly, until the first video frame starts it.
   private var first: SegmentWriter?

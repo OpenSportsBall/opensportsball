@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 
-/** `sbvd_` + 32 random bytes as base64url (43 characters). */
-export const newDeviceToken = () => `sbvd_${randomBytes(32).toString('base64url')}`;
+/** `osbd_` + 32 random bytes as base64url (43 characters). */
+export const newDeviceToken = () => `osbd_${randomBytes(32).toString('base64url')}`;
 
-export const DEVICE_TOKEN = /^sbvd_[A-Za-z0-9_-]{43}$/;
+export const DEVICE_TOKEN = /^osbd_[A-Za-z0-9_-]{43}$/;
 
 /** Only hashes are stored, so a leaked table can't be used to upload. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');

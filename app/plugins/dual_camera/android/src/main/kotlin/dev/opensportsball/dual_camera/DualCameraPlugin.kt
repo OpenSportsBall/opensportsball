@@ -1,7 +1,7 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package dev.sportsballvideo.dual_camera
+package dev.opensportsball.dual_camera
 
 import android.Manifest
 import android.app.Activity
@@ -277,8 +277,8 @@ class DualCameraPlugin :
     }
 
     private companion object {
-        const val METHOD_CHANNEL = "dev.sportsballvideo/dual_camera"
-        const val EVENT_CHANNEL = "dev.sportsballvideo/dual_camera/events"
+        const val METHOD_CHANNEL = "dev.opensportsball/dual_camera"
+        const val EVENT_CHANNEL = "dev.opensportsball/dual_camera/events"
         const val PERMISSION_REQUEST_CODE = 0x5B7C
         const val BLUETOOTH_REQUEST_CODE = 0x5B7D
     }

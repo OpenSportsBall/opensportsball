@@ -4,8 +4,8 @@ The Dart side (`lib/dual_camera.dart`) and the two native sides
 (`android/.../DualCameraPlugin.kt`, `ios/.../DualCameraPlugin.swift`) must
 agree on exactly this. Change all three together.
 
-- MethodChannel: `dev.sportsballvideo/dual_camera`
-- EventChannel: `dev.sportsballvideo/dual_camera/events`
+- MethodChannel: `dev.opensportsball/dual_camera`
+- EventChannel: `dev.opensportsball/dual_camera/events`
 
 All arguments and results are maps with the keys below. Times are
 milliseconds. `deviceMs` means wall-clock milliseconds since the Unix epoch

@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// Pairing QR payload: `sportsballvideo://pair?v=1&game=<uuid>`.
-String pairingUri(String gameId) => 'sportsballvideo://pair?v=1&game=$gameId';
+/// Pairing QR payload: `opensportsball://pair?v=1&game=<uuid>`.
+String pairingUri(String gameId) => 'opensportsball://pair?v=1&game=$gameId';
 
 final _uuidPattern =
     RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
@@ -14,7 +14,7 @@ final _uuidPattern =
 /// Returns the game id from a scanned pairing code, or null if it isn't one.
 String? parsePairingUri(String raw) {
   final uri = Uri.tryParse(raw.trim());
-  if (uri == null || uri.scheme != 'sportsballvideo' || uri.host != 'pair') return null;
+  if (uri == null || uri.scheme != 'opensportsball' || uri.host != 'pair') return null;
   if (uri.queryParameters['v'] != '1') return null;
   final game = uri.queryParameters['game']?.toLowerCase();
   return game != null && _uuidPattern.hasMatch(game) ? game : null;

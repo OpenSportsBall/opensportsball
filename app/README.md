@@ -21,7 +21,7 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   are known (`shared/schemas/manifest.schema.json`).
 - Recordings screen with sharing, for getting test footage off the phones.
 - Account linking (`lib/src/upload/account.dart`, `ui/account_screen.dart`):
-  scan the website's `sportsballvideo://link?...` QR code, or type the
+  scan the website's `opensportsball://link?...` QR code, or type the
   8-character code once the phone knows the API from an earlier link. The
   device token is kept with `flutter_secure_storage` (Keychain / Android
   Keystore). "Unlink this phone" only forgets it locally.

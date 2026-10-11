@@ -40,9 +40,9 @@ are much slower and can drop frames.
 
 - **In the app:** Recordings → expand a recording → Share all (AirDrop,
   Files, Drive, ...).
-- **iPhone over USB:** Finder → the phone → Files → SportsBallVideo →
+- **iPhone over USB:** Finder → the phone → Files → OpenSportsBall →
   `recordings/`.
-- **Android over USB:** `Android/data/dev.sportsballvideo.sportsballvideo/files/recordings/`
+- **Android over USB:** `Android/data/dev.opensportsball.opensportsball/files/recordings/`
   (on a Mac, use Android File Transfer or `adb pull`).
 
 Each recording folder has the video segments, `recording.json`,

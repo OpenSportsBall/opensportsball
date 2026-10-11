@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -69,7 +69,7 @@
 	}
 </script>
 
-<svelte:head><title>Game · SportsBallVideo</title></svelte:head>
+<svelte:head><title>Game · OpenSportsBall</title></svelte:head>
 
 <p class="back"><a href={resolve('/games')}>← All games</a></p>
 

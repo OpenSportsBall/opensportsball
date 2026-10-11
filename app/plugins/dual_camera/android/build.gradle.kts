@@ -1,4 +1,4 @@
-group = "dev.sportsballvideo.dual_camera"
+group = "dev.opensportsball.dual_camera"
 version = "1.0-SNAPSHOT"
 
 buildscript {
@@ -26,7 +26,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.sportsballvideo.dual_camera"
+    namespace = "dev.opensportsball.dual_camera"
 
     compileSdk = 36
 

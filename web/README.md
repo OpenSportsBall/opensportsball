@@ -1,6 +1,6 @@
 # web
 
-The SportsBallVideo account website. Parents sign in, link their phones by
+The OpenSportsBall account website. Parents sign in, link their phones by
 QR code, and follow each game's uploads. It is a static single-page app
 (SvelteKit + `@sveltejs/adapter-static`, Svelte 5, TypeScript) served from
 S3 + CloudFront, and talks to the API described in
@@ -10,7 +10,7 @@ S3 + CloudFront, and talks to the API described in
 
 | Path | What |
 |---|---|
-| `/` | What SportsBallVideo is, plus **Sign in** (the Cognito hosted UI also handles sign up). Signed-in users go to `/games`. |
+| `/` | What OpenSportsBall is, plus **Sign in** (the Cognito hosted UI also handles sign up). Signed-in users go to `/games`. |
 | `/callback` | Finishes the Cognito sign-in redirect. |
 | `/games` | Games, newest first, with recording count and status. |
 | `/game?id=<gameId>` | Recordings with per-phone upload progress. Refreshes every 15 s while anything is still uploading. |
@@ -57,7 +57,7 @@ Nothing deployment-specific is compiled in. On startup the site fetches
   "region": "us-east-1",
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
-  "cognitoDomain": "https://sportsballvideo-xxxx.auth.us-east-1.amazoncognito.com"
+  "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }
 ```
 

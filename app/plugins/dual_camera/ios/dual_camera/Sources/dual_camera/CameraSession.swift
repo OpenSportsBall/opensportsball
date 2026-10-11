@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import AVFoundation
@@ -17,7 +17,7 @@ final class CameraSession: NSObject,
   AVCaptureVideoDataOutputSampleBufferDelegate,
   AVCaptureAudioDataOutputSampleBufferDelegate
 {
-  let queue = DispatchQueue(label: "dev.sportsballvideo.dual_camera.capture", qos: .userInitiated)
+  let queue = DispatchQueue(label: "dev.opensportsball.dual_camera.capture", qos: .userInitiated)
 
   private let session = AVCaptureSession()
   private let videoOutput = AVCaptureVideoDataOutput()

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sportsballvideo.dev/schemas/manifest.schema.json",
+  "$id": "https://opensportsball.dev/schemas/manifest.schema.json",
   "title": "Recording manifest",
   "description": "Written by the Main phone and uploaded after recording stops. Lists every segment the phones are expected to upload; processing starts only once every listed segment is in S3. A recording made on the Main phone alone has one device and no clockSync.",
   "type": "object",

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /** Recording state: which files have arrived, and the one-time switch to
@@ -155,7 +155,7 @@ async function publishReady(acct: string, gameId: string, recordingId: string) {
       Entries: [
         {
           EventBusName: config.eventBus,
-          Source: 'sportsballvideo',
+          Source: 'opensportsball',
           DetailType: 'RecordingReady',
           Detail: JSON.stringify({
             accountId: acct,

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
@@ -6,10 +6,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sportsballvideo/src/link/peer_link.dart';
-import 'package:sportsballvideo/src/session/main_controller.dart';
-import 'package:sportsballvideo/src/session/secondary_controller.dart';
-import 'package:sportsballvideo/src/storage/store.dart';
+import 'package:opensportsball/src/link/peer_link.dart';
+import 'package:opensportsball/src/session/main_controller.dart';
+import 'package:opensportsball/src/session/secondary_controller.dart';
+import 'package:opensportsball/src/storage/store.dart';
 
 import 'fakes.dart';
 
@@ -107,7 +107,7 @@ void main() {
     expect(devices[1]['platform'], 'android');
     expect((manifest['clockSync'] as Map)['samples'], greaterThan(0));
 
-    final out = Platform.environment['SBV_MANIFEST_OUT'];
+    final out = Platform.environment['OSB_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));
   });
 
@@ -163,7 +163,7 @@ void main() {
     final power = File('${dir.path}/power.csv').readAsLinesSync();
     expect(power.first, startsWith('elapsed_s,'));
     expect(power.skip(1).map((l) => l.split(',').last), ['start', 'stop']);
-    final out = Platform.environment['SBV_SOLO_MANIFEST_OUT'];
+    final out = Platform.environment['OSB_SOLO_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));
   });
 

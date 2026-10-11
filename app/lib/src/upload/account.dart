@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /// Linking this phone to a website account (docs/API.md, "Linking a
@@ -62,10 +62,10 @@ class LinkRequest {
   final String code;
 }
 
-/// Parses `sportsballvideo://link?v=1&api=<url>&code=<code>`.
+/// Parses `opensportsball://link?v=1&api=<url>&code=<code>`.
 LinkRequest? parseLinkUri(String raw) {
   final uri = Uri.tryParse(raw.trim());
-  if (uri == null || uri.scheme != 'sportsballvideo' || uri.host != 'link') return null;
+  if (uri == null || uri.scheme != 'opensportsball' || uri.host != 'link') return null;
   if (uri.queryParameters['v'] != '1') return null;
   final api = uri.queryParameters['api'];
   final code = normalizeLinkCode(uri.queryParameters['code'] ?? '');

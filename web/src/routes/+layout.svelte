@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import '../app.css';
@@ -19,12 +19,12 @@
 <header class="site-header">
 	<div class="bar">
 		<a class="brand" href={resolve('/')}>
-			<svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-				<circle cx="16" cy="16" r="14" fill="var(--accent)" />
-				<circle cx="16" cy="16" r="9" fill="none" stroke="var(--surface)" stroke-width="2.5" />
-				<path d="M13 12l7 4-7 4z" fill="var(--surface)" />
+			<svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
+				<path fill="var(--accent)" d="M30.5 4.04A28 28 0 0 0 30.5 59.96Z" />
+				<path fill="var(--accent)" d="M33.5 4.04A28 28 0 0 1 33.5 59.96Z" />
+				<path fill="var(--sun)" stroke="var(--sun)" stroke-width="4" stroke-linejoin="round" d="M25.5 21.5L43.5 32L25.5 42.5Z" />
 			</svg>
-			<span>SportsBallVideo</span>
+			<span class="wordmark"><span class="open">Open</span>SportsBall</span>
 		</a>
 		{#if session.status === 'ready' && session.signedIn}
 			<div class="account">
@@ -79,11 +79,16 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		font-family: var(--font-display);
 		font-weight: 700;
-		font-size: 1.1rem;
+		font-size: 1.2rem;
+		letter-spacing: -0.005em;
 		color: var(--text);
 		text-decoration: none;
 		flex-shrink: 0;
+	}
+	.open {
+		color: var(--accent);
 	}
 	.account {
 		display: flex;

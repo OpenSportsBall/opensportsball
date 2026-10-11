@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
@@ -131,7 +131,7 @@
 	}
 </script>
 
-<svelte:head><title>Devices · SportsBallVideo</title></svelte:head>
+<svelte:head><title>Devices · OpenSportsBall</title></svelte:head>
 
 <div class="page-head">
 	<h1>Devices</h1>
@@ -165,7 +165,7 @@
 			<button class="btn" onclick={startLink}>Link another phone</button>
 		{:else if link}
 			<p>
-				On the phone, open the SportsBallVideo app and scan this code. Or type the code in the app.
+				On the phone, open the OpenSportsBall app and scan this code. Or type the code in the app.
 			</p>
 			<div class="qr" class:faded={expired}>
 				<!-- qrcode's SVG output; generated locally from the server's linkUri -->

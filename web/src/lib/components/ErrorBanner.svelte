@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { ApiError } from '#lib/api.ts';

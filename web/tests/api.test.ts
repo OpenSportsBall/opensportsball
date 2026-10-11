@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient, errorMessage } from '../src/lib/api.ts';
@@ -41,7 +41,7 @@ describe('api client', () => {
 
 	it('POSTs /link-codes and returns the code', async () => {
 		const { client, calls } = setup(() =>
-			json(201, { code: 'ABCDEFGH', expiresAt: '2026-10-06T12:10:00Z', linkUri: 'sportsballvideo://link?v=1' })
+			json(201, { code: 'ABCDEFGH', expiresAt: '2026-10-06T12:10:00Z', linkUri: 'opensportsball://link?v=1' })
 		);
 		const code = await client.createLinkCode();
 		expect(calls[0].init.method).toBe('POST');

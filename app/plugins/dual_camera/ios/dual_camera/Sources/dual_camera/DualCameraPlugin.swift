@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import AVFoundation
@@ -27,10 +27,10 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   public static func register(with registrar: FlutterPluginRegistrar) {
     let instance = DualCameraPlugin(textures: registrar.textures())
     let methods = FlutterMethodChannel(
-      name: "dev.sportsballvideo/dual_camera", binaryMessenger: registrar.messenger())
+      name: "dev.opensportsball/dual_camera", binaryMessenger: registrar.messenger())
     registrar.addMethodCallDelegate(instance, channel: methods)
     let events = FlutterEventChannel(
-      name: "dev.sportsballvideo/dual_camera/events", binaryMessenger: registrar.messenger())
+      name: "dev.opensportsball/dual_camera/events", binaryMessenger: registrar.messenger())
     events.setStreamHandler(instance)
   }
 

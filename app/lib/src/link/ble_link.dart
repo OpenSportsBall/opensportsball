@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /// BLE implementation of [PeerLink].
@@ -62,7 +62,7 @@ abstract class _BleLinkBase implements PeerLink {
 
   Future<bool> _permitted() async {
     if (await _ensurePermission()) return true;
-    _problem.value = 'Allow "Nearby devices" for SportsBallVideo in Settings, then try again.';
+    _problem.value = 'Allow "Nearby devices" for OpenSportsBall in Settings, then try again.';
     return false;
   }
 
@@ -80,7 +80,7 @@ abstract class _BleLinkBase implements PeerLink {
     }
     if (manager.state == BluetoothLowEnergyState.poweredOn) return true;
     if (manager.state == BluetoothLowEnergyState.unauthorized) {
-      _problem.value = 'Allow "Nearby devices" for SportsBallVideo in Settings, then reopen this screen.';
+      _problem.value = 'Allow "Nearby devices" for OpenSportsBall in Settings, then reopen this screen.';
       return false;
     }
     _problem.value = 'Turn on Bluetooth.';

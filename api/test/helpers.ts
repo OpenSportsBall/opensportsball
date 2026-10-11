@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomUUID, createHash } from 'node:crypto';
@@ -68,7 +68,7 @@ export async function resetAws() {
   await eb.send(
     new PutRuleCommand({
       Name: rule,
-      EventPattern: JSON.stringify({ source: ['sportsballvideo'], 'detail-type': ['RecordingReady'] }),
+      EventPattern: JSON.stringify({ source: ['opensportsball'], 'detail-type': ['RecordingReady'] }),
     }),
   );
   await eb.send(new PutTargetsCommand({ Rule: rule, Targets: [{ Id: 'q', Arn: arn }] }));

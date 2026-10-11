@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /**
@@ -103,7 +103,7 @@ export function createCognitoAuth(config: SiteConfig): Auth {
 	};
 }
 
-const MOCK_SIGNED_OUT = 'sbv-mock-signed-out';
+const MOCK_SIGNED_OUT = 'osb-mock-signed-out';
 
 function readFlag(): boolean {
 	try {

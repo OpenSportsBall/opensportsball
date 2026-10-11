@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -44,7 +44,7 @@
 	}
 </script>
 
-<svelte:head><title>Games · SportsBallVideo</title></svelte:head>
+<svelte:head><title>Games · OpenSportsBall</title></svelte:head>
 
 <div class="page-head"><h1>Games</h1></div>
 
@@ -57,7 +57,7 @@
 		<h2>No games yet</h2>
 		<ol>
 			<li>Link your phones on the <a href={resolve('/devices')}>Devices</a> page.</li>
-			<li>Record a game with the SportsBallVideo app.</li>
+			<li>Record a game with the OpenSportsBall app.</li>
 			<li>The phones upload the footage when they are on Wi-Fi. The game shows up here.</li>
 		</ol>
 		<div><a class="btn btn-primary" href={resolve('/devices')}>Link a phone</a></div>

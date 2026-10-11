@@ -1,4 +1,4 @@
-# SportsBallVideo development plan
+# OpenSportsBall development plan
 
 Goal: an open-source two-phone soccer recorder. Two phones on a dual-phone
 mount record the field, the cloud stitches and follows the play, and the

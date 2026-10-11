@@ -1,9 +1,9 @@
 {
-  "name": "sportsballvideo-api",
+  "name": "opensportsball-api",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "SportsBallVideo API Lambda handlers",
+  "description": "OpenSportsBall API Lambda handlers",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",

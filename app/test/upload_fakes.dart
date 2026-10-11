@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
@@ -9,13 +9,13 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:sportsballvideo/src/model.dart';
-import 'package:sportsballvideo/src/role.dart';
-import 'package:sportsballvideo/src/storage/store.dart';
-import 'package:sportsballvideo/src/upload/network.dart';
+import 'package:opensportsball/src/model.dart';
+import 'package:opensportsball/src/role.dart';
+import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/upload/network.dart';
 
 const apiUrl = 'https://api.test';
-const deviceToken = 'sbvd_testtoken';
+const deviceToken = 'osbd_testtoken';
 const accountId = 'acc-1';
 
 class FakeNetwork implements NetworkMonitor {

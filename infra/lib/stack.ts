@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /**
@@ -27,7 +27,7 @@ import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import type { Construct } from 'constructs';
 
-export interface SportsBallVideoStackProps extends cdk.StackProps {
+export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Repository root (contains api/, web/, shared/). */
   repoRoot: string;
   /** Cognito hosted-login domain prefix; must be globally unique. */
@@ -37,8 +37,8 @@ export interface SportsBallVideoStackProps extends cdk.StackProps {
   devOrigins?: string[];
 }
 
-export class SportsBallVideoStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: SportsBallVideoStackProps) {
+export class OpenSportsBallStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: OpenSportsBallStackProps) {
     super(scope, id, props);
     const devOrigins = props.devOrigins ?? [];
 
@@ -214,7 +214,7 @@ export class SportsBallVideoStack extends cdk.Stack {
     // Phase 3 adds the Step Functions target. Until then, log the events so a
     // finished upload is visible in CloudWatch.
     new events.Rule(this, 'RecordingReady', {
-      eventPattern: { source: ['sportsballvideo'], detailType: ['RecordingReady'] },
+      eventPattern: { source: ['opensportsball'], detailType: ['RecordingReady'] },
       targets: [
         new targets.CloudWatchLogGroup(
           new logs.LogGroup(this, 'RecordingReadyLog', {
@@ -239,7 +239,7 @@ export class SportsBallVideoStack extends cdk.Stack {
       });
     } else {
       cdk.Annotations.of(this).addWarningV2(
-        'sbv:no-web-build',
+        'osb:no-web-build',
         'web/build not found: the website files are not deployed. Run `npm run build` in web/ first.',
       );
     }

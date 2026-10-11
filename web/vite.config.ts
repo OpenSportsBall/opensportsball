@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { readFileSync } from 'node:fs';
 import adapter from '@sveltejs/adapter-static';
@@ -12,7 +12,7 @@ import { defineConfig, type Plugin } from 'vite';
  */
 function mockConfig(mode: string): Plugin {
 	return {
-		name: 'sbv-mock-config',
+		name: 'osb-mock-config',
 		apply: 'serve',
 		configureServer(server) {
 			if (mode !== 'mock') return;

@@ -18,7 +18,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: dev.sportsballvideo.dual_camera
+        package: dev.opensportsball.dual_camera
         pluginClass: DualCameraPlugin
       ios:
         pluginClass: DualCameraPlugin

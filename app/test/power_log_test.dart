@@ -1,16 +1,16 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sportsballvideo/src/session/power_log.dart';
+import 'package:opensportsball/src/session/power_log.dart';
 
 import 'fakes.dart';
 
 void main() {
   test('logs a header, a start row, periodic rows and an end row', () async {
-    final dir = await Directory.systemTemp.createTemp('sbv_power');
+    final dir = await Directory.systemTemp.createTemp('osb_power');
     final file = File('${dir.path}/power.csv');
     final log = PowerLog(FakeCamera(), file, every: const Duration(milliseconds: 30))..start();
     await Future<void>.delayed(const Duration(milliseconds: 100));

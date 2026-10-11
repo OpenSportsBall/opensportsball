@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sportsballvideo/src/ui/dark_while_recording.dart';
+import 'package:opensportsball/src/ui/dark_while_recording.dart';
 
 import 'fakes.dart';
 

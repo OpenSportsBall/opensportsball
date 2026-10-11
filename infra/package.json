@@ -1,9 +1,9 @@
 {
-  "name": "sportsballvideo-infra",
+  "name": "opensportsball-infra",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "SportsBallVideo AWS CDK stack",
+  "description": "OpenSportsBall AWS CDK stack",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",

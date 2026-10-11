@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
@@ -7,10 +7,10 @@ import 'dart:math';
 
 import 'package:dual_camera/dual_camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:sportsballvideo/src/link/peer_link.dart';
-import 'package:sportsballvideo/src/model.dart';
-import 'package:sportsballvideo/src/protocol/messages.dart';
-import 'package:sportsballvideo/src/storage/store.dart';
+import 'package:opensportsball/src/link/peer_link.dart';
+import 'package:opensportsball/src/model.dart';
+import 'package:opensportsball/src/protocol/messages.dart';
+import 'package:opensportsball/src/storage/store.dart';
 
 /// Two in-memory links wired to each other. Messages go through
 /// encode/decode so serialization is exercised too.
@@ -189,7 +189,7 @@ class FakeCamera implements DualCamera {
 }
 
 Future<AppStore> tempStore(String name, {String platform = 'ios'}) async {
-  final dir = await Directory.systemTemp.createTemp('sbv_$name');
+  final dir = await Directory.systemTemp.createTemp('osb_$name');
   final root = Directory('${dir.path}/recordings')..createSync();
   return AppStore.forTest(
     supportDir: dir,

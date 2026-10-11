@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /** Routes for people signed in on the website (Cognito JWT authorizer). */
@@ -75,7 +75,7 @@ async function createLinkCode(acct: string, event: APIGatewayProxyEventV2WithJWT
       return json(201, {
         code,
         expiresAt: new Date(expiresAtMs).toISOString(),
-        linkUri: `sportsballvideo://link?v=1&api=${encodeURIComponent(apiUrl)}&code=${code}`,
+        linkUri: `opensportsball://link?v=1&api=${encodeURIComponent(apiUrl)}&code=${code}`,
       });
     } catch (e) {
       if (!(e instanceof ConditionalCheckFailedException)) throw e;

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+# SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 # SPDX-License-Identifier: Apache-2.0
 #
 # The plugin is built with Swift Package Manager (dual_camera/Package.swift);
@@ -13,7 +13,7 @@ locked 3A, stabilization off and ultra-wide lens selection.
                        DESC
   s.homepage         = 'http://example.com'
   s.license          = { :type => 'Apache-2.0', :file => '../LICENSE' }
-  s.author           = 'The SportsBallVideo Authors'
+  s.author           = 'The OpenSportsBall Authors'
   s.source           = { :path => '.' }
   s.source_files = 'dual_camera/Sources/dual_camera/**/*.swift'
   s.frameworks = 'AVFoundation', 'CoreMedia', 'CoreVideo'

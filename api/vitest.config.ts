@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { defineConfig } from 'vitest/config';
 
@@ -17,8 +17,8 @@ export default defineConfig({
       AWS_ACCESS_KEY_ID: 'test',
       AWS_SECRET_ACCESS_KEY: 'test',
       S3_FORCE_PATH_STYLE: '1',
-      TABLE_NAME: 'sbv-test',
-      BUCKET_NAME: 'sbv-test-footage',
+      TABLE_NAME: 'osb-test',
+      BUCKET_NAME: 'osb-test-footage',
       PART_SIZE_BYTES: '100',
     },
   },

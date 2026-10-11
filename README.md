@@ -1,4 +1,4 @@
-# SportsBallVideo
+# OpenSportsBall
 
 Open-source, two-phone game recording for youth soccer. Two phones on a
 dual-phone mount record the full field; the cloud stitches the two videos

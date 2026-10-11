@@ -41,8 +41,8 @@ Options (pass with `-c key=value`):
 
 | Context key | Default | Meaning |
 |---|---|---|
-| `stackName` | `SportsBallVideo` | CloudFormation stack name |
-| `authDomainPrefix` | `sportsballvideo-<account id>` | Cognito login domain; globally unique |
+| `stackName` | `OpenSportsBall` | CloudFormation stack name |
+| `authDomainPrefix` | `opensportsball-<account id>` | Cognito login domain; globally unique |
 | `devOrigins` | `http://localhost:5173` | Extra origins allowed for login callbacks and CORS (comma-separated) |
 
 Region: `CDK_DEFAULT_REGION` from your AWS CLI profile, else `us-east-1`.

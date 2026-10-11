@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:dual_camera/dual_camera.dart';
@@ -31,7 +31,7 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
     for (final code in capture.barcodes) {
       final game = code.rawValue == null ? null : parsePairingUri(code.rawValue!);
       if (game == null) {
-        setState(() => _scanError = 'That is not a SportsBallVideo pairing code.');
+        setState(() => _scanError = 'That is not a OpenSportsBall pairing code.');
         continue;
       }
       _gameId = game;

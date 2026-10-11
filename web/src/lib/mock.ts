@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 /**
@@ -213,7 +213,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			const body: LinkCode = {
 				code,
 				expiresAt: iso(t + CODE_TTL_MS),
-				linkUri: `sportsballvideo://link?v=1&api=${encodeURIComponent(MOCK_BASE_URL)}&code=${code}`
+				linkUri: `opensportsball://link?v=1&api=${encodeURIComponent(MOCK_BASE_URL)}&code=${code}`
 			};
 			return json(201, body);
 		}

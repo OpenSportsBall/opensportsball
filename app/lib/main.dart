@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
@@ -8,6 +8,7 @@ import 'src/app_services.dart';
 import 'src/role.dart';
 import 'src/storage/store.dart';
 import 'src/ui/account_screen.dart';
+import 'src/ui/brand.dart';
 import 'src/ui/main_screen.dart';
 import 'src/ui/recordings_screen.dart';
 import 'src/ui/secondary_screen.dart';
@@ -19,11 +20,11 @@ Future<void> main() async {
   // The phones sit sideways on the mount; one fixed orientation keeps the
   // recordings consistent.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft]);
-  runApp(SportsBallVideoApp(store: AppStore.open()));
+  runApp(OpenSportsBallApp(store: AppStore.open()));
 }
 
-class SportsBallVideoApp extends StatefulWidget {
-  const SportsBallVideoApp({
+class OpenSportsBallApp extends StatefulWidget {
+  const OpenSportsBallApp({
     super.key,
     required this.store,
     this.createServices = createAppServices,
@@ -33,10 +34,10 @@ class SportsBallVideoApp extends StatefulWidget {
   final Future<AppServices> Function(AppStore store) createServices;
 
   @override
-  State<SportsBallVideoApp> createState() => _SportsBallVideoAppState();
+  State<OpenSportsBallApp> createState() => _OpenSportsBallAppState();
 }
 
-class _SportsBallVideoAppState extends State<SportsBallVideoApp> {
+class _OpenSportsBallAppState extends State<OpenSportsBallApp> {
   late final Future<AppServices> _services = widget.store.then(widget.createServices);
   AppServices? _ready;
   late final AppLifecycleListener _lifecycle =
@@ -58,10 +59,9 @@ class _SportsBallVideoAppState extends State<SportsBallVideoApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SportsBallVideo',
-      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
-      darkTheme: ThemeData(
-          colorSchemeSeed: Colors.green, useMaterial3: true, brightness: Brightness.dark),
+      title: 'OpenSportsBall',
+      theme: buildBrandTheme(Brightness.light),
+      darkTheme: buildBrandTheme(Brightness.dark),
       home: FutureBuilder(
         future: _services,
         builder: (context, snap) {
@@ -93,7 +93,7 @@ class RolePickerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SportsBallVideo'),
+        title: const Text('OpenSportsBall'),
         actions: [
           ListenableBuilder(
             listenable: services.account,

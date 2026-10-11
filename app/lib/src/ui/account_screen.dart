@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
@@ -136,7 +136,7 @@ class _LinkFormState extends State<_LinkForm> {
       _lastScanned = raw;
       final r = parseLinkUri(raw);
       if (r == null) {
-        setState(() => _error = 'That is not a SportsBallVideo link code. '
+        setState(() => _error = 'That is not a OpenSportsBall link code. '
             'Scan the code under "Link a phone" on the website.');
         continue;
       }

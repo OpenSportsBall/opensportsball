@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:convert';
@@ -7,13 +7,13 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:sportsballvideo/src/role.dart';
-import 'package:sportsballvideo/src/session/activity.dart';
-import 'package:sportsballvideo/src/session/local_recorder.dart';
-import 'package:sportsballvideo/src/storage/store.dart';
-import 'package:sportsballvideo/src/upload/account.dart';
-import 'package:sportsballvideo/src/upload/network.dart';
-import 'package:sportsballvideo/src/upload/upload_service.dart';
+import 'package:opensportsball/src/role.dart';
+import 'package:opensportsball/src/session/activity.dart';
+import 'package:opensportsball/src/session/local_recorder.dart';
+import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/upload/account.dart';
+import 'package:opensportsball/src/upload/network.dart';
+import 'package:opensportsball/src/upload/upload_service.dart';
 
 import 'fakes.dart';
 import 'upload_fakes.dart';
@@ -63,13 +63,13 @@ void main() {
 
   group('linking', () {
     test('parses the link QR code and typed codes', () {
-      final r = parseLinkUri('sportsballvideo://link?v=1&api=${Uri.encodeComponent('https://x.example.com/prod')}&code=ABCDEFGH');
+      final r = parseLinkUri('opensportsball://link?v=1&api=${Uri.encodeComponent('https://x.example.com/prod')}&code=ABCDEFGH');
       expect(r!.apiUrl, 'https://x.example.com/prod');
       expect(r.code, 'ABCDEFGH');
-      expect(parseLinkUri('sportsballvideo://link?v=2&api=https%3A%2F%2Fx&code=ABCDEFGH'), isNull);
-      expect(parseLinkUri('sportsballvideo://link?v=1&api=http%3A%2F%2Fx&code=ABCDEFGH'), isNull,
+      expect(parseLinkUri('opensportsball://link?v=2&api=https%3A%2F%2Fx&code=ABCDEFGH'), isNull);
+      expect(parseLinkUri('opensportsball://link?v=1&api=http%3A%2F%2Fx&code=ABCDEFGH'), isNull,
           reason: 'http is refused');
-      expect(parseLinkUri('sportsballvideo://pair?v=1&game=x'), isNull);
+      expect(parseLinkUri('opensportsball://pair?v=1&game=x'), isNull);
       expect(normalizeLinkCode('abcd-efgh'), 'ABCDEFGH');
       expect(normalizeLinkCode('ABCD EFG2'), 'ABCDEFG2');
       expect(normalizeLinkCode('ABCDEFG1'), isNull, reason: '1 is not in the alphabet');
@@ -84,7 +84,7 @@ void main() {
         expect(req.url.toString(), 'https://api.test/devices/link');
         expect(req.headers.containsKey('Authorization'), isFalse);
         sent = (jsonDecode(req.body) as Map).cast();
-        return http.Response(jsonEncode({'deviceToken': 'sbvd_new', 'accountId': 'acc-9'}), 200);
+        return http.Response(jsonEncode({'deviceToken': 'osbd_new', 'accountId': 'acc-9'}), 200);
       });
       final secrets = MemorySecretStore();
       final account = AccountManager(store: store, secrets: secrets, client: client);
@@ -99,9 +99,9 @@ void main() {
         'platform': store.identity.platform,
         'model': store.identity.model,
       });
-      expect(account.link!.deviceToken, 'sbvd_new');
+      expect(account.link!.deviceToken, 'osbd_new');
       expect(account.link!.accountId, 'acc-9');
-      expect(secrets.values['account_link'], contains('sbvd_new'));
+      expect(secrets.values['account_link'], contains('osbd_new'));
 
       // Survives a restart; unlinking forgets the token but keeps the API.
       final again = AccountManager(store: store, secrets: secrets, client: client);

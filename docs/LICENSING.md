@@ -1,6 +1,6 @@
 # Licensing rules
 
-SportsBallVideo is split-licensed:
+OpenSportsBall is split-licensed:
 
 - **Apache-2.0:** `app/`, `web/`, `api/`, `infra/`, `shared/`, `docs/`,
   `scripts/`, `.github/`, root files.
@@ -16,7 +16,7 @@ valuable part, is AGPL so a hosted fork has to publish its changes.
 1. **Every source file starts with an SPDX header** matching its directory:
 
    ```
-   // SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+   // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
    // SPDX-License-Identifier: Apache-2.0
    ```
 
@@ -36,7 +36,7 @@ valuable part, is AGPL so a hosted fork has to publish its changes.
    new dependency's license before adding it.
 
 5. **The detector sits behind an interface**
-   (`processing/src/sbv_processing/detectors/base.py`). Ultralytics YOLO is
+   (`processing/src/osb_processing/detectors/base.py`). Ultralytics YOLO is
    AGPL-3.0, which is compatible with `processing/`, but while it is a
    dependency the project cannot offer `processing/` under a commercial
    license without also buying an Ultralytics enterprise license. Keeping an

@@ -37,7 +37,7 @@ Footage and logs from these tests decide several items below.
 - [ ] Background upload: WorkManager with a foreground-service notification
       (Android), background `URLSession` (iOS). Today uploads run only while
       the app is open.
-- [ ] Register the `sportsballvideo://link` deep link so the phone's own
+- [ ] Register the `opensportsball://link` deep link so the phone's own
       camera app can open the link QR code.
 - [ ] Recordings recovered after a crash upload their segments but have no
       manifest, so they are never processed. Let Main write a manifest for

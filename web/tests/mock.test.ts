@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
 import { createApiClient } from '../src/lib/api.ts';
@@ -52,7 +52,7 @@ describe('mock API', () => {
 		const code = await api.createLinkCode();
 		expect(code.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
 		expect(code.linkUri).toContain(`code=${code.code}`);
-		expect(code.linkUri.startsWith('sportsballvideo://link?v=1&api=')).toBe(true);
+		expect(code.linkUri.startsWith('opensportsball://link?v=1&api=')).toBe(true);
 		advance(MOCK_LINK_DELAY_MS - 1000);
 		expect(await api.listDevices()).toHaveLength(2);
 		advance(2000);

@@ -1,15 +1,15 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sportsballvideo/src/model.dart';
-import 'package:sportsballvideo/src/protocol/clock_sync.dart';
-import 'package:sportsballvideo/src/protocol/framing.dart';
-import 'package:sportsballvideo/src/protocol/messages.dart';
-import 'package:sportsballvideo/src/ui/common.dart';
+import 'package:opensportsball/src/model.dart';
+import 'package:opensportsball/src/protocol/clock_sync.dart';
+import 'package:opensportsball/src/protocol/framing.dart';
+import 'package:opensportsball/src/protocol/messages.dart';
+import 'package:opensportsball/src/ui/common.dart';
 
 void main() {
   group('framing', () {
@@ -124,8 +124,8 @@ void main() {
     test('round-trips', () => expect(parsePairingUri(pairingUri(game)), game));
     test('rejects other codes', () {
       expect(parsePairingUri('https://example.com'), isNull);
-      expect(parsePairingUri('sportsballvideo://pair?v=2&game=$game'), isNull);
-      expect(parsePairingUri('sportsballvideo://pair?v=1&game=not-a-uuid'), isNull);
+      expect(parsePairingUri('opensportsball://pair?v=2&game=$game'), isNull);
+      expect(parsePairingUri('opensportsball://pair?v=1&game=not-a-uuid'), isNull);
     });
   });
 }

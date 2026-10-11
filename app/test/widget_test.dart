@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import 'package:flutter/material.dart';
@@ -6,14 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import 'package:sportsballvideo/main.dart';
-import 'package:sportsballvideo/src/app_services.dart';
-import 'package:sportsballvideo/src/role.dart';
-import 'package:sportsballvideo/src/session/activity.dart';
-import 'package:sportsballvideo/src/storage/store.dart';
-import 'package:sportsballvideo/src/ui/uploads_screen.dart';
-import 'package:sportsballvideo/src/upload/account.dart';
-import 'package:sportsballvideo/src/upload/upload_service.dart';
+import 'package:opensportsball/main.dart';
+import 'package:opensportsball/src/app_services.dart';
+import 'package:opensportsball/src/role.dart';
+import 'package:opensportsball/src/session/activity.dart';
+import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/ui/uploads_screen.dart';
+import 'package:opensportsball/src/upload/account.dart';
+import 'package:opensportsball/src/upload/upload_service.dart';
 
 import 'fakes.dart';
 import 'upload_fakes.dart';
@@ -36,7 +36,7 @@ void main() {
   testWidgets('role picker offers Main and Secondary', (tester) async {
     final store = await tester.runAsync(() => tempStore('cccccccc'));
     await tester.pumpWidget(
-        SportsBallVideoApp(store: Future.value(store!), createServices: fakeServices));
+        OpenSportsBallApp(store: Future.value(store!), createServices: fakeServices));
     await tester.pumpAndSettle();
 
     for (final role in DeviceRole.values) {

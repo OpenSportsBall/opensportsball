@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors
+// SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomUUID } from 'node:crypto';
@@ -22,7 +22,7 @@ describe('linking phones', () => {
     expect(code.status).toBe(201);
     expect(code.body.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/);
     expect(code.body.linkUri).toBe(
-      `sportsballvideo://link?v=1&api=${encodeURIComponent('https://abc123.execute-api.us-east-1.amazonaws.com')}&code=${code.body.code}`,
+      `opensportsball://link?v=1&api=${encodeURIComponent('https://abc123.execute-api.us-east-1.amazonaws.com')}&code=${code.body.code}`,
     );
 
     const deviceId = randomUUID();
@@ -31,7 +31,7 @@ describe('linking phones', () => {
     const first = await link();
     expect(first.status).toBe(200);
     expect(first.body.accountId).toBe(alice);
-    expect(first.body.deviceToken).toMatch(/^sbvd_[A-Za-z0-9_-]{43}$/);
+    expect(first.body.deviceToken).toMatch(/^osbd_[A-Za-z0-9_-]{43}$/);
 
     expect((await link(randomUUID())).status).toBe(410); // used
 
@@ -96,9 +96,9 @@ describe('linking phones', () => {
 
   it('malformed and unknown tokens get no identity, and phone routes answer 401', async () => {
     expect(await authorize('nope')).toEqual(ANONYMOUS);
-    expect(await authorize(`sbvd_${'A'.repeat(43)}`)).toEqual(ANONYMOUS);
+    expect(await authorize(`osbd_${'A'.repeat(43)}`)).toEqual(ANONYMOUS);
     expect(await authorizer({ headers: {} } as any)).toEqual(ANONYMOUS);
-    const r = await callDevice(`sbvd_${'A'.repeat(43)}`, 'POST /uploads', { body: {} });
+    const r = await callDevice(`osbd_${'A'.repeat(43)}`, 'POST /uploads', { body: {} });
     expect(r).toEqual({ status: 401, body: { error: 'unauthorized', message: 'Device token required.' } });
   });
 });

@@ -27,7 +27,7 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
-        android:label="sportsballvideo"
+        android:label="OpenSportsBall"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

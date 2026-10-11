@@ -1,4 +1,4 @@
-<!-- SPDX-FileCopyrightText: 2026 The SportsBallVideo Authors -->
+<!-- SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
@@ -10,13 +10,13 @@
 	});
 </script>
 
-<svelte:head><title>SportsBallVideo</title></svelte:head>
+<svelte:head><title>OpenSportsBall</title></svelte:head>
 
 {#if !session.signedIn}
 	<section class="hero">
 		<h1>Film the whole game with two phones</h1>
 		<p class="lead">
-			SportsBallVideo is a free, open-source way to record youth soccer. Two phones on tripods cover the
+			OpenSportsBall is a free, open-source way to record youth soccer. Two phones on tripods cover the
 			full field. When you get home, they upload the footage on Wi-Fi and it is turned into one game video.
 		</p>
 		<button class="btn btn-primary big" onclick={() => session.signIn('/games')}>Sign in</button>
