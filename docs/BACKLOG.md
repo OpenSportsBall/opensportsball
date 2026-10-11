@@ -21,10 +21,6 @@ Footage and logs from these tests decide several items below.
 
 ## Bugs and small fixes
 
-- [ ] Delete the old `SportsBallVideo` stack (us-west-2) now that
-      `OpenSportsBall` is live (deployed 2026-10-11, verified end to end).
-      Its footage bucket, table and user pool are retained by design and
-      must be deleted separately; all three are empty.
 - [ ] Uninstall the old `dev.sportsballvideo.sportsballvideo` app from the
       Pixel 11 once its test recordings are no longer needed (the rebrand
       changed the application id, so both are installed).
@@ -102,6 +98,12 @@ Footage and logs from these tests decide several items below.
       self-host docs.
 
 ## Project and operations
+
+- [ ] CDK's deploy-time helper Lambdas (bucket deployment, bucket
+      notifications, auto-delete) log to groups CloudFormation doesn't own,
+      with no retention; they outlive the stack. Give them a retention
+      policy, or clean them up when a stack is deleted (did this by hand for
+      the old `SportsBallVideo` stack, 2026-10-11).
 
 - [ ] CLA text (based on the Apache Individual CLA) and CLA Assistant,
       before the repo goes public. The repo stays local until then.
