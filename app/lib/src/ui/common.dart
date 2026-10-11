@@ -134,9 +134,13 @@ Future<bool> confirm(BuildContext context, String title, String body, String act
 
 /// Preview area plus a fixed-width side panel, for landscape screens.
 class PreviewLayout extends StatelessWidget {
-  const PreviewLayout({super.key, required this.preview, required this.panel});
+  const PreviewLayout({super.key, required this.preview, required this.panel, this.footer});
   final Widget preview;
   final List<Widget> panel;
+
+  /// Pinned below the scrolling panel, e.g. the record button, so it is
+  /// always on screen.
+  final Widget? footer;
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -144,7 +148,12 @@ class PreviewLayout extends StatelessWidget {
         Expanded(child: ColoredBox(color: Colors.black, child: Center(child: preview))),
         SizedBox(
           width: 300,
-          child: ListView(padding: const EdgeInsets.all(16), children: panel),
+          child: Column(
+            children: [
+              Expanded(child: ListView(padding: const EdgeInsets.all(16), children: panel)),
+              if (footer != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: footer),
+            ],
+          ),
         ),
       ],
     );

@@ -155,21 +155,18 @@ class _SecondarySessionState extends State<_SecondarySession> {
                 ErrorText(c.error),
                 _connectionSection(),
                 _recordingSection(),
-                if (_recording)
-                  RecordButton(
-                    recording: true,
-                    busy: c.phase == SecondaryPhase.stopping,
-                    onPressed: _stopLocally,
-                    stopLabel: 'Stop on this phone',
-                  )
-                else
-                  Text(
-                    c.phase == SecondaryPhase.ready
-                        ? 'Ready. The Main phone starts and stops recording.'
-                        : '',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+                if (!_recording && c.phase == SecondaryPhase.ready)
+                  Text('Ready. The Main phone starts and stops recording.',
+                      style: Theme.of(context).textTheme.bodyMedium),
               ],
+              footer: _recording
+                  ? RecordButton(
+                      recording: true,
+                      busy: c.phase == SecondaryPhase.stopping,
+                      onPressed: _stopLocally,
+                      stopLabel: 'Stop on this phone',
+                    )
+                  : null,
             ),
           ),
         ),

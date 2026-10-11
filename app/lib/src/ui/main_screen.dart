@@ -102,14 +102,14 @@ class _MainScreenState extends State<MainScreen> {
                 _secondarySection(context),
                 _recordingSection(),
                 _thisPhoneSection(),
-                RecordButton(
-                  recording: _recording,
-                  busy: c.phase == MainPhase.preparing ||
-                      c.phase == MainPhase.stopping ||
-                      c.phase == MainPhase.starting,
-                  onPressed: _recording ? _stop : _start,
-                ),
               ],
+              footer: RecordButton(
+                recording: _recording,
+                busy: c.phase == MainPhase.preparing ||
+                    c.phase == MainPhase.stopping ||
+                    c.phase == MainPhase.starting,
+                onPressed: _recording ? _stop : _start,
+              ),
             ),
           ),
         ),

@@ -67,10 +67,9 @@ abstract class _BleLinkBase implements PeerLink {
   }
 
   Future<bool> _ready(BluetoothLowEnergyManager manager) async {
-    if (!await manager.authorize()) {
-      _problem.value = 'Bluetooth permission was denied.';
-      return false;
-    }
+    // No manager.authorize(): _permitted() already asked. On Android 16 a
+    // repeat request for granted permissions is dropped ("No requestable
+    // permission in the request") and authorize() never completes.
     // A new manager reports `unknown` until its first state arrives.
     if (manager.state == BluetoothLowEnergyState.unknown) {
       try {
