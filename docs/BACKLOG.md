@@ -14,8 +14,6 @@ Footage and logs from these tests decide several items below.
       when the screen darkens.
 - [ ] Dropped link (Bluetooth off on Secondary for 30 s), out of range, and
       interruption (incoming call) tests.
-- [ ] **Measure frames lost at Android segment switches**: film a running
-      stopwatch through a switch. Decides the gap-free recorder item below.
 - [ ] 90-minute 4K run on the mount, outdoors if possible: temperature,
       battery, storage.
 - [ ] First real website sign-up (Cognito), link both phones, upload a
@@ -44,8 +42,27 @@ Footage and logs from these tests decide several items below.
 - [ ] Recordings recovered after a crash upload their segments but have no
       manifest, so they are never processed. Let Main write a manifest for
       them (at least a one-device one).
-- [ ] Android gap-free recorder (MediaCodec + MediaMuxer) **if** the
-      stopwatch test shows noticeable loss at segment switches.
+- [ ] **Android gap-free recorder: only if the switch gaps prove visible
+      and disruptive** in real game footage or the rendered output. Decided
+      2026-10-10 to keep MediaRecorder for now.
+      - Measured on a Pixel 11 (stopwatch, 1-minute segments): each segment
+        switch loses about 4-5 frames (0.16 s and 0.20 s). MediaRecorder's
+        `setNextOutputFile` starts each new file at a CRA whose leading
+        (RASL) frames reference pictures in the previous file, so they cannot
+        be decoded; joining the files with a stream copy does not recover
+        them.
+      - At 5-minute segments: ~18 switches per 90-minute game, ~2.7 s lost
+        in total, and per-segment start times drift by the same amount
+        because later segments' `startedAtDeviceMs` is the previous start
+        plus its measured duration.
+      - Fix: replace MediaRecorder with MediaCodec (video + AAC) and
+        MediaMuxer. Request a sync frame (IDR, closed GOP) at each boundary
+        and start the new muxer on it; stamp each segment from the camera's
+        sensor timestamps; cut on exact duration. Then lower the default
+        segment length to 2 minutes (crash loss is one segment, since an
+        unfinalized Android MP4 is unplayable).
+      - Verify with the same stopwatch test: zero missing frames across
+        switches, and segment start times matching the stopwatch.
 
 ## Phase 0: feasibility on real footage
 
@@ -60,6 +77,12 @@ Footage and logs from these tests decide several items below.
       Step Functions triggered by `RecordingReady`.
 - [ ] Lifecycle rule deleting raw footage N days after a successful render.
 - [ ] Verify each segment's SHA-256 against the manifest on download.
+- [ ] Android footage: expect ~150 ms missing at every segment switch and
+      start times that drift by that much per switch (see the gap-free
+      recorder item). Re-sync each segment to the other phone by audio
+      cross-correlation rather than trusting `startedAtDeviceMs`, and
+      tolerate the undecodable leading frames at the start of segments
+      after the first.
 
 ## Phase 4-6
 
