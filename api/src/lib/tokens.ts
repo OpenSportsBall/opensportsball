@@ -8,6 +8,15 @@ export const newDeviceToken = () => `osbd_${randomBytes(32).toString('base64url'
 
 export const DEVICE_TOKEN = /^osbd_[A-Za-z0-9_-]{43}$/;
 
+/** `osbg_` + 32 random bytes: a recording grant, letting one phone upload
+ *  its own part of one game to another account (lib/grants.ts). */
+export const newGrantToken = () => `osbg_${randomBytes(32).toString('base64url')}`;
+
+export const GRANT_TOKEN = /^osbg_[A-Za-z0-9_-]{43}$/;
+
+/** Long enough for a Secondary to find Wi-Fi after the game. */
+export const GRANT_TTL_MS = 14 * 24 * 3600 * 1000;
+
 /** Only hashes are stored, so a leaked table can't be used to upload. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 

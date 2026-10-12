@@ -7,10 +7,12 @@
  * | pk                  | sk                                      | item                    |
  * |---------------------|-----------------------------------------|-------------------------|
  * | LINKCODE#<code>     | LINKCODE                                | pending phone link      |
- * | TOKEN#<sha256>      | TOKEN                                   | device token -> device  |
+ * | TOKEN#<sha256>      | TOKEN                                   | device token -> device, |
+ * |                     |                                         | or grant token -> grant |
  * | DEVICE#<deviceId>   | OWNER                                   | which account owns it   |
  * | ACCOUNT#<acct>      | DEVICE#<deviceId>                       | linked phone            |
  * | ACCOUNT#<acct>      | GAME#<gameId>                           | game                    |
+ * | ACCOUNT#<acct>      | GRANT#<gameId>#<deviceId>               | recording grant         |
  * | ACCOUNT#<acct>      | REC#<gameId>#<recordingId>              | recording + manifest    |
  * | ACCOUNT#<acct>      | REPORT#<gameId>#<recordingId>#<dev>     | a phone's own segments  |
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
@@ -59,6 +61,10 @@ export const keys = {
   owner: (deviceId: string) => ({ pk: `DEVICE#${deviceId}`, sk: 'OWNER' }),
   device: (acct: string, deviceId: string) => ({ pk: `ACCOUNT#${acct}`, sk: `DEVICE#${deviceId}` }),
   game: (acct: string, gameId: string) => ({ pk: `ACCOUNT#${acct}`, sk: `GAME#${gameId}` }),
+  grant: (acct: string, gameId: string, deviceId: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `GRANT#${gameId}#${deviceId}`,
+  }),
   recording: (acct: string, gameId: string, recId: string) => ({
     pk: `ACCOUNT#${acct}`,
     sk: `REC#${gameId}#${recId}`,

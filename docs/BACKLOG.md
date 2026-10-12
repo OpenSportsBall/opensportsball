@@ -47,6 +47,17 @@ Footage and logs from these tests decide several items below.
 - [ ] Background upload: WorkManager with a foreground-service notification
       (Android), background `URLSession` (iOS). Today uploads run only while
       the app is open.
+- [ ] Secondary's owner sees the games they contributed to. With
+      recording grants, a Secondary on another account uploads into Main's
+      account, so its owner has no record of the footage. Show a
+      "Contributed to" list on the website (game, date, Main's account
+      name, status) with view access to the processed video, and optionally
+      the raw segments that phone recorded. Main's account can revoke it.
+      Decide whether access lasts after Main deletes the game.
+- [ ] Recording grants need Main online at some point while the phones
+      are paired. If fields without signal turn out to be common, let Main
+      fetch a few unbound grant tickets ahead of time, each bound to one
+      phone and game on first use.
 - [ ] Register the `opensportsball://link` deep link so the phone's own
       camera app can open the link QR code.
 - [ ] **Android gap-free recorder: only if the switch gaps prove visible

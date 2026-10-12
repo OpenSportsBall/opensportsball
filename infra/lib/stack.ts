@@ -206,6 +206,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(GET, '/games/{gameId}', webIntegration, people);
     route(POST, '/devices/link', deviceIntegration); // the link code is the credential
     route(POST, '/devices/link-codes', deviceIntegration, phones); // Main links its Secondary
+    route(POST, '/games/{gameId}/grants', deviceIntegration, phones); // Main lets its Secondary upload
     route(PUT, '/games/{gameId}/recordings/{recordingId}/manifest', deviceIntegration, phones);
     route(PUT, '/games/{gameId}/recordings/{recordingId}/report', deviceIntegration, phones);
     route(POST, '/uploads', deviceIntegration, phones);

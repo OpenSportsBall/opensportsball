@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /** Routes for phones: linking (code as credential) and, with a device
- *  token, link codes for a Secondary, Main's manifest, each phone's report
- *  of its own segments, and multipart segment upload. */
+ *  token, link codes for a Secondary, recording grants, Main's manifest,
+ *  each phone's report of its own segments, and multipart segment upload.
+ *  A recording grant token reaches only the report and upload routes, for
+ *  its own game (lib/grants.ts). */
 
 import { createHash } from 'node:crypto';
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
@@ -38,15 +40,31 @@ import {
   str,
   type Result,
 } from '../lib/http.js';
+import { createGrant, getGrant } from '../lib/grants.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { parseManifest, parseReport } from '../lib/manifest.js';
 import { checkReady, ensureRecording, getRecording, recordObject, type ReportItem } from '../lib/recordings.js';
 import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
 import { LINK_CODE, hashToken, newDeviceToken } from '../lib/tokens.js';
 
+/** Who is calling. With a grant token, [accountId] is the account that
+ *  issued it (Main's), not the phone's own. */
 export interface DeviceContext {
   accountId: string;
   deviceId: string;
+  /** Set for a recording grant: the only game it may upload to. */
+  grantGameId?: string;
+}
+
+const GRANT_ROUTES = new Set([
+  'PUT /games/{gameId}/recordings/{recordingId}/report',
+  'POST /uploads',
+  'POST /uploads/complete',
+]);
+
+/** A grant only reaches its own game. */
+function checkGame(ctx: DeviceContext, gameId: string) {
+  if (ctx.grantGameId && ctx.grantGameId !== gameId) throw forbidden('This recording grant is for another game.');
 }
 
 type DeviceEvent = APIGatewayProxyEventV2WithLambdaAuthorizer<DeviceContext>;
@@ -59,7 +77,13 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
 
     const ctx = (event as DeviceEvent).requestContext.authorizer?.lambda;
     if (!ctx?.accountId || !ctx.deviceId) throw new ApiError(401, 'unauthorized', 'Device token required.');
-    await touch(ctx);
+    if (ctx.grantGameId) {
+      if (!GRANT_ROUTES.has(event.routeKey)) {
+        throw forbidden("A recording grant can only upload this phone's own segments.");
+      }
+    } else {
+      await touch(ctx); // a grant's phone is not on this account's Devices page
+    }
     switch (event.routeKey) {
       case 'PUT /games/{gameId}/recordings/{recordingId}/manifest':
         return putManifest(ctx, event);
@@ -69,6 +93,8 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
         return startUpload(ctx, body(event));
       case 'POST /uploads/complete':
         return completeUpload(ctx, body(event));
+      case 'POST /games/{gameId}/grants':
+        return postGrant(ctx, event);
       case 'POST /devices/link-codes':
         // A linked Main phone links its Secondary to the same account.
         return json(201, await createLinkCode(ctx.accountId, event.requestContext.domainName));
@@ -183,6 +209,25 @@ async function link(b: Record<string, unknown>) {
   return json(200, { deviceToken: token, accountId: acct });
 }
 
+// --- Recording grants -------------------------------------------------------
+
+/** Main lets its Secondary upload into this account for this game. */
+async function postGrant(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
+  const gameId = str({ v: pathParam(event, 'gameId') }, 'v', UUID);
+  const deviceId = str(body(event), 'deviceId', UUID);
+  if (deviceId === ctx.deviceId) throw badRequest('A phone does not need a grant for itself.');
+  return json(
+    201,
+    await createGrant({
+      accountId: ctx.accountId,
+      gameId,
+      deviceId,
+      issuedBy: ctx.deviceId,
+      apiDomain: event.requestContext.domainName,
+    }),
+  );
+}
+
 // --- Manifest ---------------------------------------------------------------
 
 async function putManifest(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
@@ -191,12 +236,15 @@ async function putManifest(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
   const raw = body(event);
   const manifest = parseManifest(raw, { gameId, recordingId, callerDeviceId: ctx.deviceId });
 
+  // Every phone must be linked to this account or hold a grant for this game.
   for (const d of manifest.devices) {
     const linked = await ddb.send(
       new GetCommand({ TableName: config.table, Key: keys.device(ctx.accountId, d.deviceId) }),
     );
-    if (!linked.Item) {
-      throw forbidden(`The ${d.role} phone (${d.model}, ${d.deviceId}) is not linked to this account.`);
+    if (!linked.Item && !(d.deviceId !== ctx.deviceId && (await getGrant(ctx.accountId, gameId, d.deviceId)))) {
+      throw forbidden(
+        `The ${d.role} phone (${d.model}, ${d.deviceId}) is not linked to this account and has no grant for this game.`,
+      );
     }
   }
 
@@ -236,6 +284,7 @@ async function putManifest(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
 async function putReport(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
   const gameId = str({ v: pathParam(event, 'gameId') }, 'v', UUID);
   const recordingId = str({ v: pathParam(event, 'recordingId') }, 'v', UUID);
+  checkGame(ctx, gameId);
   const raw = body(event);
   const device = parseReport(raw, { callerDeviceId: ctx.deviceId });
   const sha = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
@@ -276,6 +325,7 @@ interface UploadItem {
 
 function uploadTarget(ctx: DeviceContext, b: Record<string, unknown>) {
   const gameId = str(b, 'gameId', UUID);
+  checkGame(ctx, gameId);
   const recordingId = str(b, 'recordingId', UUID);
   const fileName = str(b, 'fileName', segmentFileName(ctx.deviceId));
   return {

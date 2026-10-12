@@ -27,6 +27,15 @@ shown on the website. Linking returns a long-lived device token
 `Authorization: Bearer <device token>`. The server stores only a SHA-256
 hash of the token. Unlinking the device on the website revokes it.
 
+**Phones recording for someone else's game.** A Secondary uploads its part
+of a game into Main's account with a recording grant (`osbg_` + 43
+base64url characters) that Main gets from `POST /games/{gameId}/grants`
+and sends over Bluetooth. The Secondary may be linked to another account,
+or to none; that does not change. A grant reaches only `PUT .../report`,
+`POST /uploads` and `POST /uploads/complete`, only for its game and only
+as its device (`403 forbidden` otherwise), and expires after 14 days
+(`401`). A phone can hold grants from several accounts at once.
+
 ## Website config
 
 The deployed site serves `/config.json`:
@@ -126,6 +135,17 @@ manifest lists both phones but only Main's segments; the Secondary sends
 its own segment list (`PUT .../report`) from wherever it reaches Wi-Fi,
 before or after the manifest arrives.
 
+### `POST /games/{gameId}/grants`
+Device token only (a grant cannot create grants). Lets the phone
+`deviceId` upload its own report and segments for this game into the
+caller's account.
+Body: `{"deviceId": "<uuid>"}`
+→ `201 {"grantToken": "osbg_...", "apiUrl": "https://...", "accountId", "gameId", "deviceId", "expiresAt"}`
+
+- Asking again for the same game and phone replaces the grant; the old
+  token stops working.
+- `400 bad_request` for the caller's own deviceId.
+
 ### `PUT /games/{gameId}/recordings/{recordingId}/manifest`
 Body: the manifest (`shared/schemas/manifest.schema.json`). Main must list
 its own segments; it may leave out other devices' `segments`.
@@ -134,8 +154,8 @@ its own segments; it may leave out other devices' `segments`.
 - `awaitingReports`: devices whose segments are not known yet (neither
   the manifest nor a report lists them).
 - Only the manifest's `main` device may upload it (`403 forbidden`).
-- Every device in it must be linked to the caller's account
-  (`403 forbidden`, message names the device).
+- Every other device in it must be linked to the caller's account or
+  hold a grant for this game (`403 forbidden`, message names the device).
 - Path ids must equal `gameId` / `sessionId` (`400 bad_request`).
 - Schema violations: `400 invalid_manifest` with `"details": [...]`.
 - Re-uploading the same manifest is fine; a different one for a recording
