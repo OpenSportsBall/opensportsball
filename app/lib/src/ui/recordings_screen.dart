@@ -63,10 +63,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   String? _uploadStatus(StoredRecording r) {
-    if (!widget.account.linked) return null;
     for (final u in widget.uploads.recordings) {
       if (u.stored.dir.path != r.dir.path) continue;
       if (u.complete) return 'uploaded';
+      if (u.blocked != null) return null; // not linked / no grant: the banner or Uploads says why
       if (u.error != null) return 'upload problem';
       return '${u.filesDone}/${u.filesTotal} uploaded';
     }

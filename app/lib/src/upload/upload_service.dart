@@ -3,6 +3,10 @@
 
 /// The upload queue: sends this phone's finished recordings to the
 /// backend (docs/API.md, "Routes for phones") while the app is open.
+///
+/// Each recording goes to its own account: one made as Main to this
+/// phone's account, with its device token; one made as Secondary to the
+/// Main phone's account, with the recording grant Main gave for that game.
 library;
 
 import 'dart:async';
@@ -26,6 +30,8 @@ enum UploadPhase {
   starting('Starting'),
   notLinked('This phone is not linked to an account'),
   unlinked('This phone was unlinked; link it again'),
+  waitingForGrant('Waiting for upload permission from the Main phone'),
+  grantExpired('Upload permission from the Main phone expired; pair with it again'),
   paused('Paused'),
   recording('Paused while recording'),
   offline('No internet connection'),
@@ -50,7 +56,8 @@ enum PassResult {
   /// A network or server error; try again after a backoff.
   retry,
 
-  /// Not allowed to upload right now (not linked, recording, network...).
+  /// Not allowed to upload right now (recording, network, no account or
+  /// grant for the recordings waiting...).
   blocked,
 
   /// Stopped part way because a condition changed.
@@ -58,6 +65,19 @@ enum PassResult {
 
   /// The API rejected the device token.
   unauthorized,
+}
+
+/// Where one recording uploads, and with which token.
+class UploadTarget {
+  const UploadTarget({required this.apiUrl, required this.token, required this.accountId, required this.grant});
+
+  final String apiUrl;
+  final String token;
+  final String accountId;
+
+  /// A recording grant from another phone's account, not this phone's
+  /// own device token.
+  final bool grant;
 }
 
 /// One recording's place in the queue.
@@ -75,6 +95,12 @@ class RecordingUpload {
   int currentFileSent = 0;
   int currentFileBytes = 0;
   String? error;
+
+  /// Where it uploads; null while [blocked].
+  UploadTarget? target;
+
+  /// Why it cannot upload yet: no account, or no grant from Main.
+  UploadPhase? blocked;
 
   LocalRecording get recording => stored.recording;
   bool get isMain => recording.role == DeviceRole.main;
@@ -303,10 +329,10 @@ class UploadService extends ChangeNotifier {
 
   // ---- One pass ----
 
+  /// What stops all uploads. Accounts and grants are per recording
+  /// ([_target]).
   UploadPhase? _blockedBy() {
     if (_disposed) return UploadPhase.paused;
-    if (account.link == null) return UploadPhase.notLinked;
-    if (account.revoked) return UploadPhase.unlinked;
     if (_paused) return UploadPhase.paused;
     if (activity.recording) return UploadPhase.recording;
     if (_net == NetworkKind.offline) return UploadPhase.offline;
@@ -339,17 +365,28 @@ class UploadService extends ChangeNotifier {
         _setPhase(blocked);
         return PassResult.blocked;
       }
-      final link = account.link!;
-      var failed = false;
+      var failed = false, deviceRejected = false;
+      UploadPhase? waiting;
       for (final u in _recordings) {
         if (u.complete || !u.recording.stopped) continue;
+        await _target(u);
+        final target = u.target;
+        if (target == null) {
+          waiting ??= u.blocked;
+          continue;
+        }
         try {
-          await _uploadRecording(u, link);
+          await _uploadRecording(u, target);
           u.error = null;
         } on _Unauthorized {
-          account.markRevoked();
-          _setPhase(UploadPhase.unlinked);
-          return PassResult.unauthorized;
+          if (target.grant) {
+            await account.markGrantRejected(u.recording.gameId);
+          } else {
+            account.markRevoked();
+            deviceRejected = true;
+          }
+          await _target(u);
+          waiting ??= u.blocked;
         } on _Interrupted {
           _setPhase(_blockedBy() ?? UploadPhase.starting);
           return PassResult.interrupted;
@@ -369,17 +406,45 @@ class UploadService extends ChangeNotifier {
       }
       _error = null;
       _mobileOverride = false; // one-time: nothing more to send right now
-      _setPhase(failed ? UploadPhase.failed : UploadPhase.idle);
-      return failed ? PassResult.someFailed : PassResult.done;
+      if (deviceRejected) {
+        _setPhase(UploadPhase.unlinked);
+        return PassResult.unauthorized;
+      }
+      _setPhase(failed ? UploadPhase.failed : waiting ?? UploadPhase.idle);
+      if (failed) return PassResult.someFailed;
+      return waiting != null ? PassResult.blocked : PassResult.done;
     } finally {
       _passing = false;
     }
   }
 
+  /// Where [rec] uploads, or why it cannot yet (no account, no grant).
+  Future<(UploadTarget?, UploadPhase?)> _targetFor(LocalRecording rec) async {
+    if (rec.role == DeviceRole.main) {
+      final link = account.link;
+      if (link == null) return (null, UploadPhase.notLinked);
+      if (account.revoked) return (null, UploadPhase.unlinked);
+      return (
+        UploadTarget(apiUrl: link.apiUrl, token: link.deviceToken, accountId: link.accountId, grant: false),
+        null
+      );
+    }
+    final g = await account.grantFor(rec.gameId);
+    if (g == null) return (null, UploadPhase.waitingForGrant);
+    if (!g.usableAt(_now())) return (null, UploadPhase.grantExpired);
+    return (UploadTarget(apiUrl: g.apiUrl, token: g.token, accountId: g.accountId, grant: true), null);
+  }
+
+  Future<void> _target(RecordingUpload u) async {
+    final (t, blocked) = await _targetFor(u.recording);
+    u
+      ..target = t
+      ..blocked = blocked;
+  }
+
   Future<void> _scan() async {
     final previous = {for (final r in _recordings) r.stored.dir.path: r};
     final list = await store.listRecordings();
-    final accountId = account.link?.accountId;
     final out = <RecordingUpload>[];
     for (final s in list.reversed) {
       if (s.recording.device.deviceId != store.identity.deviceId) continue;
@@ -391,8 +456,10 @@ class UploadService extends ChangeNotifier {
         debugPrint('bad upload.json in ${s.dir.path}: $e');
         state = UploadState();
       }
+      final (target, blocked) = await _targetFor(s.recording);
+      final accountId = target?.accountId;
       if (state.accountId != null && accountId != null && state.accountId != accountId) {
-        state = UploadState(); // re-linked to another account: start over
+        state = UploadState(); // now uploads to another account: start over
       }
       String? manifestSha;
       try {
@@ -403,7 +470,9 @@ class UploadService extends ChangeNotifier {
       } on Object catch (e) {
         debugPrint('upload document for ${s.dir.path}: $e');
       }
-      final u = RecordingUpload(stored: s, state: state, manifestSha256: manifestSha);
+      final u = RecordingUpload(stored: s, state: state, manifestSha256: manifestSha)
+        ..target = target
+        ..blocked = blocked;
       u.error = previous[s.dir.path]?.error ?? state.lastError;
       out.add(u);
     }
@@ -411,7 +480,7 @@ class UploadService extends ChangeNotifier {
   }
 
   Future<void> _save(RecordingUpload u) {
-    u.state.accountId = account.link?.accountId;
+    u.state.accountId = u.target?.accountId ?? u.state.accountId;
     return store.writeUploadJson(u.stored.dir, u.state.toJson());
   }
 
@@ -422,7 +491,7 @@ class UploadService extends ChangeNotifier {
     } on Object catch (_) {}
   }
 
-  Future<void> _uploadRecording(RecordingUpload u, AccountLink link) async {
+  Future<void> _uploadRecording(RecordingUpload u, UploadTarget target) async {
     final rec = u.recording;
     final segments = [...rec.segments]..sort((a, b) => a.index.compareTo(b.index));
     final manifestToSend = u.hasManifest && !u.manifestUploaded;
@@ -432,7 +501,7 @@ class UploadService extends ChangeNotifier {
     if (manifestToSend) {
       _checkAllowed();
       try {
-        await _uploadManifest(u, link);
+        await _uploadManifest(u, target);
       } on _Permanent catch (e) {
         manifestError = '${u.isMain ? 'Manifest' : 'Segment list'}: ${e.message}';
       }
@@ -440,7 +509,7 @@ class UploadService extends ChangeNotifier {
     for (final seg in segments) {
       if (u.state.segmentDone(seg.fileName)) continue;
       _checkAllowed();
-      await _uploadSegment(u, seg, link);
+      await _uploadSegment(u, seg, target);
     }
     if (manifestError != null) throw _Permanent(manifestError);
     if (u.state.lastError != null) {
@@ -450,12 +519,12 @@ class UploadService extends ChangeNotifier {
   }
 
   /// Main's manifest, or another phone's report of its own segments.
-  Future<void> _uploadManifest(RecordingUpload u, AccountLink link) async {
+  Future<void> _uploadManifest(RecordingUpload u, UploadTarget target) async {
     final rec = u.recording;
     final bytes = await File('${u.stored.dir.path}/${u.stored.documentName}').readAsBytes();
     final sha = sha256.convert(bytes).toString();
     final res = await _api(
-      link,
+      target,
       'PUT',
       '/games/${Uri.encodeComponent(rec.gameId)}/recordings/'
           '${Uri.encodeComponent(rec.recordingId)}/${u.isMain ? 'manifest' : 'report'}',
@@ -467,7 +536,7 @@ class UploadService extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _uploadSegment(RecordingUpload u, SegmentRecord seg, AccountLink link) async {
+  Future<void> _uploadSegment(RecordingUpload u, SegmentRecord seg, UploadTarget target) async {
     final rec = u.recording;
     final file = File('${u.stored.dir.path}/${seg.fileName}');
     final int length;
@@ -489,7 +558,7 @@ class UploadService extends ChangeNotifier {
     outer:
     while (true) {
       _checkAllowed();
-      final start = await _api(link, 'POST', '/uploads', {
+      final start = await _api(target, 'POST', '/uploads', {
         'gameId': rec.gameId,
         'recordingId': rec.recordingId,
         'fileName': seg.fileName,
@@ -564,7 +633,7 @@ class UploadService extends ChangeNotifier {
         throw _Transient('Parts $missing are not uploaded; starting the file again');
       }
       try {
-        await _api(link, 'POST', '/uploads/complete', {
+        await _api(target, 'POST', '/uploads/complete', {
           'gameId': rec.gameId,
           'recordingId': rec.recordingId,
           'fileName': seg.fileName,
@@ -620,12 +689,12 @@ class UploadService extends ChangeNotifier {
     return etag;
   }
 
-  /// Calls the API with the device token. Maps failures to the
+  /// Calls the API with the recording's token. Maps failures to the
   /// retry / permanent / unauthorized exceptions.
   Future<Map<String, Object?>> _api(
-      AccountLink link, String method, String path, Object body) async {
-    final req = http.Request(method, apiUri(link.apiUrl, path))
-      ..headers['Authorization'] = 'Bearer ${link.deviceToken}'
+      UploadTarget target, String method, String path, Object body) async {
+    final req = http.Request(method, apiUri(target.apiUrl, path))
+      ..headers['Authorization'] = 'Bearer ${target.token}'
       ..headers['Content-Type'] = 'application/json'
       ..body = body is String ? body : jsonEncode(body);
     final http.Response res;

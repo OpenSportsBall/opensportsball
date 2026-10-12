@@ -18,6 +18,10 @@ const apiUrl = 'https://api.test';
 const deviceToken = 'osbd_testtoken';
 const accountId = 'acc-1';
 
+/// A recording grant from another phone's account, for 'game-1'.
+const grantToken = 'osbg_testgrant';
+const grantAccountId = 'acc-main';
+
 class FakeNetwork implements NetworkMonitor {
   FakeNetwork([this.kind = NetworkKind.unmetered]);
   NetworkKind kind;
@@ -57,7 +61,12 @@ class FakeBackend {
   final _uploads = <String, _ServerUpload>{};
   var _nextId = 0;
 
+  /// Reject the device token / the grant token with 401.
   bool unauthorized = false;
+  bool grantRejected = false;
+
+  /// The bearer token of each API call, in order.
+  final tokens = <String>[];
 
   /// Fail the next PUT of (fileName, part) with a network error.
   final failPut = <(String, int)>{};
@@ -81,9 +90,10 @@ class FakeBackend {
     if (req.url.host == 's3.test') return _s3(req);
     final path = req.url.path;
     log.add('${req.method} $path');
-    if (req.headers['Authorization'] != 'Bearer $deviceToken' || unauthorized) {
-      return _json(401, {'error': 'unauthorized', 'message': 'bad token'});
-    }
+    final token = (req.headers['Authorization'] ?? '').replaceFirst('Bearer ', '');
+    tokens.add(token);
+    final ok = (token == deviceToken && !unauthorized) || (token == grantToken && !grantRejected);
+    if (!ok) return _json(401, {'error': 'unauthorized', 'message': 'bad token'});
     final manifest = RegExp(r'^/games/([^/]+)/recordings/([^/]+)/manifest$').firstMatch(path);
     if (req.method == 'PUT' && manifest != null) {
       final body = (jsonDecode(req.body) as Map).cast<String, Object?>();

@@ -7,8 +7,8 @@ TypeScript on Node 22, AWS SDK v3. License: Apache-2.0. Deployed by
 | Handler | Routes / trigger |
 |---|---|
 | `src/handlers/web.ts` | Website routes (Cognito JWT): `/me`, `/link-codes`, `/devices`, `/games` |
-| `src/handlers/device.ts` | Phone routes: `/devices/link` (link code is the credential), manifest upload, multipart uploads |
-| `src/handlers/authorizer.ts` | Lambda authorizer for phone routes (device token hash lookup, uncached) |
+| `src/handlers/device.ts` | Phone routes: `/devices/link` (link code is the credential), recording grants, manifest and report upload, multipart uploads |
+| `src/handlers/authorizer.ts` | Lambda authorizer for phone routes (device or grant token hash lookup, uncached) |
 | `src/handlers/ingest.ts` | S3 `ObjectCreated` for segment files |
 
 Shared logic is in `src/lib/`: `store.ts` (clients, config, the

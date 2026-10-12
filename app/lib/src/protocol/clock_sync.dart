@@ -6,6 +6,8 @@
 /// within a frame by cross-correlating the audio tracks.
 library;
 
+import 'dart:math' as math;
+
 import '../model.dart';
 
 class ClockSample {
@@ -32,7 +34,7 @@ ClockEstimate? estimateClock(List<ClockSample> samples) {
   final valid = samples.where((s) => s.rttMs >= 0).toList()
     ..sort((a, b) => a.rttMs.compareTo(b.rttMs));
   if (valid.isEmpty) return null;
-  final keep = (valid.length / 4).ceil().clamp(3, valid.length);
+  final keep = math.min(valid.length, math.max(3, (valid.length / 4).ceil()));
   final offsets = [for (final s in valid.take(keep)) s.offsetMs]..sort();
   final rtts = [for (final s in valid) s.rttMs.toDouble()]..sort();
   return ClockEstimate(

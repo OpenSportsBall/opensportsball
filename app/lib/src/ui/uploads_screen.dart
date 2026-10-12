@@ -52,7 +52,9 @@ class _UploadsScreenState extends State<UploadsScreen> {
               AccountBanner(account: widget.account),
               PanelSection(title: 'Status', children: [
                 InfoRow('Queue', u.phase.label,
-                    warn: u.phase == UploadPhase.unlinked || u.phase == UploadPhase.failed),
+                    warn: u.phase == UploadPhase.unlinked ||
+                        u.phase == UploadPhase.failed ||
+                        u.phase == UploadPhase.grantExpired),
                 InfoRow('Network', switch (u.networkKind) {
                   NetworkKind.unmetered => 'Wi-Fi',
                   NetworkKind.metered => 'Mobile data',
@@ -138,6 +140,8 @@ class _RecordingTile extends StatelessWidget {
             ? '$what uploaded'
             : '$what not uploaded';
     final current = r.currentFile;
+    // Secondary footage goes to the Main phone's account (its grant).
+    final where = r.target?.grant == true ? 'to the Main phone\'s account' : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
@@ -160,7 +164,11 @@ class _RecordingTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text([status, if (manifest != null) manifest].join(' · '), style: theme.textTheme.bodySmall),
+                Text([status, if (manifest != null) manifest, if (where != null) where].join(' · '),
+                    style: theme.textTheme.bodySmall),
+                if (rec.stopped && !r.complete && r.blocked != null)
+                  Text(r.blocked!.label,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
                 if (current != null && r.currentFileBytes > 0) ...[
                   const SizedBox(height: 4),
                   LinearProgressIndicator(value: r.currentFileSent / r.currentFileBytes),

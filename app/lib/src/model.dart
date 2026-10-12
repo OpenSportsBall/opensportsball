@@ -251,3 +251,52 @@ class ClockEstimate {
         'samples': samples,
       };
 }
+
+/// Main's permission for this phone to upload its own part of one game
+/// into Main's account (docs/API.md, "Recording grants"). Main gets it from
+/// the server and sends it over Bluetooth; the upload queue uses [token]
+/// instead of this phone's own device token for that game.
+class RecordingGrant {
+  const RecordingGrant({
+    required this.apiUrl,
+    required this.token,
+    required this.accountId,
+    required this.gameId,
+    required this.expiresAt,
+    this.rejected = false,
+  });
+
+  factory RecordingGrant.fromJson(Map<String, Object?> j) => RecordingGrant(
+        apiUrl: j['apiUrl'] as String,
+        token: j['token'] as String,
+        accountId: j['accountId'] as String,
+        gameId: j['gameId'] as String,
+        expiresAt: DateTime.parse(j['expiresAt'] as String),
+        rejected: j['rejected'] as bool? ?? false,
+      );
+
+  final String apiUrl;
+  final String token;
+
+  /// Main's account, where the footage goes.
+  final String accountId;
+  final String gameId;
+  final DateTime expiresAt;
+
+  /// The server answered 401 (expired or replaced).
+  final bool rejected;
+
+  bool usableAt(DateTime now) => !rejected && now.isBefore(expiresAt);
+
+  RecordingGrant asRejected() => RecordingGrant(
+      apiUrl: apiUrl, token: token, accountId: accountId, gameId: gameId, expiresAt: expiresAt, rejected: true);
+
+  Map<String, Object?> toJson() => {
+        'apiUrl': apiUrl,
+        'token': token,
+        'accountId': accountId,
+        'gameId': gameId,
+        'expiresAt': expiresAt.toUtc().toIso8601String(),
+        if (rejected) 'rejected': true,
+      };
+}

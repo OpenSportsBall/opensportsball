@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /** Routes for phones: linking (code as credential) and, with a device
- *  token, link codes for a Secondary, recording grants, Main's manifest,
+ *  token, recording grants for a Secondary, Main's manifest,
  *  each phone's report of its own segments, and multipart segment upload.
  *  A recording grant token reaches only the report and upload routes, for
  *  its own game (lib/grants.ts). */
@@ -41,7 +41,6 @@ import {
   type Result,
 } from '../lib/http.js';
 import { createGrant, getGrant } from '../lib/grants.js';
-import { createLinkCode } from '../lib/linkCodes.js';
 import { parseManifest, parseReport } from '../lib/manifest.js';
 import { checkReady, ensureRecording, getRecording, recordObject, type ReportItem } from '../lib/recordings.js';
 import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
@@ -95,9 +94,6 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
         return completeUpload(ctx, body(event));
       case 'POST /games/{gameId}/grants':
         return postGrant(ctx, event);
-      case 'POST /devices/link-codes':
-        // A linked Main phone links its Secondary to the same account.
-        return json(201, await createLinkCode(ctx.accountId, event.requestContext.domainName));
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/** Single-use codes that link a phone to an account. Created by the website
- *  or by an already linked Main phone (for its Secondary). */
+/** Single-use codes that link a phone to an account, created on the
+ *  website. */
 
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';

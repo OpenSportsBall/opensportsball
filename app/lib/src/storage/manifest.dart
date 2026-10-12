@@ -57,7 +57,9 @@ Map<String, Object?> _device(
 
 /// Main's manifest, once Main has stopped. It names the Secondary (known
 /// from pairing) without its segments: the Secondary reports those itself.
-/// A recording made on Main alone gets a one-device manifest.
+/// A recording made on Main alone gets a one-device manifest, and so does
+/// one whose Secondary never confirmed Main's recording grant: it could not
+/// upload, and the server would refuse a manifest naming it.
 Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
   final peer = main.peer;
   final mainVideo = main.video;
@@ -72,7 +74,7 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
   };
   // Secondary said how it records when it got ready (Prepared). Left out if
   // it is known to have recorded nothing.
-  if (peer != null && peer.video != null && peer.expectedSegments != 0) {
+  if (peer != null && peer.granted && peer.video != null && peer.expectedSegments != 0) {
     (manifest['devices']! as List).add(_device(peer.device, 'secondary', peer.video!));
     final clock = peer.clock;
     if (clock != null) {

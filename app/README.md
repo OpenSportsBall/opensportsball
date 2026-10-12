@@ -27,10 +27,13 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   8-character code once the phone knows the API from an earlier link. The
   device token is kept with `flutter_secure_storage` (Keychain / Android
   Keystore). "Unlink this phone" only forgets it locally. Only Main needs
-  linking by hand: when a Secondary pairs and is not on Main's account,
-  Main gets a code (`POST /devices/link-codes`) and sends it over Bluetooth
-  (`LinkOffer` / `LinkResult`). A Secondary owned by another account is not
-  moved; Main shows why.
+  linking: when a Secondary pairs, Main gets a recording grant for it
+  (`POST /games/{gameId}/grants`) and sends it over Bluetooth (`GrantMsg` /
+  `GrantAck`), retrying every 30 s while it has no internet. Secondary keeps
+  it in secure storage, one per game, and uploads that game's footage into
+  Main's account with it. Its own account link, if any, is untouched, so a
+  phone can be Main for its owner and Secondary for anyone. Main's manifest
+  names Secondary only if Secondary confirmed the grant.
 - Upload queue (`lib/src/upload/upload_service.dart`, `ui/uploads_screen.dart`),
   following `docs/API.md`: oldest stopped recording first, Main uploads
   `manifest.json` (Secondary: `report.json`), writing it first if it is
@@ -40,7 +43,10 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   (format in `upload_state.dart`), so an upload resumes after a restart
   using that file plus the server's `completedParts`. Expired URLs are
   re-requested, network and 5xx errors back off from 5 s to 10 min, and a
-  401 stops the queue until the phone is linked again. Uploads pause while
+  401 on the device token stops this phone's Main recordings until it is
+  linked again (a 401 on a grant stops only that game's). Each recording
+  uploads with its own credential: Main recordings with the device token,
+  Secondary recordings with the game's grant; without one they wait. Uploads pause while
   this phone is recording, wait for Wi-Fi by default ("Upload on Wi-Fi
   only", with a one-time "Upload now using mobile data"), and keep the
   screen awake while sending.

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Linking this phone to a website account (docs/API.md, "Linking a
-/// phone"). The device token is kept in the platform keystore / keychain.
+/// phone"), and recording grants: Main creates them, Secondary keeps the
+/// ones Main sends. Tokens are kept in the platform keystore / keychain.
 library;
 
 import 'dart:async';
@@ -13,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import '../model.dart';
 import '../storage/store.dart';
 
 /// What linking returned. Stored as one JSON value in [SecretStore].
@@ -74,8 +76,11 @@ LinkRequest? parseLinkUri(String raw) {
 }
 
 class LinkException implements Exception {
-  const LinkException(this.message);
+  const LinkException(this.message, {this.offline = false});
   final String message;
+
+  /// The server could not be reached; trying again later may work.
+  final bool offline;
   @override
   String toString() => message;
 }
@@ -115,8 +120,15 @@ class MemorySecretStore implements SecretStore {
   Future<void> delete(String key) async => values.remove(key);
 }
 
+const _unreachable =
+    LinkException('Could not reach the server. Check the internet connection.', offline: true);
+const _noAnswer = LinkException('The server did not answer. Check the internet connection.', offline: true);
+
 /// The phone's link to an account. [revoked] turns on when the API says the
 /// token no longer works (the device was unlinked on the website).
+///
+/// Also keeps the recording grants other Main phones gave this phone, one
+/// per game ([grantFor]). They do not depend on this phone's own link.
 class AccountManager extends ChangeNotifier {
   AccountManager({required this.store, required this.secrets, required this.client});
 
@@ -129,6 +141,9 @@ class AccountManager extends ChangeNotifier {
   AccountLink? _link;
   bool _revoked = false;
   bool _loaded = false;
+  final _grants = <String, RecordingGrant?>{};
+
+  static String _grantKey(String gameId) => 'grant_$gameId';
 
   AccountLink? get link => _link;
   bool get linked => _link != null;
@@ -172,11 +187,11 @@ class AccountManager extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 30));
     } on TimeoutException {
-      throw const LinkException('The server did not answer. Check the internet connection.');
+      throw _noAnswer;
     } on SocketException {
-      throw const LinkException('Could not reach the server. Check the internet connection.');
+      throw _unreachable;
     } on http.ClientException {
-      throw const LinkException('Could not reach the server. Check the internet connection.');
+      throw _unreachable;
     }
     switch (res.statusCode) {
       case 200:
@@ -210,43 +225,81 @@ class AccountManager extends ChangeNotifier {
     return link;
   }
 
-  /// POST /devices/link-codes: a single-use code for this phone's account,
-  /// which Main hands to its Secondary. Throws [LinkException].
-  Future<LinkRequest> createLinkCode() async {
+  /// POST /games/{gameId}/grants: lets the phone [deviceId] upload its
+  /// own part of [gameId] into this phone's account. Main sends the result
+  /// to its Secondary. Throws [LinkException] ([LinkException.offline] if
+  /// the server could not be reached).
+  Future<RecordingGrant> createGrant({required String gameId, required String deviceId}) async {
     final link = _link;
     if (link == null || _revoked) throw const LinkException('This phone is not linked to an account.');
     final http.Response res;
     try {
-      res = await client.post(
-        apiUri(link.apiUrl, '/devices/link-codes'),
-        headers: {'Authorization': 'Bearer ${link.deviceToken}'},
-      ).timeout(const Duration(seconds: 30));
+      res = await client
+          .post(
+            apiUri(link.apiUrl, '/games/${Uri.encodeComponent(gameId)}/grants'),
+            headers: {'Authorization': 'Bearer ${link.deviceToken}', 'Content-Type': 'application/json'},
+            body: jsonEncode({'deviceId': deviceId}),
+          )
+          .timeout(const Duration(seconds: 30));
     } on TimeoutException {
-      throw const LinkException('The server did not answer. Check the internet connection.');
+      throw _noAnswer;
     } on SocketException {
-      throw const LinkException('Could not reach the server. Check the internet connection.');
+      throw _unreachable;
     } on http.ClientException {
-      throw const LinkException('Could not reach the server. Check the internet connection.');
+      throw _unreachable;
     }
     if (res.statusCode == 401) {
       markRevoked();
       throw const LinkException('This phone was unlinked on the website. Link it again.');
     }
-    if (res.statusCode != 201) {
-      throw LinkException('Could not get a link code (${res.statusCode}${serverMessage(res)}).');
+    if (res.statusCode >= 500 || res.statusCode == 429) {
+      throw LinkException('The server had a problem (${res.statusCode}${serverMessage(res)}).', offline: true);
     }
-    final code = _decodeCode(res.body);
-    if (code == null) throw const LinkException('The server sent an unexpected answer.');
-    return LinkRequest(apiUrl: link.apiUrl, code: code);
+    if (res.statusCode != 201) {
+      throw LinkException('Could not get upload permission (${res.statusCode}${serverMessage(res)}).');
+    }
+    try {
+      final b = (jsonDecode(res.body) as Map).cast<String, Object?>();
+      return RecordingGrant(
+        // The address this phone uses, which keeps any stage path that the
+        // server's own `apiUrl` would leave out.
+        apiUrl: link.apiUrl,
+        token: b['grantToken'] as String,
+        accountId: b['accountId'] as String,
+        gameId: b['gameId'] as String,
+        expiresAt: DateTime.parse(b['expiresAt'] as String),
+      );
+    } on Object {
+      throw const LinkException('The server sent an unexpected answer.');
+    }
   }
 
-  static String? _decodeCode(String body) {
+  /// The grant another Main phone gave this phone for [gameId], if any.
+  Future<RecordingGrant?> grantFor(String gameId) async {
+    if (_grants.containsKey(gameId)) return _grants[gameId];
+    RecordingGrant? g;
     try {
-      final c = (jsonDecode(body) as Map)['code'];
-      return c is String ? normalizeLinkCode(c) : null;
-    } on Object {
-      return null;
+      final raw = await secrets.read(_grantKey(gameId));
+      if (raw != null) g = RecordingGrant.fromJson((jsonDecode(raw) as Map).cast());
+    } on Object catch (e) {
+      debugPrint('could not read grant for $gameId: $e');
     }
+    return _grants[gameId] = g;
+  }
+
+  /// Keeps a grant from Main; replaces any earlier one for its game.
+  Future<void> saveGrant(RecordingGrant g) async {
+    await secrets.write(_grantKey(g.gameId), jsonEncode(g.toJson()));
+    _grants[g.gameId] = g;
+    notifyListeners();
+  }
+
+  /// The server refused the grant for [gameId] (expired or replaced). A new
+  /// one from Main replaces it.
+  Future<void> markGrantRejected(String gameId) async {
+    final g = await grantFor(gameId);
+    if (g == null || g.rejected) return;
+    await saveGrant(g.asRejected());
   }
 
   /// Forgets the token on this phone. The website still lists the device

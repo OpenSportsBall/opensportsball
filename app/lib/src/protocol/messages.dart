@@ -4,9 +4,9 @@
 /// Messages exchanged between the Main and Secondary phones over BLE.
 /// Encoded as JSON, then split into frames by `framing.dart`.
 ///
-/// Main -> Secondary: welcome, pong, prepare, start, stop, linkOffer.
+/// Main -> Secondary: welcome, pong, prepare, start, stop, grant.
 /// Secondary -> Main: hello, ping, clock, prepared, started, stopped,
-/// segment, status, error, linkResult.
+/// segment, status, error, grantAck.
 ///
 /// Commands that change recording state (prepare, start, stop) are retried
 /// by Main until acknowledged, so Secondary must handle duplicates.
@@ -29,8 +29,7 @@ sealed class Msg {
   static Msg decode(Uint8List bytes) {
     final j = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
     return switch (j['t']) {
-      'hello' => Hello(DeviceIdentity.fromJson(_map(j['device'])),
-          accountId: j['accountId'] as String?),
+      'hello' => Hello(DeviceIdentity.fromJson(_map(j['device']))),
       'welcome' => Welcome(
           gameId: j['gameId'] as String,
           mainDeviceId: j['mainDeviceId'] as String,
@@ -74,9 +73,8 @@ sealed class Msg {
         ),
       'error' =>
         ErrorMsg(code: j['code'] as String, message: j['message'] as String),
-      'linkOffer' => LinkOffer(apiUrl: j['apiUrl'] as String, code: j['code'] as String),
-      'linkResult' =>
-        LinkResult(accountId: j['accountId'] as String?, error: j['error'] as String?),
+      'grant' => GrantMsg(RecordingGrant.fromJson(_map(j['grant']))),
+      'grantAck' => GrantAck(gameId: j['gameId'] as String, error: j['error'] as String?),
       _ => throw FormatException('unknown message type: ${j['t']}'),
     };
   }
@@ -85,16 +83,13 @@ sealed class Msg {
 }
 
 /// Secondary introduces itself after connecting (and after reconnecting).
-/// [accountId] is the account it uploads to, or null if it is not linked
-/// (or its link was revoked).
 class Hello extends Msg {
-  const Hello(this.device, {this.accountId});
+  const Hello(this.device);
   final DeviceIdentity device;
-  final String? accountId;
   @override
   String get type => 'hello';
   @override
-  Map<String, Object?> fields() => {'device': device.toJson(), 'accountId': accountId};
+  Map<String, Object?> fields() => {'device': device.toJson()};
 }
 
 /// Main's reply to [Hello]: which game this is and how to record.
@@ -279,28 +274,25 @@ class ErrorMsg extends Msg {
   Map<String, Object?> fields() => {'code': code, 'message': message};
 }
 
-/// Main links Secondary to Main's account: a single-use link code that Main
-/// created with `POST /devices/link-codes`. Sent when [Hello.accountId]
-/// differs from Main's account.
-class LinkOffer extends Msg {
-  const LinkOffer({required this.apiUrl, required this.code});
-  final String apiUrl;
-  final String code;
+/// Main's recording grant for Secondary: lets it upload its own part of
+/// this game into Main's account, whatever account it is linked to.
+class GrantMsg extends Msg {
+  const GrantMsg(this.grant);
+  final RecordingGrant grant;
   @override
-  String get type => 'linkOffer';
+  String get type => 'grant';
   @override
-  Map<String, Object?> fields() => {'apiUrl': apiUrl, 'code': code};
+  Map<String, Object?> fields() => {'grant': grant.toJson()};
 }
 
-/// Secondary's answer to [LinkOffer]: the account it is now linked to, or
-/// why linking failed.
-class LinkResult extends Msg {
-  const LinkResult({this.accountId, this.error});
-  final String? accountId;
+/// Secondary saved the grant for [gameId], or why it could not.
+class GrantAck extends Msg {
+  const GrantAck({required this.gameId, this.error});
+  final String gameId;
   final String? error;
   bool get ok => error == null;
   @override
-  String get type => 'linkResult';
+  String get type => 'grantAck';
   @override
-  Map<String, Object?> fields() => {'accountId': accountId, 'error': error};
+  Map<String, Object?> fields() => {'gameId': gameId, 'error': error};
 }

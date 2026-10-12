@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:dual_camera/dual_camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:opensportsball/src/link/peer_link.dart';
 import 'package:opensportsball/src/model.dart';
 import 'package:opensportsball/src/protocol/messages.dart';
 import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/upload/account.dart';
 
 /// Two in-memory links wired to each other. Messages go through
 /// encode/decode so serialization is exercised too.
@@ -213,4 +217,46 @@ Future<void> eventually(bool Function() condition,
     }
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
+}
+
+/// `POST /games/{gameId}/grants` as the server answers it (docs/API.md),
+/// for the device token `osbd_<accountId>`. [log] lists the calls; set
+/// [offline] to fail them as if there were no internet.
+class FakeGrantServer {
+  final log = <String>[];
+  bool offline = false;
+  var _next = 0;
+
+  late final http.Client client = MockClient((req) async {
+    log.add('${req.method} ${req.url.path}');
+    if (offline) throw http.ClientException('no internet');
+    final m = RegExp(r'^/games/([^/]+)/grants$').firstMatch(req.url.path);
+    final auth = req.headers['Authorization'] ?? '';
+    if (req.method != 'POST' || m == null) return http.Response('{}', 404);
+    if (!auth.startsWith('Bearer osbd_')) return http.Response('{}', 401);
+    final body = jsonDecode(req.body) as Map;
+    return http.Response(
+        jsonEncode({
+          'grantToken': 'osbg_${_next++}',
+          'apiUrl': 'https://api.test',
+          'accountId': auth.substring('Bearer osbd_'.length),
+          'gameId': m[1],
+          'deviceId': body['deviceId'],
+          'expiresAt': DateTime.now().toUtc().add(const Duration(days: 14)).toIso8601String(),
+        }),
+        201);
+  });
+}
+
+/// An [AccountManager] on [store], linked to [accountId] (token
+/// `osbd_<accountId>`) unless that is null.
+Future<AccountManager> fakeAccount(AppStore store, http.Client client, {String? accountId}) async {
+  final secrets = MemorySecretStore();
+  if (accountId != null) {
+    secrets.values['account_link'] = jsonEncode(
+        AccountLink(apiUrl: 'https://api.test', deviceToken: 'osbd_$accountId', accountId: accountId).toJson());
+  }
+  final a = AccountManager(store: store, secrets: secrets, client: client);
+  await a.load();
+  return a;
 }

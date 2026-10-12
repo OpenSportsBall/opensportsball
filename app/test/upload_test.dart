@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:opensportsball/src/model.dart';
 import 'package:opensportsball/src/role.dart';
 import 'package:opensportsball/src/session/activity.dart';
 import 'package:opensportsball/src/session/local_recorder.dart';
@@ -30,11 +31,14 @@ Future<AccountManager> linkedAccount(AppStore store, http.Client client) async {
 class Harness {
   Harness._(this.store, this.backend, this.account, this.network, this.activity);
 
-  static Future<Harness> create({String name = 'aaaaaaaa', int partSize = 128}) async {
+  static Future<Harness> create({String name = 'aaaaaaaa', int partSize = 128, bool linked = true}) async {
     final store = await tempStore(name);
     final backend = FakeBackend(partSize: partSize);
-    return Harness._(store, backend, await linkedAccount(store, backend.client), FakeNetwork(),
-        DeviceActivity());
+    final account = linked
+        ? await linkedAccount(store, backend.client)
+        : AccountManager(store: store, secrets: MemorySecretStore(), client: backend.client);
+    await account.load();
+    return Harness._(store, backend, account, FakeNetwork(), DeviceActivity());
   }
 
   final AppStore store;
@@ -56,6 +60,14 @@ class Harness {
 
   Future<Map<String, Object?>> uploadJson(StoredRecording r) async =>
       (await store.readUploadJson(r.dir))!;
+
+  /// Main's recording grant for 'game-1', as the Secondary keeps it.
+  Future<void> giveGrant({Duration validFor = const Duration(days: 14)}) => account.saveGrant(RecordingGrant(
+      apiUrl: apiUrl,
+      token: grantToken,
+      accountId: grantAccountId,
+      gameId: 'game-1',
+      expiresAt: DateTime.now().add(validFor)));
 }
 
 void main() {
@@ -183,6 +195,7 @@ void main() {
 
     test('uploads oldest recordings first; Secondary sends its own segment list', () async {
       final h = await Harness.create();
+      await h.giveGrant();
       await writeRecording(h.store,
           recordingId: 'new', sizes: [10], role: DeviceRole.secondary, createdAtMs: 5000);
       await writeRecording(h.store,
@@ -200,6 +213,64 @@ void main() {
       final starts = h.backend.log.where((l) => l == 'POST /uploads').length;
       expect(starts, 2, reason: 'the unfinished recording is skipped');
       expect(s.recordings.map((r) => r.recording.recordingId), ['live', 'old', 'new']);
+      // Secondary footage goes to Main's account, with Main's grant.
+      expect(h.backend.tokens.toSet(), {grantToken});
+      expect((await h.uploadJson(s.recordings[1].stored))['accountId'], grantAccountId);
+    });
+
+    test('Secondary recordings wait for Main\'s grant', () async {
+      final h = await Harness.create();
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.waitingForGrant);
+      expect(s.recordings.single.blocked, UploadPhase.waitingForGrant);
+      expect(h.backend.log, isEmpty, reason: 'not to this phone\'s own account');
+
+      await h.giveGrant();
+      expect(await s.runPass(), PassResult.done);
+      expect(h.backend.reports.keys, ['sec']);
+    });
+
+    test('a phone on no account uploads Secondary footage; its own recordings wait', () async {
+      final h = await Harness.create(linked: false);
+      await h.giveGrant();
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary);
+      await writeRecording(h.store, recordingId: 'own', sizes: [10], createdAtMs: 0);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.notLinked);
+      expect(h.backend.reports.keys, ['sec']);
+      expect(h.backend.manifests, isEmpty);
+      expect(s.recordings.firstWhere((r) => r.isMain).blocked, UploadPhase.notLinked);
+    });
+
+    test('a rejected grant stops that game only and does not unlink the phone', () async {
+      final h = await Harness.create();
+      await h.giveGrant();
+      h.backend.grantRejected = true;
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary, createdAtMs: 0);
+      await writeRecording(h.store, recordingId: 'own', sizes: [10]);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.grantExpired);
+      expect(h.account.revoked, isFalse);
+      expect((await h.account.grantFor('game-1'))!.rejected, isTrue);
+      expect(h.backend.manifests.keys, ['own'], reason: 'Main recordings still upload');
+
+      h.backend.log.clear();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(h.backend.log, isEmpty);
+    });
+
+    test('an expired grant is not used', () async {
+      final h = await Harness.create();
+      await h.giveGrant(validFor: const Duration(seconds: -1));
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.grantExpired);
+      expect(h.backend.log, isEmpty);
     });
 
     test('Main writes a missing manifest itself (e.g. a recording recovered after a crash)', () async {

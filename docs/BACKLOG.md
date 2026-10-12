@@ -16,8 +16,9 @@ Footage and logs from these tests decide several items below.
       interruption (incoming call) tests.
 - [ ] 90-minute 4K run on the mount, outdoors if possible: temperature,
       battery, storage.
-- [ ] First real website sign-up (Cognito), link Main (it links Secondary), upload a
-      recording on Wi-Fi, game reaches Ready.
+- [ ] First real website sign-up (Cognito), link Main (it gives Secondary
+      a recording grant), upload a recording on Wi-Fi, game reaches Ready.
+      Also pair with a Secondary on another account, and on none.
 
 ## Bugs and small fixes
 

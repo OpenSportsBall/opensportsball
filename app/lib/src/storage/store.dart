@@ -351,6 +351,7 @@ class PeerRecord {
     this.clock,
     this.startedAtDeviceMs,
     this.expectedSegments,
+    this.granted = false,
     Map<int, SegmentRecord>? segments,
   }) : segments = segments ?? {};
 
@@ -360,6 +361,8 @@ class PeerRecord {
         clock: j['clock'] == null ? null : ClockEstimate.fromJson((j['clock'] as Map).cast()),
         startedAtDeviceMs: j['startedAtDeviceMs'] as int?,
         expectedSegments: j['expectedSegments'] as int?,
+        // Recordings from before grants: Secondary was on Main's account.
+        granted: j['granted'] as bool? ?? true,
         segments: {
           for (final s in j['segments'] as List)
             (s as Map)['index'] as int: SegmentRecord.fromJson(s.cast()),
@@ -373,6 +376,10 @@ class PeerRecord {
 
   /// Known once Secondary reports `stopped`.
   int? expectedSegments;
+
+  /// Secondary confirmed it has Main's recording grant for this game, so
+  /// it can upload its part into Main's account.
+  bool granted;
   final Map<int, SegmentRecord> segments;
 
   bool get complete =>
@@ -384,6 +391,7 @@ class PeerRecord {
         'clock': clock?.toJson(),
         'startedAtDeviceMs': startedAtDeviceMs,
         'expectedSegments': expectedSegments,
+        'granted': granted,
         'segments': [
           for (final i in segments.keys.toList()..sort()) segments[i]!.toJson(),
         ],

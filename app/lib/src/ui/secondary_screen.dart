@@ -198,10 +198,13 @@ class _SecondarySessionState extends State<_SecondarySession> {
         if (c.clock != null)
           InfoRow('Clock offset',
               '${c.clock!.secondaryOffsetMs.toStringAsFixed(0)} ms (±${(c.clock!.medianRttMs / 2).toStringAsFixed(0)})'),
-        if (c.linkedByMain != null)
-          InfoRow('Account', c.linkedByMain! ? 'linked to the Main phone\'s account' : 'not linked',
-              warn: !c.linkedByMain!),
-        ErrorText(c.accountError),
+        InfoRow(
+            'Uploads',
+            c.grant != null
+                ? 'to the Main phone\'s account'
+                : 'waiting for permission from the Main phone',
+            warn: c.grant == null && c.connected),
+        ErrorText(c.grantError),
       ]),
     );
   }

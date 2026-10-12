@@ -43,20 +43,9 @@ describe('linking phones', () => {
     expect((await callWeb(bob, 'GET /devices')).body.devices).toEqual([]);
   });
 
-  it('a linked phone creates codes for its own account (Main linking Secondary)', async () => {
+  it('phones cannot create link codes (a Secondary gets a recording grant instead)', async () => {
     const main = await linkPhone(alice);
-    const code = await callDevice(main.token, 'POST /devices/link-codes');
-    expect(code.status).toBe(201);
-    expect(code.body.linkUri).toContain(`code=${code.body.code}`);
-
-    const deviceId = randomUUID();
-    const r = await callDevice(null, 'POST /devices/link', {
-      body: { code: code.body.code, deviceId, platform: 'android', model: 'Pixel 9 Pro' },
-    });
-    expect(r.body.accountId).toBe(alice);
-    expect((await callWeb(alice, 'GET /devices')).body.devices).toHaveLength(2);
-
-    expect((await callDevice(`osbd_${'A'.repeat(43)}`, 'POST /devices/link-codes')).status).toBe(401);
+    expect((await callDevice(main.token, 'POST /devices/link-codes')).status).toBe(404);
   });
 
   it('rejects unknown and expired codes', async () => {

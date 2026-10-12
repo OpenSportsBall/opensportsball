@@ -29,10 +29,12 @@ void main() {
     secCam = FakeCamera();
     mainStore = await tempStore('aaaaaaaa');
     secStore = await tempStore('bbbbbbbb', platform: 'android');
+    final server = FakeGrantServer();
     main = MainController(
       store: mainStore,
       camera: mainCam,
       linkFactory: (_) => links.main,
+      account: await fakeAccount(mainStore, server.client, accountId: 'acc-main'),
       startDelay: const Duration(milliseconds: 50),
       retryEvery: const Duration(milliseconds: 100),
     );
@@ -41,6 +43,7 @@ void main() {
       camera: secCam,
       gameId: main.gameId,
       linkFactory: (_) => links.secondary,
+      account: await fakeAccount(secStore, server.client),
       pingsPerRound: 5,
       pingSpacing: const Duration(milliseconds: 1),
     );
@@ -57,6 +60,7 @@ void main() {
     links.connect();
     await eventually(() => sec.phase == SecondaryPhase.ready, reason: 'secondary ready');
     await eventually(() => main.clock != null, reason: 'clock estimate');
+    await eventually(() => main.grantState == GrantState.delivered, reason: 'grant');
   }
 
   test('Main opens its camera even if Bluetooth never becomes ready', () async {

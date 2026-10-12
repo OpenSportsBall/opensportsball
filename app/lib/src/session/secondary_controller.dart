@@ -37,8 +37,8 @@ class SecondaryController extends ChangeNotifier {
   final LocalRecorder recorder;
   late final PeerLink link;
 
-  /// This phone's account. Main links it to Main's account if needed
-  /// ([LinkOffer]).
+  /// Keeps the recording grant Main sends ([GrantMsg]), so this phone's
+  /// footage uploads into Main's account whatever account it is on.
   final AccountManager? account;
   final int pingsPerRound;
   final Duration pingSpacing;
@@ -49,11 +49,10 @@ class SecondaryController extends ChangeNotifier {
   String? error;
   bool _stopping = false;
 
-  /// Outcome of the latest [LinkOffer] from Main, for the UI: true once
-  /// linked to Main's account, false with [accountError] if that failed.
-  bool? linkedByMain;
-  String? accountError;
-  bool _linking = false;
+  /// Main's recording grant for this game, once it arrives (or from an
+  /// earlier session of the same game).
+  RecordingGrant? grant;
+  String? grantError;
 
   final recordings = <String, LocalRecording>{};
   final _samples = <ClockSample>[];
@@ -99,13 +98,14 @@ class SecondaryController extends ChangeNotifier {
     try {
       await recorder.camera.setKeepScreenOn(true);
     } on Object catch (_) {}
+    grant = await account?.grantFor(gameId);
     await link.start();
     _notify();
   }
 
   void _onLinkState() {
     if (connected) {
-      unawaited(link.send(Hello(store.identity, accountId: _accountId)));
+      unawaited(link.send(Hello(store.identity)));
     }
     _notify();
   }
@@ -126,43 +126,36 @@ class SecondaryController extends ChangeNotifier {
         await _onStart(m);
       case Stop():
         await _onStop(m.recordingId);
-      case LinkOffer():
-        await _onLinkOffer(m);
+      case GrantMsg():
+        await _onGrant(m.grant);
       case Hello() || Ping() || ClockReport() || Prepared() || Started() ||
-            Stopped() || SegmentMsg() || StatusMsg() || ErrorMsg() || LinkResult():
+            Stopped() || SegmentMsg() || StatusMsg() || ErrorMsg() || GrantAck():
         break; // Secondary -> Main only.
     }
     _notify();
   }
 
-  String? get _accountId {
+  /// Keeps Main's grant for this game. It does not change which account
+  /// this phone is linked to.
+  Future<void> _onGrant(RecordingGrant g) async {
     final a = account;
-    return a != null && a.linked && !a.revoked ? a.link!.accountId : null;
-  }
-
-  /// Links this phone with the code Main sent. The server refuses to move a
-  /// phone that is linked to another account (409), so this cannot take a
-  /// phone away from its owner.
-  Future<void> _onLinkOffer(LinkOffer m) async {
-    final a = account;
+    String? problem;
     if (a == null) {
-      await link.send(const LinkResult(error: 'The Secondary phone cannot link from this screen.'));
-      return;
+      problem = 'This screen cannot keep upload permission.';
+    } else if (g.gameId != gameId) {
+      problem = 'Upload permission was for another game.';
+    } else if (!isAcceptableApiUrl(g.apiUrl)) {
+      problem = 'Upload permission points to an address that is not HTTPS.';
+    } else {
+      try {
+        await a.saveGrant(g);
+        grant = g;
+      } on Object catch (e) {
+        problem = 'Could not save upload permission: $e';
+      }
     }
-    if (_linking) return;
-    _linking = true;
-    try {
-      final linked = await a.linkWith(LinkRequest(apiUrl: m.apiUrl, code: m.code));
-      linkedByMain = true;
-      accountError = null;
-      await link.send(LinkResult(accountId: linked.accountId));
-    } on LinkException catch (e) {
-      linkedByMain = false;
-      accountError = e.message;
-      await link.send(LinkResult(error: e.message));
-    } finally {
-      _linking = false;
-    }
+    grantError = problem;
+    await link.send(GrantAck(gameId: g.gameId, error: problem));
   }
 
   Future<void> _onWelcome(Welcome m) async {

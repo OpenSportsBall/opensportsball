@@ -150,20 +150,22 @@ class _MainScreenState extends State<MainScreen> {
     return Ticker(
       builder: (context) => PanelSection(title: 'Secondary phone', children: [
         InfoRow('Model', c.secondary!.model),
-        if (c.secondaryAccount != SecondaryAccount.unknown)
+        if (c.grantState != GrantState.none)
           InfoRow(
-            'Account',
-            switch (c.secondaryAccount) {
-              SecondaryAccount.linked => 'same as this phone',
-              SecondaryAccount.linking => 'linking…',
-              SecondaryAccount.mainNotLinked => 'link this phone first, so Secondary can upload',
-              SecondaryAccount.failed => 'not linked: footage will not upload',
-              SecondaryAccount.unknown => '',
+            'Uploads',
+            switch (c.grantState) {
+              GrantState.delivered => 'to this phone\'s account',
+              GrantState.sending => 'giving permission…',
+              GrantState.waitingForInternet => 'no internet: Secondary cannot upload yet',
+              GrantState.mainNotLinked => 'link this phone first, so Secondary can upload',
+              GrantState.failed => 'no permission: footage will not upload',
+              GrantState.none => '',
             },
-            warn: c.secondaryAccount == SecondaryAccount.failed ||
-                c.secondaryAccount == SecondaryAccount.mainNotLinked,
+            warn: c.grantState == GrantState.failed ||
+                c.grantState == GrantState.mainNotLinked ||
+                c.grantState == GrantState.waitingForInternet,
           ),
-        ErrorText(c.secondaryAccountError),
+        ErrorText(c.grantError),
         if (c.secondaryStale) const InfoRow('Contact', 'no heartbeat', warn: true),
         if (s != null) ...[
           InfoRow('Battery', '${s.batteryPercent}%${s.charging ? ' (charging)' : ''}',

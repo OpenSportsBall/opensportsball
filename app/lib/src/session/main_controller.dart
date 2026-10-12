@@ -18,21 +18,25 @@ import 'local_recorder.dart';
 
 enum MainPhase { starting, idle, preparing, recording, stopping }
 
-/// Whether Secondary uploads to Main's account.
-enum SecondaryAccount {
+/// Whether Secondary can upload its footage into this phone's account:
+/// Main asks the server for a recording grant and sends it over Bluetooth.
+enum GrantState {
   /// No Secondary yet, or this controller has no [AccountManager].
-  unknown,
+  none,
 
-  /// Main itself is not linked, so it cannot link Secondary.
+  /// Main itself is not linked, so it cannot give Secondary a grant.
   mainNotLinked,
 
-  /// A link code was sent; waiting for Secondary's [LinkResult].
-  linking,
+  /// Asking the server, or waiting for Secondary to confirm.
+  sending,
 
-  /// Same account as Main.
-  linked,
+  /// The server could not be reached; tried again every [MainController.grantRetryEvery].
+  waitingForInternet,
 
-  /// Linking failed; see [MainController.secondaryAccountError].
+  /// Secondary has the grant.
+  delivered,
+
+  /// See [MainController.grantError].
   failed,
 }
 
@@ -48,6 +52,7 @@ class MainController extends ChangeNotifier {
     String? gameId,
     this.startDelay = const Duration(milliseconds: 1200),
     this.retryEvery = const Duration(seconds: 2),
+    this.grantRetryEvery = const Duration(seconds: 30),
   })  : gameId = gameId ?? const Uuid().v4(),
         recorder = LocalRecorder(camera: camera, store: store, role: DeviceRole.main) {
     link = linkFactory(this.gameId);
@@ -58,14 +63,16 @@ class MainController extends ChangeNotifier {
   final LocalRecorder recorder;
   late final PeerLink link;
 
-  /// This phone's account. When it is linked, Secondary is linked to the
-  /// same account as it pairs, so its footage is accepted with Main's
-  /// manifest.
+  /// This phone's account. When it is linked, Secondary gets a recording
+  /// grant as it pairs, so it can upload into this account.
   final AccountManager? account;
 
   /// How far ahead Start is scheduled, so Secondary gets it in time.
   final Duration startDelay;
   final Duration retryEvery;
+
+  /// How often to try again for a grant while Secondary does not have one.
+  final Duration grantRetryEvery;
 
   MainPhase phase = MainPhase.starting;
   OpenResult? opened;
@@ -77,13 +84,16 @@ class MainController extends ChangeNotifier {
   ClockEstimate? clock;
   DeviceStatus? ownStatus;
 
-  SecondaryAccount secondaryAccount = SecondaryAccount.unknown;
-  String? secondaryAccountError;
-  DateTime? _linkOfferedAt;
+  GrantState grantState = GrantState.none;
+  String? grantError;
 
-  /// Secondary that already failed to link in this game; reconnects don't
-  /// retry, the error stays on screen.
-  String? _linkFailedFor;
+  /// The grant for [_grantFor] (Secondary's deviceId), kept so reconnects
+  /// re-send it without asking the server again.
+  RecordingGrant? _grant;
+  String? _grantFor;
+  bool _granting = false;
+  DateTime? _grantSentAt;
+  Timer? _grantTimer;
 
   /// Recordings made in this game, by id, so late Secondary reports land.
   final recordings = <String, LocalRecording>{};
@@ -135,6 +145,7 @@ class MainController extends ChangeNotifier {
       _notify();
     }));
     _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) => _pollStatus());
+    _grantTimer = Timer.periodic(grantRetryEvery, (_) => _retryGrant());
     unawaited(_pollStatus());
     _notify();
   }
@@ -161,9 +172,9 @@ class MainController extends ChangeNotifier {
           mainDeviceId: store.identity.deviceId,
           settings: store.settings,
         )));
-        unawaited(_checkSecondaryAccount(m));
-      case LinkResult():
-        _onLinkResult(m);
+        unawaited(_sendGrant(m.device));
+      case GrantAck():
+        _onGrantAck(m);
       case Ping():
         unawaited(link.send(
             Pong(id: m.id, t1: m.t1, t2: DateTime.now().millisecondsSinceEpoch)));
@@ -194,64 +205,89 @@ class MainController extends ChangeNotifier {
         secondaryStatusAt = DateTime.now();
       case ErrorMsg():
         error = 'Secondary: ${m.message}';
-      case Welcome() || Pong() || Prepare() || Start() || Stop() || LinkOffer():
+      case Welcome() || Pong() || Prepare() || Start() || Stop() || GrantMsg():
         break; // Main -> Secondary only.
     }
     _notify();
   }
 
-  String? get _ownAccountId {
+  /// Gives Secondary a recording grant for this game, so it can upload
+  /// into this phone's account whatever account it is on. Asks the server
+  /// once per Secondary; re-sends the same grant on reconnects.
+  Future<void> _sendGrant(DeviceIdentity device) async {
     final a = account;
-    return a != null && a.linked && !a.revoked ? a.link!.accountId : null;
+    if (a == null || _granting) return;
+    if (_grantFor != device.deviceId) {
+      _grantFor = device.deviceId;
+      _grant = null;
+      grantState = GrantState.none;
+      grantError = null;
+    }
+    // Secondary keeps a grant across reconnects. If the server refused one,
+    // asking again won't help; the error stays on screen.
+    if (grantState == GrantState.delivered) return;
+    if (grantState == GrantState.failed && _grant == null) return;
+    if (!a.linked || a.revoked) {
+      grantState = GrantState.mainNotLinked;
+      _notify();
+      return;
+    }
+    _granting = true;
+    try {
+      if (_grant == null || !_grant!.usableAt(DateTime.now())) {
+        grantState = GrantState.sending;
+        _notify();
+        _grant = await a.createGrant(gameId: gameId, deviceId: device.deviceId);
+      }
+      grantState = GrantState.sending;
+      grantError = null;
+      _grantSentAt = DateTime.now();
+      // Not sent (disconnected): the next Hello or retry sends it.
+      await link.send(GrantMsg(_grant!));
+    } on LinkException catch (e) {
+      grantState = e.offline
+          ? GrantState.waitingForInternet
+          : (a.revoked ? GrantState.mainNotLinked : GrantState.failed);
+      grantError = e.message;
+    } finally {
+      _granting = false;
+      _notify();
+    }
   }
 
-  /// Links Secondary to this phone's account if it uploads elsewhere (or
-  /// nowhere): Main creates a link code and sends it over Bluetooth.
-  Future<void> _checkSecondaryAccount(Hello h) async {
-    final a = account;
-    if (a == null) return;
-    final mine = _ownAccountId;
-    if (mine == null) {
-      secondaryAccount = SecondaryAccount.mainNotLinked;
-    } else if (h.accountId == mine) {
-      secondaryAccount = SecondaryAccount.linked;
-      secondaryAccountError = null;
-    } else if (_linkFailedFor == h.device.deviceId) {
-      // Keep showing the failure.
-    } else if (secondaryAccount == SecondaryAccount.linking &&
-        DateTime.now().difference(_linkOfferedAt!) < const Duration(minutes: 1)) {
-      // An offer is already on its way.
-    } else {
-      secondaryAccount = SecondaryAccount.linking;
-      secondaryAccountError = null;
-      _linkOfferedAt = DateTime.now();
-      _notify();
-      try {
-        final req = await a.createLinkCode();
-        if (!await link.send(LinkOffer(apiUrl: req.apiUrl, code: req.code))) {
-          secondaryAccount = SecondaryAccount.unknown; // disconnected; the next Hello retries
-        }
-      } on LinkException catch (e) {
-        _linkFailed(h.device.deviceId, e.message);
+  /// Tries again while Secondary is connected and has no grant: no
+  /// internet earlier, Main linked since, or the confirmation was lost.
+  void _retryGrant() {
+    final d = secondary;
+    if (d == null || !secondaryConnected) return;
+    final stale = grantState == GrantState.sending &&
+        _grantSentAt != null &&
+        DateTime.now().difference(_grantSentAt!) >= grantRetryEvery;
+    if (grantState == GrantState.waitingForInternet ||
+        grantState == GrantState.mainNotLinked ||
+        grantState == GrantState.none ||
+        stale) {
+      unawaited(_sendGrant(d));
+    }
+  }
+
+  void _onGrantAck(GrantAck m) {
+    if (m.gameId != gameId) return;
+    if (!m.ok) {
+      grantState = GrantState.failed;
+      grantError = 'Secondary: ${m.error}';
+      return;
+    }
+    grantState = GrantState.delivered;
+    grantError = null;
+    // Recordings whose manifest is not written yet can now name Secondary.
+    for (final rec in recordings.values) {
+      final peer = rec.peer;
+      if (peer != null && peer.device.deviceId == _grantFor && !manifestsWritten.contains(rec.recordingId)) {
+        peer.granted = true;
+        unawaited(store.saveRecording(rec));
       }
     }
-    _notify();
-  }
-
-  void _onLinkResult(LinkResult r) {
-    final mine = _ownAccountId;
-    if (r.ok && r.accountId != null && r.accountId == mine) {
-      secondaryAccount = SecondaryAccount.linked;
-      secondaryAccountError = null;
-    } else if (secondary != null) {
-      _linkFailed(secondary!.deviceId, r.error ?? 'Secondary linked to a different account.');
-    }
-  }
-
-  void _linkFailed(String deviceId, String message) {
-    _linkFailedFor = deviceId;
-    secondaryAccount = SecondaryAccount.failed;
-    secondaryAccountError = message;
   }
 
   /// Starts recording on both phones. With [alone] (or no Secondary
@@ -300,7 +336,12 @@ class MainController extends ChangeNotifier {
 
       final rec = await recorder.start(gameId: gameId, recordingId: recordingId);
       if (withSecondary) {
-        rec.peer = PeerRecord(device: secondary!, video: prepared!.video, clock: clock);
+        rec.peer = PeerRecord(
+          device: secondary!,
+          video: prepared!.video,
+          clock: clock,
+          granted: grantState == GrantState.delivered && _grantFor == secondary!.deviceId,
+        );
       }
       recordings[recordingId] = rec;
       await store.saveRecording(rec);
@@ -387,6 +428,7 @@ class MainController extends ChangeNotifier {
   Future<void> dispose() async {
     _disposed = true;
     _statusTimer?.cancel();
+    _grantTimer?.cancel();
     link.state.removeListener(_onLinkState);
     await _sub?.cancel();
     try {

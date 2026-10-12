@@ -62,10 +62,10 @@ opensportsball://link?v=1&api=<url-encoded apiUrl>&code=<code>
 people as `ABCD-EFGH` (phones send it without the dash, uppercase). Valid
 for 10 minutes, single use.
 
-The Secondary phone does not need its own code from the website: when it
-pairs, a linked Main phone creates one with `POST /devices/link-codes` and
-sends it over Bluetooth, and the Secondary links with it (see
-`app/lib/src/protocol/messages.dart`, `LinkOffer`).
+Only a phone that records as Main needs linking. A Secondary uploads with
+a recording grant that Main creates (`POST /games/{gameId}/grants`) and
+sends over Bluetooth (`app/lib/src/protocol/messages.dart`, `GrantMsg`),
+whatever account the Secondary is linked to, if any.
 
 ## Routes for people (Cognito token)
 
@@ -125,10 +125,6 @@ Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "mo
 - `409 conflict`: this deviceId is linked to a different account (unlink
   it there first).
 - Re-linking a deviceId to the same account replaces its old token.
-
-### `POST /devices/link-codes`
-Same as `POST /link-codes`, for the caller's account. A linked Main phone
-uses it to link its Secondary.
 
 The phones never need to be near each other to finish an upload. Main's
 manifest lists both phones but only Main's segments; the Secondary sends
