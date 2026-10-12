@@ -60,7 +60,7 @@
 			<li>Record a game with the OpenSportsBall app.</li>
 			<li>The phones upload the footage when they are on Wi-Fi. The game shows up here.</li>
 		</ol>
-		<div><a class="btn btn-primary" href={resolve('/devices')}>Link a phone</a></div>
+		<div><a class="btn btn-primary" href="{resolve('/devices')}?link=1">Link a phone</a></div>
 	</div>
 {:else if games}
 	<ul class="games">

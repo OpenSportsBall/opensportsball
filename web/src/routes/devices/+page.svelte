@@ -3,6 +3,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { toString as qrToSvg } from 'qrcode';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import {
 		formatCountdown,
@@ -52,7 +54,17 @@
 	}
 
 	onMount(async () => {
-		if (await session.requireSignIn()) await loadDevices();
+		if (!(await session.requireSignIn())) return;
+		// ?link=1 (from the Games page's "Link a phone") opens the link panel straight away.
+		// Drop it from the URL so a reload doesn't mint another code.
+		if (page.url.searchParams.has('link')) {
+			const url = new URL(page.url.href);
+			url.searchParams.delete('link');
+			replaceState(url, {});
+			await startLink();
+		} else {
+			await loadDevices();
+		}
 	});
 
 	function stopLinking() {
