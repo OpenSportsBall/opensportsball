@@ -68,14 +68,21 @@ class InfoRow extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
+      // The label keeps its width; a long value wraps instead of squeezing
+      // the label into one letter per line.
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: theme.textTheme.bodySmall)),
-          Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: warn ? theme.colorScheme.error : null,
-              fontWeight: warn ? FontWeight.bold : null,
+          Text(label, style: theme.textTheme.bodySmall),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: warn ? theme.colorScheme.error : null,
+                fontWeight: warn ? FontWeight.bold : null,
+              ),
             ),
           ),
         ],
