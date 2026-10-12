@@ -99,6 +99,20 @@ describe('linking phones', () => {
     expect(r.status).toBe(200);
   });
 
+  it('a phone can unlink itself, and then join another account', async () => {
+    const phone = await linkPhone(alice);
+    expect((await callDevice(phone.token, 'POST /devices/unlink')).status).toBe(204);
+    expect(await valid(phone.token)).toBe(false);
+    expect((await callWeb(alice, 'GET /devices')).body.devices).toEqual([]);
+    expect((await callDevice(phone.token, 'POST /devices/unlink')).status).toBe(401);
+
+    const code = await callWeb(bob, 'POST /link-codes');
+    const r = await callDevice(null, 'POST /devices/link', {
+      body: { code: code.body.code, deviceId: phone.deviceId, platform: 'android', model: 'Pixel 9' },
+    });
+    expect(r.body.accountId).toBe(bob);
+  });
+
   it('malformed and unknown tokens get no identity, and phone routes answer 401', async () => {
     expect(await authorize('nope')).toEqual(ANONYMOUS);
     expect(await authorize(`osbd_${'A'.repeat(43)}`)).toEqual(ANONYMOUS);

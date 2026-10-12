@@ -26,7 +26,10 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   scan the website's `opensportsball://link?...` QR code, or type the
   8-character code once the phone knows the API from an earlier link. The
   device token is kept with `flutter_secure_storage` (Keychain / Android
-  Keystore). "Unlink this phone" only forgets it locally. Only Main needs
+  Keystore). "Unlink this phone" removes it from the account
+  (`POST /devices/unlink`) and then forgets the token; without the server
+  it offers to forget the token anyway (the account then keeps the phone
+  until it is removed on the website). Only Main needs
   linking: when a Secondary pairs, Main gets a recording grant for it
   (`POST /games/{gameId}/grants`) and sends it over Bluetooth (`GrantMsg` /
   `GrantAck`), retrying every 30 s while it has no internet. Secondary keeps

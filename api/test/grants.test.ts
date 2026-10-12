@@ -171,7 +171,7 @@ describe('recording grants', () => {
       expect(r.status).toBe(400);
     });
 
-    it('no manifest and no more grants', async () => {
+    it('no manifest, no more grants, no unlinking', async () => {
       const secondary = await granted();
       const m = await callDevice(secondary.token, 'PUT /games/{gameId}/recordings/{recordingId}/manifest', {
         path: path(),
@@ -179,6 +179,7 @@ describe('recording grants', () => {
       });
       expect(m.status).toBe(403);
       expect((await grant(randomUUID(), gameId, secondary)).status).toBe(403);
+      expect((await callDevice(secondary.token, 'POST /devices/unlink')).status).toBe(403);
     });
   });
 

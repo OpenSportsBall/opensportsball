@@ -25,7 +25,8 @@ access token>`. The account id is the token's `sub`.
 shown on the website. Linking returns a long-lived device token
 (`osbd_` + 43 base64url characters). Calls carry
 `Authorization: Bearer <device token>`. The server stores only a SHA-256
-hash of the token. Unlinking the device on the website revokes it.
+hash of the token. Unlinking the device, on the website or from the phone
+(`POST /devices/unlink`), revokes it.
 
 **Phones recording for someone else's game.** A Secondary uploads its part
 of a game into Main's account with a recording grant (`osbg_` + 43
@@ -125,6 +126,11 @@ Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "mo
 - `409 conflict`: this deviceId is linked to a different account (unlink
   it there first).
 - Re-linking a deviceId to the same account replaces its old token.
+
+### `POST /devices/unlink`
+Device token only. The phone leaves its account, so it can link to
+another one; its recordings stay. → `204`. Same effect as
+`DELETE /devices/{deviceId}` on the website.
 
 The phones never need to be near each other to finish an upload. Main's
 manifest lists both phones but only Main's segments; the Secondary sends

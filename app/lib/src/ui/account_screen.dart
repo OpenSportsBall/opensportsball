@@ -23,13 +23,26 @@ class _AccountScreenState extends State<AccountScreen> {
   AccountManager get a => widget.account;
 
   Future<void> _unlink() async {
-    if (await confirm(
+    if (!await confirm(
         context,
         'Unlink this phone?',
-        'This phone forgets its account and stops uploading. Recordings stay on the phone. '
-            'To remove it from the account too, delete it on the website.',
+        'This phone leaves its account and stops uploading the recordings it made as Main. '
+            'Recordings stay on the phone, and it can then join another account.',
         'Unlink')) {
+      return;
+    }
+    try {
       await a.unlink();
+    } on LinkException catch (e) {
+      if (!mounted) return;
+      if (await confirm(
+          context,
+          'Forget the account anyway?',
+          '${e.message}\n\nThe account keeps this phone until you remove it on the website\'s '
+              'Devices page; until then it cannot join another account.',
+          'Forget anyway')) {
+        await a.unlink(force: true);
+      }
     }
   }
 

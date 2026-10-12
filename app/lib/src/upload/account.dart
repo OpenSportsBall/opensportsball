@@ -302,9 +302,32 @@ class AccountManager extends ChangeNotifier {
     await saveGrant(g.asRejected());
   }
 
-  /// Forgets the token on this phone. The website still lists the device
-  /// until it is removed there.
-  Future<void> unlink() async {
+  /// Removes this phone from its account (POST /devices/unlink), so it can
+  /// join another one, then forgets the token. Throws [LinkException] if the
+  /// server could not do it; with [force] the phone forgets the token anyway,
+  /// and the account keeps it until it is removed on the website.
+  Future<void> unlink({bool force = false}) async {
+    final link = _link;
+    if (link != null && !_revoked && !force) {
+      final http.Response res;
+      try {
+        res = await client.post(
+          apiUri(link.apiUrl, '/devices/unlink'),
+          headers: {'Authorization': 'Bearer ${link.deviceToken}'},
+        ).timeout(const Duration(seconds: 30));
+      } on TimeoutException {
+        throw _noAnswer;
+      } on SocketException {
+        throw _unreachable;
+      } on http.ClientException {
+        throw _unreachable;
+      }
+      // 401: already removed on the website.
+      if (res.statusCode != 204 && res.statusCode != 401) {
+        throw LinkException('Could not unlink (${res.statusCode}${serverMessage(res)}).',
+            offline: res.statusCode >= 500 || res.statusCode == 429);
+      }
+    }
     await secrets.delete(_key);
     _link = null;
     _revoked = false;

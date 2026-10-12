@@ -92,7 +92,12 @@ void main() {
     test('links and stores the token', () async {
       final store = await tempStore('bbbbbbbb');
       late Map<String, Object?> sent;
+      final unlinks = <String?>[];
       final client = MockClient((req) async {
+        if (req.url.path == '/devices/unlink') {
+          unlinks.add(req.headers['Authorization']);
+          return http.Response('', 204);
+        }
         expect(req.url.toString(), 'https://api.test/devices/link');
         expect(req.headers.containsKey('Authorization'), isFalse);
         sent = (jsonDecode(req.body) as Map).cast();
@@ -115,14 +120,35 @@ void main() {
       expect(account.link!.accountId, 'acc-9');
       expect(secrets.values['account_link'], contains('osbd_new'));
 
-      // Survives a restart; unlinking forgets the token but keeps the API.
+      // Survives a restart; unlinking removes it from the account, forgets
+      // the token and keeps the API.
       final again = AccountManager(store: store, secrets: secrets, client: client);
       await again.load();
       expect(again.link!.accountId, 'acc-9');
       await again.unlink();
+      expect(unlinks, ['Bearer osbd_new']);
       expect(again.linked, isFalse);
       expect(secrets.values, isEmpty);
       expect(again.knownApiUrl, apiUrl);
+    });
+
+    test('unlinking without the server keeps the token unless forced', () async {
+      final store = await tempStore('eeeeeeee');
+      final account = await fakeAccount(store, MockClient((_) async => throw http.ClientException('down')),
+          accountId: 'acc-9');
+      await expectLater(account.unlink(),
+          throwsA(isA<LinkException>().having((e) => e.offline, 'offline', isTrue)));
+      expect(account.linked, isTrue);
+      await account.unlink(force: true);
+      expect(account.linked, isFalse);
+    });
+
+    test('unlinking a phone already removed on the website just forgets it', () async {
+      final store = await tempStore('ffffffff');
+      final account =
+          await fakeAccount(store, MockClient((_) async => http.Response('{}', 401)), accountId: 'acc-9');
+      await account.unlink();
+      expect(account.linked, isFalse);
     });
 
     for (final (code, text) in [

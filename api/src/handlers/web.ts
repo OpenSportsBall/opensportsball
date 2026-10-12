@@ -3,7 +3,7 @@
 
 /** Routes for people signed in on the website (Cognito JWT authorizer). */
 
-import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { json, notFound, pathParam, respond, type Result } from '../lib/http.js';
 import { expectedDevices } from '../lib/manifest.js';
@@ -19,15 +19,7 @@ import {
 } from '../lib/recordings.js';
 import { config, ddb, keys, queryPrefix } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
-
-interface DeviceItem {
-  deviceId: string;
-  platform: string;
-  model: string;
-  linkedAt: string;
-  lastSeenAt?: string;
-  tokenHash: string;
-}
+import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 
 interface GameItem {
   gameId: string;
@@ -46,7 +38,8 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
       case 'GET /devices':
         return listDevices(acct);
       case 'DELETE /devices/{deviceId}':
-        return unlinkDevice(acct, pathParam(event, 'deviceId'));
+        await unlinkDevice(acct, pathParam(event, 'deviceId'));
+        return json(204);
       case 'GET /games':
         return listGames(acct);
       case 'GET /games/{gameId}':
@@ -67,22 +60,6 @@ async function listDevices(acct: string) {
       lastSeenAt: d.lastSeenAt ?? null,
     })),
   });
-}
-
-async function unlinkDevice(acct: string, deviceId: string) {
-  const r = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.device(acct, deviceId) }));
-  const device = r.Item as DeviceItem | undefined;
-  if (!device) throw notFound('No such device on this account.');
-  await ddb.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        { Delete: { TableName: config.table, Key: keys.device(acct, deviceId) } },
-        { Delete: { TableName: config.table, Key: keys.owner(deviceId) } },
-        { Delete: { TableName: config.table, Key: keys.token(device.tokenHash) } },
-      ],
-    }),
-  );
-  return json(204);
 }
 
 const leastFinished = (statuses: RecordingStatus[]) =>
