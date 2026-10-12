@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /** Routes for phones: linking (code as credential) and, with a device
- *  token, manifest upload and multipart segment upload. */
+ *  token, link codes for a Secondary, Main's manifest, each phone's report
+ *  of its own segments, and multipart segment upload. */
 
 import { createHash } from 'node:crypto';
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
@@ -14,7 +15,6 @@ import {
   ListPartsCommand,
   NoSuchUpload,
   NotFound,
-  PutObjectCommand,
   UploadPartCommand,
   type Part,
 } from '@aws-sdk/client-s3';
@@ -38,9 +38,10 @@ import {
   str,
   type Result,
 } from '../lib/http.js';
-import { expectedDevices, parseManifest } from '../lib/manifest.js';
-import { checkReady, ensureRecording, getRecording, recordObject } from '../lib/recordings.js';
-import { config, ddb, keys, manifestKey, s3, segmentFileName, segmentKey } from '../lib/store.js';
+import { createLinkCode } from '../lib/linkCodes.js';
+import { parseManifest, parseReport } from '../lib/manifest.js';
+import { checkReady, ensureRecording, getRecording, recordObject, type ReportItem } from '../lib/recordings.js';
+import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
 import { LINK_CODE, hashToken, newDeviceToken } from '../lib/tokens.js';
 
 export interface DeviceContext {
@@ -62,10 +63,15 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
     switch (event.routeKey) {
       case 'PUT /games/{gameId}/recordings/{recordingId}/manifest':
         return putManifest(ctx, event);
+      case 'PUT /games/{gameId}/recordings/{recordingId}/report':
+        return putReport(ctx, event);
       case 'POST /uploads':
         return startUpload(ctx, body(event));
       case 'POST /uploads/complete':
         return completeUpload(ctx, body(event));
+      case 'POST /devices/link-codes':
+        // A linked Main phone links its Secondary to the same account.
+        return json(201, await createLinkCode(ctx.accountId, event.requestContext.domainName));
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
@@ -201,29 +207,59 @@ async function putManifest(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
     throw conflict('This recording is already complete with a different manifest.');
   }
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: config.bucket,
-      Key: manifestKey(ctx.accountId, gameId, recordingId),
-      Body: text,
-      ContentType: 'application/json',
-    }),
-  );
   await ensureRecording(ctx.accountId, gameId, recordingId);
   // Re-sending the same manifest for a ready recording must not demote it.
+  // The merged manifest goes to S3 when the recording becomes ready.
   const alreadyReady = existing?.status === 'ready';
   await ddb.send(
     new UpdateCommand({
       TableName: config.table,
       Key: keys.recording(ctx.accountId, gameId, recordingId),
       UpdateExpression: alreadyReady
-        ? 'SET expected = :e, manifestSha256 = :sha'
-        : 'SET expected = :e, manifestSha256 = :sha, #s = :uploading',
+        ? 'SET manifest = :m, manifestSha256 = :sha'
+        : 'SET manifest = :m, manifestSha256 = :sha, #s = :uploading',
       ExpressionAttributeNames: alreadyReady ? undefined : { '#s': 'status' },
       ExpressionAttributeValues: {
-        ':e': expectedDevices(manifest),
+        ':m': manifest,
         ':sha': sha,
         ...(alreadyReady ? {} : { ':uploading': 'uploading' }),
+      },
+    }),
+  );
+  return json(200, await checkReady(ctx.accountId, gameId, recordingId));
+}
+
+// --- Device report ----------------------------------------------------------
+
+/** A phone's own segment list for a recording, sent from wherever it reaches
+ *  the internet; Main's manifest may not have it. */
+async function putReport(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
+  const gameId = str({ v: pathParam(event, 'gameId') }, 'v', UUID);
+  const recordingId = str({ v: pathParam(event, 'recordingId') }, 'v', UUID);
+  const raw = body(event);
+  const device = parseReport(raw, { callerDeviceId: ctx.deviceId });
+  const sha = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
+
+  const key = keys.report(ctx.accountId, gameId, recordingId, ctx.deviceId);
+  const [existing, previous] = await Promise.all([
+    getRecording(ctx.accountId, gameId, recordingId),
+    ddb.send(new GetCommand({ TableName: config.table, Key: key })),
+  ]);
+  if (existing?.status === 'ready' && (previous.Item as ReportItem | undefined)?.sha256 !== sha) {
+    throw conflict('This recording is already complete with a different segment list.');
+  }
+  await ensureRecording(ctx.accountId, gameId, recordingId);
+  await ddb.send(
+    new PutCommand({
+      TableName: config.table,
+      Item: {
+        ...key,
+        gameId,
+        recordingId,
+        deviceId: ctx.deviceId,
+        device,
+        sha256: sha,
+        reportedAt: new Date().toISOString(),
       },
     }),
   );

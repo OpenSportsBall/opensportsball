@@ -131,13 +131,12 @@ class _RecordingTile extends StatelessWidget {
     } else {
       status = '${r.filesDone} of ${r.filesTotal} files uploaded';
     }
-    final manifest = !r.isMain
+    final what = r.isMain ? 'manifest' : 'segment list';
+    final manifest = !rec.stopped
         ? null
         : r.manifestUploaded
-            ? 'manifest uploaded'
-            : r.hasManifest
-                ? 'manifest not uploaded'
-                : 'waiting for Secondary segments';
+            ? '$what uploaded'
+            : '$what not uploaded';
     final current = r.currentFile;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),

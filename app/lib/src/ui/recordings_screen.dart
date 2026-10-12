@@ -37,7 +37,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   Future<void> _share(StoredRecording r, {bool withManifest = true}) async {
     final files = [
       ...r.segmentFiles.where((f) => f.existsSync()).map((f) => f.path),
-      if (withManifest && r.hasManifest) '${r.dir.path}/manifest.json',
+      if (withManifest && r.hasDocument) '${r.dir.path}/${r.documentName}',
       '${r.dir.path}/recording.json',
       if (File('${r.dir.path}/power.csv').existsSync()) '${r.dir.path}/power.csv',
     ];
@@ -58,7 +58,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     if (!rec.stopped) return 'not finished';
     if (rec.endReason != null) return 'ended early: ${rec.endReason}';
     if (rec.role == DeviceRole.secondary) return 'recorded as Secondary';
-    if (!r.hasManifest) return 'waiting for Secondary segments';
+    if (!r.hasDocument) return 'no manifest yet';
     return rec.peer == null ? 'manifest ready (this phone only)' : 'manifest ready';
   }
 

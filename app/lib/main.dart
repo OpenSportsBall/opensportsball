@@ -140,8 +140,8 @@ class RolePickerScreen extends StatelessWidget {
                         onPressed: () => _push(
                           context,
                           role == DeviceRole.main
-                              ? MainScreen(store: store)
-                              : SecondaryScreen(store: store),
+                              ? MainScreen(store: store, account: services.account)
+                              : SecondaryScreen(store: store, account: services.account),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),

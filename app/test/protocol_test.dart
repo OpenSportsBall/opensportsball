@@ -95,6 +95,7 @@ void main() {
         index: 2, fileName: 'd1_002.mp4', bytes: 99, sha256: 'ab', startedAtDeviceMs: 5, durationMs: 300000);
     final msgs = <Msg>[
       const Hello(device),
+      const Hello(device, accountId: 'acc-1'),
       const Welcome(gameId: 'g', mainDeviceId: 'm', settings: RecordingSettings()),
       const Ping(id: 1, t1: 2),
       const Pong(id: 1, t1: 2, t2: 3),
@@ -111,6 +112,9 @@ void main() {
           batteryPercent: 50, charging: true, freeStorageBytes: 1, thermalState: 'fair',
           recordingId: null, segmentCount: 0, elapsedMs: 0),
       const ErrorMsg(code: 'c', message: 'm'),
+      const LinkOffer(apiUrl: 'https://api.test', code: 'ABCDEFGH'),
+      const LinkResult(accountId: 'acc-1'),
+      const LinkResult(error: 'nope'),
     ];
     for (final m in msgs) {
       final back = Msg.decode(m.encode());

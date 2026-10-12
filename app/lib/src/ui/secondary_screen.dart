@@ -9,13 +9,15 @@ import '../link/ble_link.dart';
 import '../link/peer_link.dart';
 import '../session/secondary_controller.dart';
 import '../storage/store.dart';
+import '../upload/account.dart';
 import 'common.dart';
 import 'dark_while_recording.dart';
 
 /// Scans Main's pairing code, then hands the camera over to the recorder.
 class SecondaryScreen extends StatefulWidget {
-  const SecondaryScreen({super.key, required this.store});
+  const SecondaryScreen({super.key, required this.store, required this.account});
   final AppStore store;
+  final AccountManager account;
   @override
   State<SecondaryScreen> createState() => _SecondaryScreenState();
 }
@@ -54,7 +56,7 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
   Widget build(BuildContext context) {
     final game = _gameId;
     if (game != null && _scannerReleased) {
-      return _SecondarySession(store: widget.store, gameId: game);
+      return _SecondarySession(store: widget.store, account: widget.account, gameId: game);
     }
     return Scaffold(
       body: SafeArea(
@@ -76,8 +78,9 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
 }
 
 class _SecondarySession extends StatefulWidget {
-  const _SecondarySession({required this.store, required this.gameId});
+  const _SecondarySession({required this.store, required this.account, required this.gameId});
   final AppStore store;
+  final AccountManager account;
   final String gameId;
   @override
   State<_SecondarySession> createState() => _SecondarySessionState();
@@ -90,6 +93,7 @@ class _SecondarySessionState extends State<_SecondarySession> {
     camera: _camera,
     gameId: widget.gameId,
     linkFactory: (gameId) => SecondaryBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
+    account: widget.account,
   );
 
   @override
@@ -194,6 +198,10 @@ class _SecondarySessionState extends State<_SecondarySession> {
         if (c.clock != null)
           InfoRow('Clock offset',
               '${c.clock!.secondaryOffsetMs.toStringAsFixed(0)} ms (±${(c.clock!.medianRttMs / 2).toStringAsFixed(0)})'),
+        if (c.linkedByMain != null)
+          InfoRow('Account', c.linkedByMain! ? 'linked to the Main phone\'s account' : 'not linked',
+              warn: !c.linkedByMain!),
+        ErrorText(c.accountError),
       ]),
     );
   }

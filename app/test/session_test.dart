@@ -97,15 +97,22 @@ void main() {
     expect(manifest['sessionId'], id);
     final devices = manifest['devices'] as List;
     expect(devices.map((d) => d['role']), ['main', 'secondary']);
-    for (final d in devices) {
+    expect(devices[1]['platform'], 'android');
+    expect((manifest['clockSync'] as Map)['samples'], greaterThan(0));
+    // Secondary's segments come from Secondary's own report, not Main.
+    expect((devices[1] as Map).containsKey('segments'), isFalse);
+    await eventually(() => sec.recordings[id]?.stopped ?? false, reason: 'secondary stopped');
+    final [stored] = await secStore.listRecordings();
+    expect(await secStore.ensureUploadDocument(stored), isTrue);
+    final report = jsonDecode(File('${stored.dir.path}/report.json').readAsStringSync()) as Map;
+    for (final d in [devices[0] as Map, report]) {
       final segs = d['segments'] as List;
       expect(segs.length, 2);
       expect(segs.map((s) => s['index']), [0, 1]);
       expect(segs.every((s) => RegExp(r'^[0-9a-f]{64}$').hasMatch(s['sha256'] as String)), isTrue);
       expect(segs.first['objectKey'], '${d['deviceId']}/${d['deviceId']}_000.mp4');
     }
-    expect(devices[1]['platform'], 'android');
-    expect((manifest['clockSync'] as Map)['samples'], greaterThan(0));
+    expect(report['deviceId'], devices[1]['deviceId']);
 
     final out = Platform.environment['OSB_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));
@@ -123,14 +130,18 @@ void main() {
     await main.stopRecording();
     expect(secCam.recording, isTrue, reason: 'secondary must not stop on link loss');
 
-    // Secondary is stopped by hand, then comes back in range.
-    await sec.stopLocally();
-    links.connect();
-
+    // Main's manifest does not wait for Secondary.
     final id = main.current!.recordingId;
-    await eventually(() => main.manifestsWritten.contains(id),
-        reason: 'manifest after reconnect');
-    expect(main.current!.peer!.segments.length, 2);
+    await eventually(() => main.manifestsWritten.contains(id), reason: 'manifest while apart');
+
+    // Secondary is stopped by hand; its report needs nothing from Main.
+    await sec.stopLocally();
+    final [stored] = await secStore.listRecordings();
+    expect(await secStore.ensureUploadDocument(stored), isTrue);
+
+    // Back in range, the screen catches up too.
+    links.connect();
+    await eventually(() => main.current!.peer!.segments.length == 2, reason: 'reports after reconnect');
   });
 
   test('Secondary ignores duplicate Start and Stop retries', () async {

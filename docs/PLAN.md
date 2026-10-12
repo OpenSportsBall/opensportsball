@@ -53,8 +53,10 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
 - Upload: S3 multipart through presigned URLs, Wi-Fi only by default.
   Android WorkManager (unmetered constraint); iOS background `URLSession`
   from file.
-- Main uploads the manifest (`shared/schemas/manifest.schema.json`).
-  Processing starts only when every listed segment has arrived.
+- Main uploads the manifest (`shared/schemas/manifest.schema.json`); each
+  other phone uploads its own segment list, so the phones need not be
+  together when they reach Wi-Fi. Processing starts only when every
+  phone's segments have arrived.
 
 ## Processing (one AWS Batch GPU job, g5/g6.xlarge Spot)
 

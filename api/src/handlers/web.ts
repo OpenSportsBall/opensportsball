@@ -3,19 +3,22 @@
 
 /** Routes for people signed in on the website (Cognito JWT authorizer). */
 
-import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { expectedDevices } from '../lib/manifest.js';
 import {
   STATUS_ORDER,
   listObjects,
+  listReports,
+  reportMap,
+  type ReportItem,
   type ObjectItem,
   type RecordingItem,
   type RecordingStatus,
 } from '../lib/recordings.js';
 import { config, ddb, keys, queryPrefix } from '../lib/store.js';
-import { LINK_CODE_TTL_MS, newLinkCode } from '../lib/tokens.js';
+import { createLinkCode } from '../lib/linkCodes.js';
 
 interface DeviceItem {
   deviceId: string;
@@ -39,7 +42,7 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
       case 'GET /me':
         return json(200, { accountId: acct, email: claims.email ?? null });
       case 'POST /link-codes':
-        return createLinkCode(acct, event);
+        return json(201, await createLinkCode(acct, event.requestContext.domainName));
       case 'GET /devices':
         return listDevices(acct);
       case 'DELETE /devices/{deviceId}':
@@ -52,37 +55,6 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         throw notFound(`No route ${event.routeKey}.`);
     }
   });
-
-async function createLinkCode(acct: string, event: APIGatewayProxyEventV2WithJWTAuthorizer) {
-  const expiresAtMs = Date.now() + LINK_CODE_TTL_MS;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = newLinkCode();
-    try {
-      await ddb.send(
-        new PutCommand({
-          TableName: config.table,
-          Item: {
-            ...keys.linkCode(code),
-            accountId: acct,
-            expiresAtMs,
-            ttl: Math.ceil(expiresAtMs / 1000) + 3600,
-          },
-          ConditionExpression: 'attribute_not_exists(pk)',
-        }),
-      );
-      // The phone needs the API URL too; this request came in on it.
-      const apiUrl = `https://${event.requestContext.domainName}`;
-      return json(201, {
-        code,
-        expiresAt: new Date(expiresAtMs).toISOString(),
-        linkUri: `opensportsball://link?v=1&api=${encodeURIComponent(apiUrl)}&code=${code}`,
-      });
-    } catch (e) {
-      if (!(e instanceof ConditionalCheckFailedException)) throw e;
-    }
-  }
-  throw new Error('could not allocate a unique link code');
-}
 
 async function listDevices(acct: string) {
   const items = await queryPrefix<DeviceItem>(acct, 'DEVICE#');
@@ -143,9 +115,10 @@ async function getGame(acct: string, gameId: string) {
   const g = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.game(acct, gameId) }));
   const game = g.Item as GameItem | undefined;
   if (!game) throw notFound('No such game.');
-  const [recordings, objects] = await Promise.all([
+  const [recordings, objects, reports] = await Promise.all([
     queryPrefix<RecordingItem>(acct, `REC#${gameId}#`),
     listObjects(acct, gameId),
+    listReports(acct, gameId),
   ]);
   recordings.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   return json(200, {
@@ -155,17 +128,34 @@ async function getGame(acct: string, gameId: string) {
       recordingId: r.recordingId,
       createdAt: r.createdAt,
       status: r.status,
-      hasManifest: Boolean(r.expected),
-      devices: recordingDevices(r, objects.filter((o) => o.recordingId === r.recordingId)),
+      hasManifest: Boolean(r.manifest),
+      devices: recordingDevices(
+        r,
+        objects.filter((o) => o.recordingId === r.recordingId),
+        reports.filter((p) => p.recordingId === r.recordingId),
+      ),
     })),
   });
 }
 
-function recordingDevices(r: RecordingItem, objects: ObjectItem[]) {
-  if (r.expected) {
-    return r.expected.map((d) => {
+function recordingDevices(r: RecordingItem, objects: ObjectItem[], reports: ReportItem[]) {
+  if (r.manifest) {
+    return expectedDevices(r.manifest, reportMap(reports)).map((d) => {
+      const mine = objects.filter((o) => o.deviceId === d.deviceId);
+      if (d.files === null) {
+        // That phone has not reported its segments yet.
+        return {
+          deviceId: d.deviceId,
+          role: d.role,
+          model: d.model,
+          expectedSegments: null,
+          uploadedSegments: mine.length,
+          expectedBytes: null,
+          uploadedBytes: mine.reduce((sum, o) => sum + o.bytes, 0),
+        };
+      }
       const wanted = new Map(d.files.map((f) => [f.fileName, f.bytes]));
-      const arrived = objects.filter((o) => o.deviceId === d.deviceId && wanted.get(o.fileName) === o.bytes);
+      const arrived = mine.filter((o) => wanted.get(o.fileName) === o.bytes);
       return {
         deviceId: d.deviceId,
         role: d.role,

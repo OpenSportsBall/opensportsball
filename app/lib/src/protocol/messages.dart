@@ -4,9 +4,9 @@
 /// Messages exchanged between the Main and Secondary phones over BLE.
 /// Encoded as JSON, then split into frames by `framing.dart`.
 ///
-/// Main -> Secondary: welcome, pong, prepare, start, stop.
+/// Main -> Secondary: welcome, pong, prepare, start, stop, linkOffer.
 /// Secondary -> Main: hello, ping, clock, prepared, started, stopped,
-/// segment, status, error.
+/// segment, status, error, linkResult.
 ///
 /// Commands that change recording state (prepare, start, stop) are retried
 /// by Main until acknowledged, so Secondary must handle duplicates.
@@ -29,7 +29,8 @@ sealed class Msg {
   static Msg decode(Uint8List bytes) {
     final j = jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
     return switch (j['t']) {
-      'hello' => Hello(DeviceIdentity.fromJson(_map(j['device']))),
+      'hello' => Hello(DeviceIdentity.fromJson(_map(j['device'])),
+          accountId: j['accountId'] as String?),
       'welcome' => Welcome(
           gameId: j['gameId'] as String,
           mainDeviceId: j['mainDeviceId'] as String,
@@ -73,6 +74,9 @@ sealed class Msg {
         ),
       'error' =>
         ErrorMsg(code: j['code'] as String, message: j['message'] as String),
+      'linkOffer' => LinkOffer(apiUrl: j['apiUrl'] as String, code: j['code'] as String),
+      'linkResult' =>
+        LinkResult(accountId: j['accountId'] as String?, error: j['error'] as String?),
       _ => throw FormatException('unknown message type: ${j['t']}'),
     };
   }
@@ -81,13 +85,16 @@ sealed class Msg {
 }
 
 /// Secondary introduces itself after connecting (and after reconnecting).
+/// [accountId] is the account it uploads to, or null if it is not linked
+/// (or its link was revoked).
 class Hello extends Msg {
-  const Hello(this.device);
+  const Hello(this.device, {this.accountId});
   final DeviceIdentity device;
+  final String? accountId;
   @override
   String get type => 'hello';
   @override
-  Map<String, Object?> fields() => {'device': device.toJson()};
+  Map<String, Object?> fields() => {'device': device.toJson(), 'accountId': accountId};
 }
 
 /// Main's reply to [Hello]: which game this is and how to record.
@@ -270,4 +277,30 @@ class ErrorMsg extends Msg {
   String get type => 'error';
   @override
   Map<String, Object?> fields() => {'code': code, 'message': message};
+}
+
+/// Main links Secondary to Main's account: a single-use link code that Main
+/// created with `POST /devices/link-codes`. Sent when [Hello.accountId]
+/// differs from Main's account.
+class LinkOffer extends Msg {
+  const LinkOffer({required this.apiUrl, required this.code});
+  final String apiUrl;
+  final String code;
+  @override
+  String get type => 'linkOffer';
+  @override
+  Map<String, Object?> fields() => {'apiUrl': apiUrl, 'code': code};
+}
+
+/// Secondary's answer to [LinkOffer]: the account it is now linked to, or
+/// why linking failed.
+class LinkResult extends Msg {
+  const LinkResult({this.accountId, this.error});
+  final String? accountId;
+  final String? error;
+  bool get ok => error == null;
+  @override
+  String get type => 'linkResult';
+  @override
+  Map<String, Object?> fields() => {'accountId': accountId, 'error': error};
 }

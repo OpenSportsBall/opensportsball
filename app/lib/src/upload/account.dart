@@ -210,6 +210,45 @@ class AccountManager extends ChangeNotifier {
     return link;
   }
 
+  /// POST /devices/link-codes: a single-use code for this phone's account,
+  /// which Main hands to its Secondary. Throws [LinkException].
+  Future<LinkRequest> createLinkCode() async {
+    final link = _link;
+    if (link == null || _revoked) throw const LinkException('This phone is not linked to an account.');
+    final http.Response res;
+    try {
+      res = await client.post(
+        apiUri(link.apiUrl, '/devices/link-codes'),
+        headers: {'Authorization': 'Bearer ${link.deviceToken}'},
+      ).timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw const LinkException('The server did not answer. Check the internet connection.');
+    } on SocketException {
+      throw const LinkException('Could not reach the server. Check the internet connection.');
+    } on http.ClientException {
+      throw const LinkException('Could not reach the server. Check the internet connection.');
+    }
+    if (res.statusCode == 401) {
+      markRevoked();
+      throw const LinkException('This phone was unlinked on the website. Link it again.');
+    }
+    if (res.statusCode != 201) {
+      throw LinkException('Could not get a link code (${res.statusCode}${serverMessage(res)}).');
+    }
+    final code = _decodeCode(res.body);
+    if (code == null) throw const LinkException('The server sent an unexpected answer.');
+    return LinkRequest(apiUrl: link.apiUrl, code: code);
+  }
+
+  static String? _decodeCode(String body) {
+    try {
+      final c = (jsonDecode(body) as Map)['code'];
+      return c is String ? normalizeLinkCode(c) : null;
+    } on Object {
+      return null;
+    }
+  }
+
   /// Forgets the token on this phone. The website still lists the device
   /// until it is removed there.
   Future<void> unlink() async {

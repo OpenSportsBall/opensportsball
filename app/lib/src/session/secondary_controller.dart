@@ -12,6 +12,7 @@ import '../protocol/clock_sync.dart';
 import '../protocol/messages.dart';
 import '../role.dart';
 import '../storage/store.dart';
+import '../upload/account.dart';
 import 'local_recorder.dart';
 
 enum SecondaryPhase { connecting, waitingForMain, ready, recording, stopping }
@@ -24,6 +25,7 @@ class SecondaryController extends ChangeNotifier {
     required DualCamera camera,
     required this.gameId,
     required PeerLink Function(String gameId) linkFactory,
+    this.account,
     this.pingsPerRound = 20,
     this.pingSpacing = const Duration(milliseconds: 150),
   }) : recorder = LocalRecorder(camera: camera, store: store, role: DeviceRole.secondary) {
@@ -34,6 +36,10 @@ class SecondaryController extends ChangeNotifier {
   final String gameId;
   final LocalRecorder recorder;
   late final PeerLink link;
+
+  /// This phone's account. Main links it to Main's account if needed
+  /// ([LinkOffer]).
+  final AccountManager? account;
   final int pingsPerRound;
   final Duration pingSpacing;
 
@@ -42,6 +48,12 @@ class SecondaryController extends ChangeNotifier {
   ClockEstimate? clock;
   String? error;
   bool _stopping = false;
+
+  /// Outcome of the latest [LinkOffer] from Main, for the UI: true once
+  /// linked to Main's account, false with [accountError] if that failed.
+  bool? linkedByMain;
+  String? accountError;
+  bool _linking = false;
 
   final recordings = <String, LocalRecording>{};
   final _samples = <ClockSample>[];
@@ -93,7 +105,7 @@ class SecondaryController extends ChangeNotifier {
 
   void _onLinkState() {
     if (connected) {
-      unawaited(link.send(Hello(store.identity)));
+      unawaited(link.send(Hello(store.identity, accountId: _accountId)));
     }
     _notify();
   }
@@ -114,11 +126,43 @@ class SecondaryController extends ChangeNotifier {
         await _onStart(m);
       case Stop():
         await _onStop(m.recordingId);
+      case LinkOffer():
+        await _onLinkOffer(m);
       case Hello() || Ping() || ClockReport() || Prepared() || Started() ||
-            Stopped() || SegmentMsg() || StatusMsg() || ErrorMsg():
+            Stopped() || SegmentMsg() || StatusMsg() || ErrorMsg() || LinkResult():
         break; // Secondary -> Main only.
     }
     _notify();
+  }
+
+  String? get _accountId {
+    final a = account;
+    return a != null && a.linked && !a.revoked ? a.link!.accountId : null;
+  }
+
+  /// Links this phone with the code Main sent. The server refuses to move a
+  /// phone that is linked to another account (409), so this cannot take a
+  /// phone away from its owner.
+  Future<void> _onLinkOffer(LinkOffer m) async {
+    final a = account;
+    if (a == null) {
+      await link.send(const LinkResult(error: 'The Secondary phone cannot link from this screen.'));
+      return;
+    }
+    if (_linking) return;
+    _linking = true;
+    try {
+      final linked = await a.linkWith(LinkRequest(apiUrl: m.apiUrl, code: m.code));
+      linkedByMain = true;
+      accountError = null;
+      await link.send(LinkResult(accountId: linked.accountId));
+    } on LinkException catch (e) {
+      linkedByMain = false;
+      accountError = e.message;
+      await link.send(LinkResult(error: e.message));
+    } finally {
+      _linking = false;
+    }
   }
 
   Future<void> _onWelcome(Welcome m) async {

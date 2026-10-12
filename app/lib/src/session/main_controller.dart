@@ -13,17 +13,38 @@ import '../protocol/messages.dart';
 import '../role.dart';
 import '../storage/manifest.dart';
 import '../storage/store.dart';
+import '../upload/account.dart';
 import 'local_recorder.dart';
 
 enum MainPhase { starting, idle, preparing, recording, stopping }
 
+/// Whether Secondary uploads to Main's account.
+enum SecondaryAccount {
+  /// No Secondary yet, or this controller has no [AccountManager].
+  unknown,
+
+  /// Main itself is not linked, so it cannot link Secondary.
+  mainNotLinked,
+
+  /// A link code was sent; waiting for Secondary's [LinkResult].
+  linking,
+
+  /// Same account as Main.
+  linked,
+
+  /// Linking failed; see [MainController.secondaryAccountError].
+  failed,
+}
+
 /// Runs the Main phone: advertises the game, controls Secondary, records,
-/// and writes the manifest once both phones' segments are known.
+/// and writes the manifest when it stops. Secondary's segment reports over
+/// Bluetooth are for the screen only; Secondary uploads its own list.
 class MainController extends ChangeNotifier {
   MainController({
     required this.store,
     required DualCamera camera,
     required PeerLink Function(String gameId) linkFactory,
+    this.account,
     String? gameId,
     this.startDelay = const Duration(milliseconds: 1200),
     this.retryEvery = const Duration(seconds: 2),
@@ -36,6 +57,11 @@ class MainController extends ChangeNotifier {
   final String gameId;
   final LocalRecorder recorder;
   late final PeerLink link;
+
+  /// This phone's account. When it is linked, Secondary is linked to the
+  /// same account as it pairs, so its footage is accepted with Main's
+  /// manifest.
+  final AccountManager? account;
 
   /// How far ahead Start is scheduled, so Secondary gets it in time.
   final Duration startDelay;
@@ -50,6 +76,14 @@ class MainController extends ChangeNotifier {
   DateTime? secondaryStatusAt;
   ClockEstimate? clock;
   DeviceStatus? ownStatus;
+
+  SecondaryAccount secondaryAccount = SecondaryAccount.unknown;
+  String? secondaryAccountError;
+  DateTime? _linkOfferedAt;
+
+  /// Secondary that already failed to link in this game; reconnects don't
+  /// retry, the error stays on screen.
+  String? _linkFailedFor;
 
   /// Recordings made in this game, by id, so late Secondary reports land.
   final recordings = <String, LocalRecording>{};
@@ -127,6 +161,9 @@ class MainController extends ChangeNotifier {
           mainDeviceId: store.identity.deviceId,
           settings: store.settings,
         )));
+        unawaited(_checkSecondaryAccount(m));
+      case LinkResult():
+        _onLinkResult(m);
       case Ping():
         unawaited(link.send(
             Pong(id: m.id, t1: m.t1, t2: DateTime.now().millisecondsSinceEpoch)));
@@ -157,10 +194,64 @@ class MainController extends ChangeNotifier {
         secondaryStatusAt = DateTime.now();
       case ErrorMsg():
         error = 'Secondary: ${m.message}';
-      case Welcome() || Pong() || Prepare() || Start() || Stop():
+      case Welcome() || Pong() || Prepare() || Start() || Stop() || LinkOffer():
         break; // Main -> Secondary only.
     }
     _notify();
+  }
+
+  String? get _ownAccountId {
+    final a = account;
+    return a != null && a.linked && !a.revoked ? a.link!.accountId : null;
+  }
+
+  /// Links Secondary to this phone's account if it uploads elsewhere (or
+  /// nowhere): Main creates a link code and sends it over Bluetooth.
+  Future<void> _checkSecondaryAccount(Hello h) async {
+    final a = account;
+    if (a == null) return;
+    final mine = _ownAccountId;
+    if (mine == null) {
+      secondaryAccount = SecondaryAccount.mainNotLinked;
+    } else if (h.accountId == mine) {
+      secondaryAccount = SecondaryAccount.linked;
+      secondaryAccountError = null;
+    } else if (_linkFailedFor == h.device.deviceId) {
+      // Keep showing the failure.
+    } else if (secondaryAccount == SecondaryAccount.linking &&
+        DateTime.now().difference(_linkOfferedAt!) < const Duration(minutes: 1)) {
+      // An offer is already on its way.
+    } else {
+      secondaryAccount = SecondaryAccount.linking;
+      secondaryAccountError = null;
+      _linkOfferedAt = DateTime.now();
+      _notify();
+      try {
+        final req = await a.createLinkCode();
+        if (!await link.send(LinkOffer(apiUrl: req.apiUrl, code: req.code))) {
+          secondaryAccount = SecondaryAccount.unknown; // disconnected; the next Hello retries
+        }
+      } on LinkException catch (e) {
+        _linkFailed(h.device.deviceId, e.message);
+      }
+    }
+    _notify();
+  }
+
+  void _onLinkResult(LinkResult r) {
+    final mine = _ownAccountId;
+    if (r.ok && r.accountId != null && r.accountId == mine) {
+      secondaryAccount = SecondaryAccount.linked;
+      secondaryAccountError = null;
+    } else if (secondary != null) {
+      _linkFailed(secondary!.deviceId, r.error ?? 'Secondary linked to a different account.');
+    }
+  }
+
+  void _linkFailed(String deviceId, String message) {
+    _linkFailedFor = deviceId;
+    secondaryAccount = SecondaryAccount.failed;
+    secondaryAccountError = message;
   }
 
   /// Starts recording on both phones. With [alone] (or no Secondary
@@ -251,6 +342,9 @@ class MainController extends ChangeNotifier {
     _notify();
   }
 
+  /// Saves what Secondary reported, and writes the manifest once this phone
+  /// has stopped. The manifest does not wait for Secondary: Secondary
+  /// uploads its own segment list.
   Future<void> _maybeFinish(LocalRecording rec) async {
     await store.saveRecording(rec);
     if (manifestsWritten.contains(rec.recordingId)) return;

@@ -11,7 +11,8 @@ enum DeviceRole {
   ),
   secondary(
     'Secondary phone',
-    'Records the other half of the field. Follows the Main phone.',
+    'Records the other half of the field. Follows the Main phone, and '
+        'uploads on its own later.',
   );
 
   const DeviceRole(this.label, this.description);

@@ -6,9 +6,10 @@
 
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { PutEventsCommand } from '@aws-sdk/client-eventbridge';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import type { ExpectedDevice } from './manifest.js';
-import { config, ddb, events, keys, manifestKey, queryPrefix, recordingPrefix } from './store.js';
+import { expectedDevices, mergeManifest, type ExpectedDevice, type Manifest, type ManifestDevice } from './manifest.js';
+import { config, ddb, events, keys, manifestKey, queryPrefix, recordingPrefix, s3 } from './store.js';
 
 export type RecordingStatus = 'waiting_for_manifest' | 'uploading' | 'ready';
 
@@ -21,8 +22,19 @@ export interface RecordingItem {
   recordingId: string;
   createdAt: string;
   status: RecordingStatus;
-  expected?: ExpectedDevice[];
+  /** Main's manifest as uploaded (may lack the Secondary's segments). */
+  manifest?: Manifest;
   manifestSha256?: string;
+}
+
+export interface ReportItem {
+  sk: string;
+  gameId: string;
+  recordingId: string;
+  deviceId: string;
+  device: ManifestDevice;
+  sha256: string;
+  reportedAt: string;
 }
 
 export interface ObjectItem {
@@ -64,6 +76,11 @@ export async function getRecording(acct: string, gameId: string, recordingId: st
   return r.Item as RecordingItem | undefined;
 }
 
+export const listReports = (acct: string, gameId: string, recordingId?: string) =>
+  queryPrefix<ReportItem>(acct, recordingId ? `REPORT#${gameId}#${recordingId}#` : `REPORT#${gameId}#`);
+
+export const reportMap = (reports: ReportItem[]) => new Map(reports.map((r) => [r.deviceId, r.device]));
+
 export const listObjects = (acct: string, gameId: string, recordingId?: string) =>
   queryPrefix<ObjectItem>(acct, recordingId ? `OBJ#${gameId}#${recordingId}#` : `OBJ#${gameId}#`);
 
@@ -95,24 +112,48 @@ export async function recordObject(o: {
   return checkReady(o.accountId, o.gameId, o.recordingId);
 }
 
-/** Files the manifest lists that are not in the bucket yet. A file only
- *  counts if its size matches what the manifest says. */
+/** Files the manifest and reports list that are not in the bucket yet. A
+ *  file only counts if its size matches what was listed. */
 export function missingFiles(expected: ExpectedDevice[], objects: ObjectItem[]) {
   const have = new Map(objects.map((o) => [`${o.deviceId}/${o.fileName}`, o.bytes]));
   return expected.flatMap((d) =>
-    d.files
+    (d.files ?? [])
       .filter((f) => have.get(`${d.deviceId}/${f.fileName}`) !== f.bytes)
       .map((f) => ({ deviceId: d.deviceId, fileName: f.fileName })),
   );
 }
 
 /** Moves the recording to `ready` exactly once when everything has
- *  arrived, and publishes RecordingReady for processing. */
+ *  arrived (Main's manifest, every phone's segment list, every file),
+ *  writes the merged manifest for processing, and publishes RecordingReady.
+ *  `awaitingReports` lists phones whose segments are not known yet. */
 export async function checkReady(acct: string, gameId: string, recordingId: string) {
   const rec = await getRecording(acct, gameId, recordingId);
-  if (!rec?.expected) return { status: 'waiting_for_manifest' as RecordingStatus, missing: [] };
-  const missing = missingFiles(rec.expected, await listObjects(acct, gameId, recordingId));
-  if (missing.length > 0 || rec.status === 'ready') return { status: rec.status, missing };
+  if (!rec?.manifest) {
+    return { status: 'waiting_for_manifest' as RecordingStatus, missing: [], awaitingReports: [] };
+  }
+  const [reports, objects] = await Promise.all([
+    listReports(acct, gameId, recordingId),
+    listObjects(acct, gameId, recordingId),
+  ]);
+  const byDevice = reportMap(reports);
+  const expected = expectedDevices(rec.manifest, byDevice);
+  const missing = missingFiles(expected, objects);
+  const awaitingReports = expected.filter((d) => d.files === null).map((d) => d.deviceId);
+  if (missing.length > 0 || awaitingReports.length > 0 || rec.status === 'ready') {
+    return { status: rec.status, missing, awaitingReports };
+  }
+
+  // Before the status flips, so processing never sees a partial manifest.
+  // Racing invocations write the same content.
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: manifestKey(acct, gameId, recordingId),
+      Body: JSON.stringify(mergeManifest(rec.manifest, byDevice)),
+      ContentType: 'application/json',
+    }),
+  );
 
   try {
     await ddb.send(
@@ -127,7 +168,9 @@ export async function checkReady(acct: string, gameId: string, recordingId: stri
     );
   } catch (e) {
     // Another invocation got there first and published the event.
-    if (e instanceof ConditionalCheckFailedException) return { status: 'ready' as RecordingStatus, missing };
+    if (e instanceof ConditionalCheckFailedException) {
+      return { status: 'ready' as RecordingStatus, missing, awaitingReports };
+    }
     throw e;
   }
 
@@ -146,7 +189,7 @@ export async function checkReady(acct: string, gameId: string, recordingId: stri
     );
     throw e;
   }
-  return { status: 'ready' as RecordingStatus, missing };
+  return { status: 'ready' as RecordingStatus, missing, awaitingReports };
 }
 
 async function publishReady(acct: string, gameId: string, recordingId: string) {

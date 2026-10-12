@@ -9,12 +9,14 @@ import '../link/ble_link.dart';
 import '../link/peer_link.dart';
 import '../session/main_controller.dart';
 import '../storage/store.dart';
+import '../upload/account.dart';
 import 'common.dart';
 import 'dark_while_recording.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key, required this.store});
+  const MainScreen({super.key, required this.store, required this.account});
   final AppStore store;
+  final AccountManager account;
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
@@ -25,6 +27,7 @@ class _MainScreenState extends State<MainScreen> {
     store: widget.store,
     camera: _camera,
     linkFactory: (gameId) => MainBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
+    account: widget.account,
   );
 
   @override
@@ -147,6 +150,20 @@ class _MainScreenState extends State<MainScreen> {
     return Ticker(
       builder: (context) => PanelSection(title: 'Secondary phone', children: [
         InfoRow('Model', c.secondary!.model),
+        if (c.secondaryAccount != SecondaryAccount.unknown)
+          InfoRow(
+            'Account',
+            switch (c.secondaryAccount) {
+              SecondaryAccount.linked => 'same as this phone',
+              SecondaryAccount.linking => 'linking…',
+              SecondaryAccount.mainNotLinked => 'link this phone first, so Secondary can upload',
+              SecondaryAccount.failed => 'not linked: footage will not upload',
+              SecondaryAccount.unknown => '',
+            },
+            warn: c.secondaryAccount == SecondaryAccount.failed ||
+                c.secondaryAccount == SecondaryAccount.mainNotLinked,
+          ),
+        ErrorText(c.secondaryAccountError),
         if (c.secondaryStale) const InfoRow('Contact', 'no heartbeat', warn: true),
         if (s != null) ...[
           InfoRow('Battery', '${s.batteryPercent}%${s.charging ? ' (charging)' : ''}',
@@ -184,7 +201,7 @@ class _MainScreenState extends State<MainScreen> {
             'Manifest',
             c.manifestsWritten.contains(rec.recordingId)
                 ? (peer == null ? 'ready (this phone only)' : 'ready')
-                : 'waiting for Secondary',
+                : 'not written yet',
             warn: !c.manifestsWritten.contains(rec.recordingId),
           ),
       ]),

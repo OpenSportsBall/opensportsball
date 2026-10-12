@@ -9,6 +9,7 @@ import { config, manifestKey, segmentKey } from '../src/lib/store.js';
 import {
   callDevice,
   callWeb,
+  deviceEntry,
   fileName,
   linkPhone,
   manifest,
@@ -51,9 +52,6 @@ describe('recording upload', () => {
     expect(first.body.status).toBe('uploading');
     expect(first.body.missing).toHaveLength(4);
 
-    const stored = await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: manifestKey(acct, gameId, recordingId) }));
-    expect(JSON.parse(await stored.Body!.transformToString()).sessionId).toBe(recordingId);
-
     for (const [i, f] of mainFiles.entries()) expect((await uploadFile(main, gameId, recordingId, i, f)).status).toBe(200);
     expect((await uploadFile(secondary, gameId, recordingId, 0, secFiles[0]!)).status).toBe(200);
     expect(await readyEvents()).toEqual([]);
@@ -66,6 +64,8 @@ describe('recording upload', () => {
     ]);
 
     expect((await uploadFile(secondary, gameId, recordingId, 1, secFiles[1]!)).status).toBe(200);
+    const stored = await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: manifestKey(acct, gameId, recordingId) }));
+    expect(JSON.parse(await stored.Body!.transformToString())).toEqual(m);
     const events = await readyEvents();
     expect(events).toEqual([
       {
@@ -85,7 +85,7 @@ describe('recording upload', () => {
     expect(sha(Buffer.from(await obj.Body!.transformToByteArray()))).toBe(sha(mainFiles[0]!));
 
     // Re-sending the same manifest, re-uploading, and the S3 event all leave it ready without a second event.
-    expect((await putManifest(m)).body).toEqual({ status: 'ready', missing: [] });
+    expect((await putManifest(m)).body).toEqual({ status: 'ready', missing: [], awaitingReports: [] });
     expect((await uploadFile(main, gameId, recordingId, 0, mainFiles[0]!)).body).toEqual({ alreadyUploaded: true });
     await ingest(s3Event(segmentKey(acct, gameId, recordingId, main.deviceId, fileName(main, 0)), 250));
     expect(await readyEvents()).toEqual([]);
@@ -96,6 +96,70 @@ describe('recording upload', () => {
     // A different manifest can't replace a finished recording.
     const changed = manifest(gameId, recordingId, main, [mainFiles[0]!], secondary, secFiles);
     expect((await putManifest(changed)).status).toBe(409);
+  });
+
+  const putReport = (body: unknown, phone = secondary) =>
+    callDevice(phone.token, 'PUT /games/{gameId}/recordings/{recordingId}/report', { path: path(), body });
+
+  it('a Secondary that reports its own segments later, away from Main, completes the recording', async () => {
+    // Main never heard back from Secondary: its manifest has no Secondary segments.
+    const m = manifest(gameId, recordingId, main, mainFiles, secondary);
+    expect((await putManifest(m)).body).toEqual({ status: 'uploading', missing: expect.any(Array), awaitingReports: [secondary.deviceId] });
+    for (const [i, f] of mainFiles.entries()) await uploadFile(main, gameId, recordingId, i, f);
+    for (const [i, f] of secFiles.entries()) await uploadFile(secondary, gameId, recordingId, i, f);
+
+    const game = await callWeb(acct, 'GET /games/{gameId}', { path: { gameId } });
+    expect(game.body.recordings[0].status).toBe('uploading');
+    expect(game.body.recordings[0].devices[1]).toMatchObject({ role: 'secondary', expectedSegments: null, uploadedSegments: 2 });
+    expect(await readyEvents()).toEqual([]);
+
+    const r = await putReport(deviceEntry(secondary, 'secondary', secFiles));
+    expect(r.body).toEqual({ status: 'ready', missing: [], awaitingReports: [] });
+    expect(await readyEvents()).toHaveLength(1);
+
+    // Processing gets one manifest with both phones' segments.
+    const stored = await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: manifestKey(acct, gameId, recordingId) }));
+    const merged = JSON.parse(await stored.Body!.transformToString());
+    expect(merged.devices[1].segments).toEqual(deviceEntry(secondary, 'secondary', secFiles).segments);
+    expect(merged.devices[0]).toEqual(m.devices[0]);
+
+    // Same report again is fine; a different one after ready is not.
+    expect((await putReport(deviceEntry(secondary, 'secondary', secFiles))).status).toBe(200);
+    expect((await putReport(deviceEntry(secondary, 'secondary', [secFiles[0]!]))).status).toBe(409);
+  });
+
+  it('a report that arrives before the manifest counts once it arrives', async () => {
+    for (const [i, f] of secFiles.entries()) await uploadFile(secondary, gameId, recordingId, i, f);
+    expect((await putReport(deviceEntry(secondary, 'secondary', secFiles))).body.status).toBe('waiting_for_manifest');
+    for (const [i, f] of mainFiles.entries()) await uploadFile(main, gameId, recordingId, i, f);
+    expect((await putManifest(manifest(gameId, recordingId, main, mainFiles, secondary))).body.status).toBe('ready');
+  });
+
+  it('a phone\'s own report wins over what Main listed for it', async () => {
+    await putManifest(manifest(gameId, recordingId, main, mainFiles, secondary, [secFiles[0]!]));
+    await putReport(deviceEntry(secondary, 'secondary', secFiles));
+    for (const [i, f] of mainFiles.entries()) await uploadFile(main, gameId, recordingId, i, f);
+    await uploadFile(secondary, gameId, recordingId, 0, secFiles[0]!);
+    expect(await readyEvents()).toEqual([]); // the report lists a second file
+    await uploadFile(secondary, gameId, recordingId, 1, secFiles[1]!);
+    expect(await readyEvents()).toHaveLength(1);
+  });
+
+  describe('report rules', () => {
+    it('a phone can only report its own segments', async () => {
+      expect((await putReport(deviceEntry(secondary, 'secondary', secFiles), main)).status).toBe(403);
+    });
+    it('a report must list segments named for its device', async () => {
+      expect((await putReport(deviceEntry(secondary, 'secondary'))).status).toBe(400);
+      const bad: any = deviceEntry(secondary, 'secondary', secFiles);
+      bad.segments[0].objectKey = `${secondary.deviceId}/${fileName(main, 0)}`;
+      expect((await putReport(bad)).status).toBe(400);
+    });
+    it('Main must list its own segments in the manifest', async () => {
+      const m: any = manifest(gameId, recordingId, main, mainFiles);
+      delete m.devices[0].segments;
+      expect((await putManifest(m)).status).toBe(400);
+    });
   });
 
   it('resumes an interrupted upload from the parts S3 already has', async () => {
@@ -137,7 +201,7 @@ describe('recording upload', () => {
       { deviceId: main.deviceId, role: null, model: null, expectedSegments: null, uploadedSegments: 2, expectedBytes: null, uploadedBytes: 350 },
     ]);
 
-    expect((await putManifest(solo)).body).toEqual({ status: 'ready', missing: [] });
+    expect((await putManifest(solo)).body).toEqual({ status: 'ready', missing: [], awaitingReports: [] });
     expect(await readyEvents()).toHaveLength(1);
   });
 
@@ -171,7 +235,7 @@ describe('recording upload', () => {
 
     it('schema violations come back with details', async () => {
       const m: any = manifest(gameId, recordingId, main, mainFiles, secondary, secFiles);
-      delete m.clockSync;
+      delete m.devices[0].model;
       m.devices[0].video.codec = 'vp9';
       const r = await putManifest(m);
       expect(r.status).toBe(400);

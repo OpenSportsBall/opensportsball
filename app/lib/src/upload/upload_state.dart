@@ -51,8 +51,9 @@ class UploadState {
 
   String? accountId;
 
-  /// SHA-256 of the manifest.json content the server accepted; null if not
-  /// uploaded. A changed manifest (different hash) is uploaded again.
+  /// SHA-256 of the upload document (Main's manifest.json, or report.json
+  /// on other phones) the server accepted; null if not uploaded. A changed
+  /// document (different hash) is uploaded again.
   String? manifestSha256;
   String? manifestStatus;
   final Map<String, SegmentUpload> segments;

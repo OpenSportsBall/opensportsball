@@ -67,7 +67,8 @@ class RecordingUpload {
   final StoredRecording stored;
   UploadState state;
 
-  /// Hash of the manifest.json on disk (Main only), null if none yet.
+  /// Hash of this phone's upload document on disk (Main's manifest.json or
+  /// another phone's report.json), null if none yet.
   final String? manifestSha256;
 
   String? currentFile;
@@ -79,7 +80,7 @@ class RecordingUpload {
   bool get isMain => recording.role == DeviceRole.main;
   bool get hasManifest => manifestSha256 != null;
   bool get manifestUploaded => hasManifest && state.manifestSha256 == manifestSha256;
-  bool get manifestPending => isMain && !manifestUploaded;
+  bool get manifestPending => !manifestUploaded;
 
   int get filesTotal => recording.segments.length;
   int get filesDone => recording.segments.where((s) => state.segmentDone(s.fileName)).length;
@@ -394,13 +395,13 @@ class UploadService extends ChangeNotifier {
         state = UploadState(); // re-linked to another account: start over
       }
       String? manifestSha;
-      if (s.recording.role == DeviceRole.main && s.hasManifest) {
-        try {
+      try {
+        if (await store.ensureUploadDocument(s)) {
           manifestSha =
-              sha256.convert(await File('${s.dir.path}/manifest.json').readAsBytes()).toString();
-        } on FileSystemException {
-          manifestSha = null;
+              sha256.convert(await File('${s.dir.path}/${s.documentName}').readAsBytes()).toString();
         }
+      } on Object catch (e) {
+        debugPrint('upload document for ${s.dir.path}: $e');
       }
       final u = RecordingUpload(stored: s, state: state, manifestSha256: manifestSha);
       u.error = previous[s.dir.path]?.error ?? state.lastError;
@@ -424,7 +425,7 @@ class UploadService extends ChangeNotifier {
   Future<void> _uploadRecording(RecordingUpload u, AccountLink link) async {
     final rec = u.recording;
     final segments = [...rec.segments]..sort((a, b) => a.index.compareTo(b.index));
-    final manifestToSend = u.isMain && u.hasManifest && !u.manifestUploaded;
+    final manifestToSend = u.hasManifest && !u.manifestUploaded;
     if (!manifestToSend && segments.every((s) => u.state.segmentDone(s.fileName))) return;
     _setPhase(UploadPhase.uploading);
     String? manifestError;
@@ -433,7 +434,7 @@ class UploadService extends ChangeNotifier {
       try {
         await _uploadManifest(u, link);
       } on _Permanent catch (e) {
-        manifestError = 'Manifest: ${e.message}';
+        manifestError = '${u.isMain ? 'Manifest' : 'Segment list'}: ${e.message}';
       }
     }
     for (final seg in segments) {
@@ -448,15 +449,16 @@ class UploadService extends ChangeNotifier {
     }
   }
 
+  /// Main's manifest, or another phone's report of its own segments.
   Future<void> _uploadManifest(RecordingUpload u, AccountLink link) async {
     final rec = u.recording;
-    final bytes = await File('${u.stored.dir.path}/manifest.json').readAsBytes();
+    final bytes = await File('${u.stored.dir.path}/${u.stored.documentName}').readAsBytes();
     final sha = sha256.convert(bytes).toString();
     final res = await _api(
       link,
       'PUT',
       '/games/${Uri.encodeComponent(rec.gameId)}/recordings/'
-          '${Uri.encodeComponent(rec.recordingId)}/manifest',
+          '${Uri.encodeComponent(rec.recordingId)}/${u.isMain ? 'manifest' : 'report'}',
       utf8.decode(bytes),
     );
     u.state.manifestSha256 = sha;

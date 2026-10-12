@@ -181,7 +181,7 @@ void main() {
       expect(h.backend.log, isEmpty);
     });
 
-    test('uploads oldest recordings first; Secondary sends no manifest', () async {
+    test('uploads oldest recordings first; Secondary sends its own segment list', () async {
       final h = await Harness.create();
       await writeRecording(h.store,
           recordingId: 'new', sizes: [10], role: DeviceRole.secondary, createdAtMs: 5000);
@@ -191,24 +191,25 @@ void main() {
       final s = h.service();
       expect(await s.runPass(), PassResult.done);
       expect(h.backend.manifests, isEmpty);
+      expect(h.backend.reports.keys.toSet(), {'old', 'new'});
+      final report = h.backend.reports['old']!;
+      expect(report['role'], 'secondary');
+      expect((report['segments'] as List).single['objectKey'],
+          '${h.store.identity.deviceId}/${h.store.identity.deviceId}_000.mp4');
       expect(h.backend.files.length, 2);
       final starts = h.backend.log.where((l) => l == 'POST /uploads').length;
       expect(starts, 2, reason: 'the unfinished recording is skipped');
       expect(s.recordings.map((r) => r.recording.recordingId), ['live', 'old', 'new']);
     });
 
-    test('Main without a manifest yet uploads segments and waits for it', () async {
+    test('Main writes a missing manifest itself (e.g. a recording recovered after a crash)', () async {
       final h = await Harness.create();
-      final rec = await writeRecording(h.store, recordingId: 'rec-1', sizes: [100], manifest: false);
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [100], manifest: false);
       final s = h.service();
       expect(await s.runPass(), PassResult.done);
       expect(h.backend.files.length, 1);
-      expect(s.recordings.single.complete, isFalse);
-      expect(s.recordings.single.manifestPending, isTrue);
-
-      await h.store.saveManifest(rec.recording, {'schemaVersion': 1, 'gameId': 'game-1', 'sessionId': 'rec-1'});
-      expect(await s.runPass(), PassResult.done);
-      expect(h.backend.manifests.keys, ['rec-1']);
+      final m = h.backend.manifests['rec-1']!;
+      expect((m['devices'] as List).single['role'], 'main');
       expect(s.recordings.single.complete, isTrue);
     });
 

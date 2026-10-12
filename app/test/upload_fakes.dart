@@ -49,6 +49,9 @@ class FakeBackend {
   final log = <String>[];
   final manifests = <String, Map<String, Object?>>{};
 
+  /// Each phone's own segment list, by recordingId.
+  final reports = <String, Map<String, Object?>>{};
+
   /// Final file contents, by `<recordingId>/<fileName>`, once completed.
   final files = <String, Uint8List>{};
   final _uploads = <String, _ServerUpload>{};
@@ -89,6 +92,11 @@ class FakeBackend {
       }
       manifests[manifest[2]!] = body;
       return _json(200, {'status': 'uploading', 'missing': []});
+    }
+    final report = RegExp(r'^/games/([^/]+)/recordings/([^/]+)/report$').firstMatch(path);
+    if (req.method == 'PUT' && report != null) {
+      reports[report[2]!] = (jsonDecode(req.body) as Map).cast<String, Object?>();
+      return _json(200, {'status': 'uploading', 'missing': [], 'awaitingReports': []});
     }
     if (req.method == 'POST' && path == '/uploads') {
       final b = (jsonDecode(req.body) as Map).cast<String, Object?>();

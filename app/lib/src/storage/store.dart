@@ -9,7 +9,8 @@
 /// <gameId>/<recordingId>/
 ///   <deviceId>_000.mp4, <deviceId>_001.mp4, ...
 ///   recording.json     this phone's record (LocalRecording)
-///   manifest.json      Main only, once both phones' segments are known
+///   manifest.json      Main only, once it stops: both phones, Main's segments
+///   report.json        Secondary only, once it stops: its own segments
 ///   power.csv          battery / thermal / storage once a minute while
 ///                      recording (PowerLog), for field tests
 ///   upload.json        upload progress (UploadState); never written by
@@ -33,6 +34,7 @@ import 'package:uuid/uuid.dart';
 
 import '../model.dart';
 import '../role.dart';
+import 'manifest.dart';
 
 class AppStore {
   AppStore._(this._supportDir, this.recordingsRoot, this.identity, this._settings,
@@ -113,6 +115,19 @@ class AppStore {
     await _writeJson(File('${dir.path}/manifest.json'), manifest);
   }
 
+  /// Writes this phone's upload document (Main's manifest or another
+  /// phone's report) if the recording has stopped and it is missing.
+  /// Returns whether it exists now.
+  Future<bool> ensureUploadDocument(StoredRecording s) async {
+    final file = File('${s.dir.path}/${s.documentName}');
+    if (await file.exists()) return true;
+    final r = s.recording;
+    final doc = r.role == DeviceRole.main ? buildManifest(r) : buildReport(r);
+    if (doc == null) return false;
+    await _writeJson(file, doc);
+    return true;
+  }
+
   /// All recordings on this phone, newest first.
   Future<List<StoredRecording>> listRecordings() async {
     final out = <StoredRecording>[];
@@ -123,10 +138,11 @@ class AppStore {
         if (rec is! Directory) continue;
         final json = await _readJson(File('${rec.path}/recording.json'));
         if (json == null) continue;
+        final recording = LocalRecording.fromJson(json);
         out.add(StoredRecording(
           dir: rec,
-          recording: LocalRecording.fromJson(json),
-          hasManifest: await File('${rec.path}/manifest.json').exists(),
+          recording: recording,
+          hasDocument: await File('${rec.path}/${uploadDocumentName(recording.role)}').exists(),
         ));
       }
     }
@@ -238,16 +254,23 @@ Future<void> _writeJson(File f, Map<String, Object?> json) {
   });
 }
 
+/// `manifest.json` on Main, `report.json` on other phones.
+String uploadDocumentName(DeviceRole role) => role == DeviceRole.main ? 'manifest.json' : 'report.json';
+
 class StoredRecording {
   const StoredRecording({
     required this.dir,
     required this.recording,
-    required this.hasManifest,
+    required this.hasDocument,
   });
 
   final Directory dir;
   final LocalRecording recording;
-  final bool hasManifest;
+
+  /// Whether [documentName] has been written.
+  final bool hasDocument;
+
+  String get documentName => uploadDocumentName(recording.role);
 
   List<File> get segmentFiles => [
         for (final s in recording.segments) File('${dir.path}/${s.fileName}'),

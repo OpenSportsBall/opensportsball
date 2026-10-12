@@ -12,6 +12,7 @@
  * | ACCOUNT#<acct>      | DEVICE#<deviceId>                       | linked phone            |
  * | ACCOUNT#<acct>      | GAME#<gameId>                           | game                    |
  * | ACCOUNT#<acct>      | REC#<gameId>#<recordingId>              | recording + manifest    |
+ * | ACCOUNT#<acct>      | REPORT#<gameId>#<recordingId>#<dev>     | a phone's own segments  |
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
  * | ACCOUNT#<acct>      | UPLOAD#<gameId>#<recordingId>#<file>    | multipart in progress   |
  */
@@ -61,6 +62,10 @@ export const keys = {
   recording: (acct: string, gameId: string, recId: string) => ({
     pk: `ACCOUNT#${acct}`,
     sk: `REC#${gameId}#${recId}`,
+  }),
+  report: (acct: string, gameId: string, recId: string, deviceId: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `REPORT#${gameId}#${recId}#${deviceId}`,
   }),
   object: (acct: string, gameId: string, recId: string, deviceId: string, fileName: string) => ({
     pk: `ACCOUNT#${acct}`,

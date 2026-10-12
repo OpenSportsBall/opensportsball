@@ -149,16 +149,10 @@ export interface Phone {
   model: string;
 }
 
-/** A manifest for [main] (+ optional [secondary]) with the given file sizes. */
-export function manifest(
-  gameId: string,
-  recordingId: string,
-  main: Phone,
-  mainFiles: Buffer[],
-  secondary?: Phone,
-  secondaryFiles: Buffer[] = [],
-) {
-  const dev = (p: Phone, role: string, files: Buffer[]) => ({
+/** [p]'s device entry; without [files] it has no segments (Main's view of
+ *  a Secondary it did not hear back from). */
+export function deviceEntry(p: Phone, role: 'main' | 'secondary', files?: Buffer[]) {
+  return {
     deviceId: p.deviceId,
     role,
     position: 'unknown',
@@ -166,21 +160,37 @@ export function manifest(
     model: p.model,
     appVersion: '0.1.0',
     video: { width: 3840, height: 2160, nominalFps: 30, codec: 'hevc', bitrateBps: 35000000, lens: 'ultrawide', stabilization: false },
-    segments: files.map((f, i) => ({
-      index: i,
-      objectKey: `${p.deviceId}/${fileName(p, i)}`,
-      bytes: f.length,
-      sha256: sha(f),
-      startedAtDeviceMs: 1_760_000_000_000 + i * 300_000,
-      durationMs: 300_000,
-    })),
-  });
+    ...(files
+      ? {
+          segments: files.map((f, i) => ({
+            index: i,
+            objectKey: `${p.deviceId}/${fileName(p, i)}`,
+            bytes: f.length,
+            sha256: sha(f),
+            startedAtDeviceMs: 1_760_000_000_000 + i * 300_000,
+            durationMs: 300_000,
+          })),
+        }
+      : {}),
+  };
+}
+
+/** A manifest for [main] (+ optional [secondary], whose segments are left
+ *  out unless [secondaryFiles] is given). */
+export function manifest(
+  gameId: string,
+  recordingId: string,
+  main: Phone,
+  mainFiles: Buffer[],
+  secondary?: Phone,
+  secondaryFiles?: Buffer[],
+) {
   return {
     schemaVersion: 1,
     gameId,
     sessionId: recordingId,
     createdAt: new Date().toISOString(),
-    devices: [dev(main, 'main', mainFiles), ...(secondary ? [dev(secondary, 'secondary', secondaryFiles)] : [])],
+    devices: [deviceEntry(main, 'main', mainFiles), ...(secondary ? [deviceEntry(secondary, 'secondary', secondaryFiles)] : [])],
     ...(secondary ? { clockSync: { secondaryOffsetMs: 12.5, medianRttMs: 40, samples: 20 } } : {}),
   };
 }

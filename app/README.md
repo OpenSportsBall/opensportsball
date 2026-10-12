@@ -17,17 +17,24 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
 - Recording through `plugins/dual_camera` in gap-free segments, white
   balance and focus locked, stabilization off, ultra-wide lens.
 - Secondary keeps recording if the link drops and re-sends its segment list
-  when it reconnects. Main writes `manifest.json` once both phones' segments
-  are known (`shared/schemas/manifest.schema.json`).
+  when it reconnects (for Main's screen). Uploads never need the phones
+  together: Main writes `manifest.json` when it stops, naming Secondary but
+  listing only its own segments, and Secondary writes `report.json` with
+  its own segments (`shared/schemas/manifest.schema.json`, `docs/API.md`).
 - Recordings screen with sharing, for getting test footage off the phones.
 - Account linking (`lib/src/upload/account.dart`, `ui/account_screen.dart`):
   scan the website's `opensportsball://link?...` QR code, or type the
   8-character code once the phone knows the API from an earlier link. The
   device token is kept with `flutter_secure_storage` (Keychain / Android
-  Keystore). "Unlink this phone" only forgets it locally.
+  Keystore). "Unlink this phone" only forgets it locally. Only Main needs
+  linking by hand: when a Secondary pairs and is not on Main's account,
+  Main gets a code (`POST /devices/link-codes`) and sends it over Bluetooth
+  (`LinkOffer` / `LinkResult`). A Secondary owned by another account is not
+  moved; Main shows why.
 - Upload queue (`lib/src/upload/upload_service.dart`, `ui/uploads_screen.dart`),
   following `docs/API.md`: oldest stopped recording first, Main uploads
-  `manifest.json`, then each of this phone's segments as an S3 multipart
+  `manifest.json` (Secondary: `report.json`), writing it first if it is
+  missing, then each of this phone's segments as an S3 multipart
   upload (part size from the server, 64 MiB; parts streamed from disk).
   Progress is saved per recording in `upload.json` next to `recording.json`
   (format in `upload_state.dart`), so an upload resumes after a restart
@@ -47,8 +54,8 @@ Not built yet:
   `upload.json` is designed so a background worker can pick up the same
   queue.
 - Recordings the app was killed in the middle of are recovered at the next
-  launch (`AppStore.recoverInterruptedRecordings`) and their segments
-  upload, but Main has no manifest for them, so they are not processed.
+  launch (`AppStore.recoverInterruptedRecordings`); the upload queue writes
+  their manifest or report, so they upload and process like any other.
 
 ## Layout
 

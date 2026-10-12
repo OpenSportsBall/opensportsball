@@ -53,6 +53,11 @@ opensportsball://link?v=1&api=<url-encoded apiUrl>&code=<code>
 people as `ABCD-EFGH` (phones send it without the dash, uppercase). Valid
 for 10 minutes, single use.
 
+The Secondary phone does not need its own code from the website: when it
+pairs, a linked Main phone creates one with `POST /devices/link-codes` and
+sends it over Bluetooth, and the Secondary links with it (see
+`app/lib/src/protocol/messages.dart`, `LinkOffer`).
+
 ## Routes for people (Cognito token)
 
 ### `GET /me`
@@ -99,7 +104,8 @@ newest first. `status` is the least-finished status of its recordings.
 
 Before the manifest arrives, `devices` lists only phones that have
 uploaded something, with `role`, `model`, `expectedSegments` and
-`expectedBytes` null.
+`expectedBytes` null. After it arrives, a phone that has not reported its
+segments yet has `expectedSegments` and `expectedBytes` null.
 
 ## Routes for phones
 
@@ -111,10 +117,22 @@ Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "mo
   it there first).
 - Re-linking a deviceId to the same account replaces its old token.
 
-### `PUT /games/{gameId}/recordings/{recordingId}/manifest`
-Body: the manifest (`shared/schemas/manifest.schema.json`).
-→ `200 {"status": "uploading | ready", "missing": [{"deviceId", "fileName"}]}`
+### `POST /devices/link-codes`
+Same as `POST /link-codes`, for the caller's account. A linked Main phone
+uses it to link its Secondary.
 
+The phones never need to be near each other to finish an upload. Main's
+manifest lists both phones but only Main's segments; the Secondary sends
+its own segment list (`PUT .../report`) from wherever it reaches Wi-Fi,
+before or after the manifest arrives.
+
+### `PUT /games/{gameId}/recordings/{recordingId}/manifest`
+Body: the manifest (`shared/schemas/manifest.schema.json`). Main must list
+its own segments; it may leave out other devices' `segments`.
+→ `200 {"status": "uploading | ready", "missing": [{"deviceId", "fileName"}], "awaitingReports": ["<deviceId>"]}`
+
+- `awaitingReports`: devices whose segments are not known yet (neither
+  the manifest nor a report lists them).
 - Only the manifest's `main` device may upload it (`403 forbidden`).
 - Every device in it must be linked to the caller's account
   (`403 forbidden`, message names the device).
@@ -122,6 +140,16 @@ Body: the manifest (`shared/schemas/manifest.schema.json`).
 - Schema violations: `400 invalid_manifest` with `"details": [...]`.
 - Re-uploading the same manifest is fine; a different one for a recording
   that is already `ready` is `409 conflict`.
+
+### `PUT /games/{gameId}/recordings/{recordingId}/report`
+Body: the caller's own device entry (the schema's `$defs/device`), with
+its `segments`. → same response as the manifest.
+
+- `deviceId` must be the caller (`403 forbidden`); segments must be named
+  for it (`400 invalid_manifest`).
+- A phone's report wins over whatever Main's manifest lists for it.
+- Re-sending the same report is fine; a different one once the recording
+  is `ready` is `409 conflict`.
 
 ### `POST /uploads`
 Starts or resumes uploading one segment file.
@@ -166,9 +194,11 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
 - Bucket keys: `accounts/<accountId>/games/<gameId>/recordings/<recordingId>/`
   - `manifest.json`
   - `<deviceId>/<fileName>`, the manifest's `objectKey` relative path.
-- When the manifest is present and every segment it lists is in the
-  bucket, the recording becomes `ready` (once) and an EventBridge event is
-  published on the default bus:
+- When the manifest is present, every device's segments are known, and
+  every segment is in the bucket, the server writes the merged
+  `manifest.json` (every device with its segments) and the recording
+  becomes `ready` (once). Processing never sees a partial manifest. An
+  EventBridge event is published on the default bus:
   - `source`: `opensportsball`
   - `detail-type`: `RecordingReady`
   - `detail`: `{"accountId", "gameId", "recordingId", "bucket", "prefix", "manifestKey"}`

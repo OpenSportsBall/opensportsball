@@ -2,12 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opensportsball.dev/schemas/manifest.schema.json",
   "title": "Recording manifest",
-  "description": "Written by the Main phone and uploaded after recording stops. Lists every segment the phones are expected to upload; processing starts only once every listed segment is in S3. A recording made on the Main phone alone has one device and no clockSync.",
+  "description": "Written by the Main phone and uploaded after recording stops. Lists both phones but may leave out the Secondary's segments: each phone also reports its own device entry (this schema's device definition) from wherever it reaches the internet, so the phones need not be together. The server merges the two and writes the full manifest, with every device's segments, to S3 before processing starts. A recording made on the Main phone alone has one device and no clockSync.",
   "type": "object",
   "required": ["schemaVersion", "gameId", "sessionId", "createdAt", "devices"],
   "additionalProperties": false,
-  "if": { "properties": { "devices": { "minItems": 2 } } },
-  "then": { "required": ["clockSync"] },
   "properties": {
     "schemaVersion": { "const": 1 },
     "gameId": { "type": "string", "description": "Game this recording belongs to. A game can have several sessions (e.g. one per half)." },
@@ -21,7 +19,7 @@
     },
     "clockSync": {
       "type": "object",
-      "description": "BLE ping/pong estimate of the Secondary clock relative to the Main clock. Only a starting point; processing refines the offset by cross-correlating audio.",
+      "description": "BLE ping/pong estimate of the Secondary clock relative to the Main clock. Only a starting point; processing refines the offset by cross-correlating audio. Missing if no estimate was made before recording.",
       "required": ["secondaryOffsetMs", "medianRttMs", "samples"],
       "additionalProperties": false,
       "properties": {
@@ -42,7 +40,7 @@
   "$defs": {
     "device": {
       "type": "object",
-      "required": ["deviceId", "role", "platform", "model", "video", "segments"],
+      "required": ["deviceId", "role", "platform", "model", "video"],
       "additionalProperties": false,
       "properties": {
         "deviceId": { "type": "string" },
@@ -67,6 +65,7 @@
           }
         },
         "segments": {
+          "description": "Required for Main in its manifest and in every device report; Main may leave it out for the Secondary. Always present in the merged manifest processing reads.",
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/segment" }

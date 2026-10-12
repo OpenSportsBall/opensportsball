@@ -16,7 +16,7 @@ Footage and logs from these tests decide several items below.
       interruption (incoming call) tests.
 - [ ] 90-minute 4K run on the mount, outdoors if possible: temperature,
       battery, storage.
-- [ ] First real website sign-up (Cognito), link both phones, upload a
+- [ ] First real website sign-up (Cognito), link Main (it links Secondary), upload a
       recording on Wi-Fi, game reaches Ready.
 
 ## Bugs and small fixes
@@ -25,6 +25,12 @@ Footage and logs from these tests decide several items below.
       Pixel 11 once its test recordings are no longer needed (the rebrand
       changed the application id, so both are installed).
 
+- [ ] BLE sends are one serialized chain with no timeout
+      (`app/lib/src/link/ble_link.dart`, `send`): one write that never
+      completes blocks everything after it. Seen 2026-10-11: Main heard
+      nothing from Secondary after Prepared (Start/Stop still arrived).
+      Uploads no longer depend on it, but Main's screen does. Add a
+      per-write timeout and reconnect on it.
 - [ ] Android: "MediaRecorder.stop failed" logged when Stop lands just
       after a file-size warning (the pre-armed next file is empty). Recording
       is intact; handle it quietly and delete any empty next file.
@@ -43,9 +49,6 @@ Footage and logs from these tests decide several items below.
       the app is open.
 - [ ] Register the `opensportsball://link` deep link so the phone's own
       camera app can open the link QR code.
-- [ ] Recordings recovered after a crash upload their segments but have no
-      manifest, so they are never processed. Let Main write a manifest for
-      them (at least a one-device one).
 - [ ] **Android gap-free recorder: only if the switch gaps prove visible
       and disruptive** in real game footage or the rendered output. Decided
       2026-10-10 to keep MediaRecorder for now.
