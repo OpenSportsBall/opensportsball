@@ -45,9 +45,11 @@ Footage and logs from these tests decide several items below.
 
 ## App features
 
-- [ ] Background upload: WorkManager with a foreground-service notification
-      (Android), background `URLSession` (iOS). Today uploads run only while
-      the app is open.
+- [ ] Test background upload on an iPhone (iOS 26; see `app/README.md`):
+      record, stop, leave the app / lock the phone, check the system
+      progress item and that the upload finishes. Android passed on the
+      Pixel 11 (2026-10-11: swiped away, phone locked). If iOS ends the
+      task too often, move part PUTs to a background `URLSession`.
 - [ ] Secondary's owner sees the games they contributed to. With
       recording grants, a Secondary on another account uploads into Main's
       account, so its owner has no record of the footage. Show a

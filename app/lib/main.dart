@@ -41,7 +41,10 @@ class _OpenSportsBallAppState extends State<OpenSportsBallApp> {
   late final Future<AppServices> _services = widget.store.then(widget.createServices);
   AppServices? _ready;
   late final AppLifecycleListener _lifecycle =
-      AppLifecycleListener(onResume: () => _ready?.uploads.kick());
+      AppLifecycleListener(onResume: () {
+    _ready?.uploads.kick();
+    _ready?.background?.resumed();
+  });
 
   @override
   void initState() {

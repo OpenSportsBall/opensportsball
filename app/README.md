@@ -53,15 +53,22 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   this phone is recording, wait for Wi-Fi by default ("Upload on Wi-Fi
   only", with a one-time "Upload now using mobile data"), and keep the
   screen awake while sending.
+- Background upload (`lib/src/upload/background.dart`): the queue keeps
+  running in Dart with the app off screen while it is uploading, retrying
+  or waiting for the network. Android: a `dataSync` foreground service
+  (`UploadKeepAliveService`) with a progress notification, a wake lock
+  and Wi-Fi lock while bytes move, and one Flutter engine for the process
+  (`MainActivity`) so swiping the app away doesn't stop it; Android 15
+  caps this at 6 hours a day. iOS 26+: a `BGContinuedProcessingTask`
+  (`ios/Runner/BackgroundUpload.swift`) shown as a system progress item,
+  which iOS may end if the upload stalls (e.g. a long wait for Wi-Fi);
+  it is resubmitted when the app is opened. Older iOS gets only the ~30 s
+  after leaving the app. Both must start with the app on screen, which is
+  when a recording stops. If the OS kills the process, uploads resume the
+  next time the app is opened.
 
 Not built yet:
 
-- **Background upload.** The queue runs only while the app is open (in the
-  foreground). Uploading with the app closed needs WorkManager (Android,
-  with a foreground-service notification for long transfers) and a
-  background `URLSession` (iOS), handing parts to the OS. The state in
-  `upload.json` is designed so a background worker can pick up the same
-  queue.
 - Recordings the app was killed in the middle of are recovered at the next
   launch (`AppStore.recoverInterruptedRecordings`); the upload queue writes
   their manifest or report, so they upload and process like any other.
