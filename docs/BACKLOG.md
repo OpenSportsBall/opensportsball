@@ -85,8 +85,29 @@ Footage and logs from these tests decide several items below.
 
 ## Phase 0: feasibility on real footage
 
-- [ ] Record a real game with both phones on the mount.
-- [ ] Prototype audio sync, stitching and players-only follow in a notebook.
+- [ ] Record a full real game with both phones on the mount, mounted
+      higher. First field clip (2026-10-12, recording `7fb5bc20`, 5 min,
+      two segments per phone) was shot near ground level: both goals fit
+      in the panorama, but players are small and the near touchline is
+      ~1-2 m away.
+- [ ] `processing/spikes/phase0.py` findings on that clip, to carry into
+      the pipeline:
+      - Audio sync locks cleanly outdoors (sharpness 8-29 per 4 s window).
+      - Offset drifts about -6 ppm (~30 ms per 90 min, one frame), and
+        segment 0 has a 5.5 ms step at ~115 s (an audio discontinuity on
+        one phone). Sync piecewise (per window, then fit), not one offset
+        per segment.
+      - The offset jumps 128 ms between segment 0 and 1: the phones lose
+        different amounts at the switch, and `startedAtDeviceMs` doesn't
+        show it (BLE+metadata guess was 5 ms off for segment 0, 31 ms for
+        segment 1). Re-sync every segment by audio.
+      - Stitch: one cylindrical homography from 12 frame pairs (285
+        inliers) aligns the far field; near touchline and players at the
+        seam ghost with the wide feather blend. Next: fit the homography
+        on field-plane matches and blend along a narrow seam.
+- [ ] Players-only follow on the stitched panorama.
+- [ ] Clap test on the mount: confirm audio sync also aligns video (each
+      phone's audio-to-video offset in the file is assumed equal).
 
 ## Phase 3: processing pipeline
 
