@@ -289,6 +289,7 @@ class LocalRecording {
     required this.device,
     required this.createdAtMs,
     this.video,
+    this.orientation,
     this.startedAtDeviceMs,
     this.stoppedAtMs,
     this.endReason,
@@ -303,6 +304,9 @@ class LocalRecording {
         device: DeviceIdentity.fromJson((j['device'] as Map).cast()),
         createdAtMs: j['createdAtMs'] as int,
         video: j['video'] == null ? null : VideoInfo.fromJson((j['video'] as Map).cast()),
+        orientation: j['orientation'] == null
+            ? null
+            : MountOrientation.fromJson((j['orientation'] as Map).cast()),
         startedAtDeviceMs: j['startedAtDeviceMs'] as int?,
         stoppedAtMs: j['stoppedAtMs'] as int?,
         endReason: j['endReason'] as String?,
@@ -318,6 +322,9 @@ class LocalRecording {
   final DeviceIdentity device;
   final int createdAtMs;
   VideoInfo? video;
+
+  /// Measured when recording starts; null if the phone couldn't tell.
+  MountOrientation? orientation;
   int? startedAtDeviceMs;
   int? stoppedAtMs;
 
@@ -335,6 +342,7 @@ class LocalRecording {
         'device': device.toJson(),
         'createdAtMs': createdAtMs,
         'video': video?.toJson(),
+        'orientation': orientation?.toJson(),
         'startedAtDeviceMs': startedAtDeviceMs,
         'stoppedAtMs': stoppedAtMs,
         'endReason': endReason,

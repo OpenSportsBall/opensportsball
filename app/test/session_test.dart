@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dual_camera/dual_camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:opensportsball/src/link/peer_link.dart';
 import 'package:opensportsball/src/session/main_controller.dart';
@@ -84,6 +85,7 @@ void main() {
 
   test('full recording writes a manifest that lists both phones', () async {
     await pair();
+    secCam.up = const UpVector(0, -0.985, 0.174); // mounted upside down
     expect(await main.startRecording(), isTrue);
     await eventually(() => secCam.recording, reason: 'secondary recording');
     expect(mainCam.locked && secCam.locked, isTrue);
@@ -117,6 +119,10 @@ void main() {
       expect(segs.first['objectKey'], '${d['deviceId']}/${d['deviceId']}_000.mp4');
     }
     expect(report['deviceId'], devices[1]['deviceId']);
+    // Each phone measures which way up it is; Secondary's comes in its report.
+    expect(devices[0]['orientation'], {'uprightRotationDeg': 0, 'rollDeg': 0.0, 'pitchDeg': -10.0});
+    expect((devices[1] as Map).containsKey('orientation'), isFalse);
+    expect(report['orientation'], {'uprightRotationDeg': 180, 'rollDeg': 0.0, 'pitchDeg': -10.0});
 
     final out = Platform.environment['OSB_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));

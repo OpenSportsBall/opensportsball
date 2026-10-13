@@ -5,6 +5,8 @@
 /// manifest builder. All of them round-trip through JSON.
 library;
 
+import 'dart:math' as math;
+
 import 'package:dual_camera/dual_camera.dart';
 
 const kAppVersion = '0.1.0';
@@ -187,6 +189,58 @@ class VideoInfo {
         'lens': lens,
         'bitrateBps': bitrateBps,
         if (horizontalFovDeg != null) 'horizontalFovDeg': horizontalFovDeg,
+      };
+}
+
+/// How the phone was held while recording, from gravity. Becomes the
+/// manifest device's `orientation`. Mounting the two phones as close
+/// together as possible usually puts one of them upside down.
+class MountOrientation {
+  const MountOrientation({
+    required this.uprightRotationDeg,
+    required this.rollDeg,
+    required this.pitchDeg,
+  });
+
+  /// From which way is up in the recorded picture (see [UpVector]).
+  factory MountOrientation.fromUp(UpVector up) {
+    const toDeg = 180 / math.pi;
+    // Where up points, clockwise from the picture's top. The scene is
+    // turned clockwise by this much.
+    final roll = math.atan2(up.x, up.y) * toDeg;
+    final quarters = (roll / 90).round();
+    final len = math.sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+    final pitch = len == 0 ? 0.0 : math.asin((-up.z / len).clamp(-1.0, 1.0)) * toDeg;
+    double tenth(double v) => (v * 10).round() / 10;
+    return MountOrientation(
+      uprightRotationDeg: ((-quarters * 90) % 360 + 360) % 360,
+      rollDeg: tenth(roll - quarters * 90),
+      pitchDeg: tenth(pitch),
+    );
+  }
+
+  factory MountOrientation.fromJson(Map<String, Object?> j) => MountOrientation(
+        uprightRotationDeg: j['uprightRotationDeg'] as int,
+        rollDeg: (j['rollDeg'] as num).toDouble(),
+        pitchDeg: (j['pitchDeg'] as num).toDouble(),
+      );
+
+  /// Clockwise rotation (0, 90, 180 or 270) that makes the video upright:
+  /// 180 for a phone mounted upside down.
+  final int uprightRotationDeg;
+
+  /// After that rotation, how far the scene is still turned clockwise
+  /// (-45..45): positive means the horizon falls to the right.
+  final double rollDeg;
+
+  /// The camera's angle above the horizontal: negative when it looks down
+  /// at the field.
+  final double pitchDeg;
+
+  Map<String, Object?> toJson() => {
+        'uprightRotationDeg': uprightRotationDeg,
+        'rollDeg': rollDeg,
+        'pitchDeg': pitchDeg,
       };
 }
 

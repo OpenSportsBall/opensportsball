@@ -29,6 +29,7 @@ codes: `permission_denied`, `camera_unavailable`, `unsupported_config`,
 | `startRecording` | `{directory: String, filePrefix: String}` | `{startedAtDeviceMs: int}` |
 | `stopRecording` | none | `{}`. Returns only after the last segment is finalized and its `segment` event has been sent. |
 | `status` | none | `{batteryPercent: int, charging: bool, freeStorageBytes: int, thermalState: String, recording: bool}` |
+| `orientation` | none | `{x: double, y: double, z: double}` or `null`: which way is up, as a unit vector in the recorded picture's axes (x to its right, y to its top, z out of the screen; the back camera looks along -z), from gravity averaged over up to a second. `null` if the phone has no usable sensor. A phone mounted upside down gives `y` near -1. |
 | `setKeepScreenOn` | `{on: bool}` | `null` |
 | `setScreenBrightness` | `{level: double?}` | `null`. 0..1 overrides the screen brightness while the app is in front; `null` hands it back to the system. iOS restores the user's level when the app leaves the foreground. |
 | `setPreviewPaused` | `{paused: bool}` | `null`. Stops (or resumes) drawing preview frames; the camera and any recording keep running. |

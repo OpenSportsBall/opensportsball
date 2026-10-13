@@ -21,9 +21,10 @@ String objectKey(String deviceId, String fileName) => '$deviceId/$fileName';
 Map<String, Object?> _device(
   DeviceIdentity id,
   String role,
-  VideoInfo video, [
+  VideoInfo video, {
+  MountOrientation? orientation,
   Iterable<SegmentRecord>? segments,
-]) =>
+}) =>
     {
       'deviceId': id.deviceId,
       'role': role,
@@ -41,6 +42,7 @@ Map<String, Object?> _device(
         'stabilization': false,
         if (video.horizontalFovDeg != null) 'horizontalFovDeg': video.horizontalFovDeg,
       },
+      if (orientation != null) 'orientation': orientation.toJson(),
       if (segments != null)
         'segments': [
           for (final s in segments)
@@ -70,7 +72,9 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
     'gameId': main.gameId,
     'sessionId': main.recordingId,
     'createdAt': (now ?? DateTime.now()).toUtc().toIso8601String(),
-    'devices': [_device(main.device, 'main', mainVideo, main.segments)],
+    'devices': [
+      _device(main.device, 'main', mainVideo, orientation: main.orientation, segments: main.segments),
+    ],
   };
   // Secondary said how it records when it got ready (Prepared). Left out if
   // it is known to have recorded nothing.
@@ -92,5 +96,6 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
 Map<String, Object?>? buildReport(LocalRecording rec) {
   final video = rec.video;
   if (!rec.stopped || video == null || rec.segments.isEmpty) return null;
-  return _device(rec.device, rec.role.name, video, rec.segments);
+  return _device(rec.device, rec.role.name, video,
+      orientation: rec.orientation, segments: rec.segments);
 }

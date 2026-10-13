@@ -15,7 +15,10 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   storage / temperature, clock-sync ping/pong. Main is the BLE peripheral,
   Secondary the central (`lib/src/link/`).
 - Recording through `plugins/dual_camera` in gap-free segments, white
-  balance and focus locked, stabilization off, ultra-wide lens.
+  balance and focus locked, stabilization off, ultra-wide lens. When
+  recording starts each phone reads which way up it is from gravity and
+  records it as the manifest's `orientation` (180 for a phone mounted
+  upside down, plus roll and pitch), since the files carry no rotation.
 - Secondary keeps recording if the link drops and re-sends its segment list
   when it reconnects (for Main's screen). Uploads never need the phones
   together: Main writes `manifest.json` when it stops, naming Secondary but

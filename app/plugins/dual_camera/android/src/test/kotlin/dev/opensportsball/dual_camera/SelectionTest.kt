@@ -19,6 +19,20 @@ internal class SelectionTest {
     }
 
     @Test
+    fun upInDisplayFollowsTheScreen() {
+        // Held upright in portrait: up is the top of the screen at rotation 0.
+        assertEquals(listOf(0f, 9.8f, 0f), Selection.upInDisplay(0f, 9.8f, 0f, 0).toList())
+        // Turned counterclockwise into landscape (rotation 90): the device's
+        // right edge is now the top of the screen.
+        assertEquals(listOf(-0f, 9.8f, 1f), Selection.upInDisplay(9.8f, 0f, 1f, 90).toList())
+        // The same landscape interface on a phone turned the other way up:
+        // up is the bottom of the picture.
+        assertEquals(listOf(-0f, -9.8f, 1f), Selection.upInDisplay(-9.8f, 0f, 1f, 90).toList())
+        assertEquals(listOf(0f, 9.8f, 0f), Selection.upInDisplay(-9.8f, 0f, 0f, 270).toList())
+        assertEquals(listOf(-0f, 9.8f, 0f), Selection.upInDisplay(0f, -9.8f, 0f, 180).toList())
+    }
+
+    @Test
     fun segmentByteBudget() {
         // 35 Mbps + 128 kbps for 5 minutes = 1,317,300,000 bytes.
         assertEquals(1_317_300_000L, Selection.segmentByteBudget(35_000_000, 128_000, 300_000))

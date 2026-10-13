@@ -135,6 +135,13 @@ class LocalRecorder {
       rethrow;
     }
     _power = PowerLog(camera, File('${dir.path}/power.csv'), every: powerLogEvery)..start();
+    // Read once recording runs: the phone is on the mount by now.
+    try {
+      final up = await camera.orientation();
+      if (up != null) rec.orientation = MountOrientation.fromUp(up);
+    } on Object catch (e) {
+      debugPrint('orientation: $e');
+    }
     await store.saveRecording(rec);
     return rec;
   }

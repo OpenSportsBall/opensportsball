@@ -83,6 +83,21 @@ internal object Selection {
     fun rotationToDegrees(rotation: Int): Int = (rotation and 3) * 90
 
     /**
+     * An accelerometer / gravity sensor reading (device axes in the natural
+     * orientation; it points away from the ground) turned into the
+     * displayed picture's axes: x to its right, y to its top, z out of the
+     * screen. The recording is upright in the interface, so this is also
+     * "up" in the recorded frames.
+     */
+    fun upInDisplay(x: Float, y: Float, z: Float, displayRotationDeg: Int): FloatArray =
+        when (((displayRotationDeg % 360) + 360) % 360) {
+            90 -> floatArrayOf(-y, x, z)
+            180 -> floatArrayOf(-x, -y, z)
+            270 -> floatArrayOf(y, -x, z)
+            else -> floatArrayOf(x, y, z)
+        }
+
+    /**
      * Clockwise rotation a player must apply to the encoded (sensor-oriented)
      * frames so they are upright for a back camera, given the display
      * rotation at the time the camera was opened.

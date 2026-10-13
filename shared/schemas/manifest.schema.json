@@ -64,6 +64,17 @@
             "stabilization": { "type": "boolean", "description": "Must be false; stabilization breaks the fixed stitch." }
           }
         },
+        "orientation": {
+          "type": "object",
+          "description": "How the phone was held when recording started, from gravity. Missing if the phone could not tell. Mounting the phones close together usually puts one upside down.",
+          "required": ["uprightRotationDeg", "rollDeg", "pitchDeg"],
+          "additionalProperties": false,
+          "properties": {
+            "uprightRotationDeg": { "enum": [0, 90, 180, 270], "description": "Clockwise rotation that makes the video upright; 180 for a phone mounted upside down. The files carry no rotation of their own for this." },
+            "rollDeg": { "type": "number", "minimum": -45, "maximum": 45, "description": "After that rotation, how far the scene is still turned clockwise: positive means the horizon falls to the right." },
+            "pitchDeg": { "type": "number", "minimum": -90, "maximum": 90, "description": "Camera angle above the horizontal; negative when looking down at the field." }
+          }
+        },
         "segments": {
           "description": "Required for Main in its manifest and in every device report; Main may leave it out for the Secondary. Always present in the merged manifest processing reads.",
           "type": "array",

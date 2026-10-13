@@ -168,6 +168,12 @@ class FakeCamera implements DualCamera {
     recording = false;
   }
 
+  /// What [orientation] answers: upright, looking 10 degrees down.
+  UpVector? up = const UpVector(0, 0.985, 0.174);
+
+  @override
+  Future<UpVector?> orientation() async => up;
+
   @override
   Future<DeviceStatus> status() async => DeviceStatus(
         batteryPercent: 80,

@@ -112,6 +112,7 @@ class DualCameraPlugin :
                 }
                 "stopRecording" -> session().stopRecording(reply)
                 "status" -> reply.success(status())
+                "orientation" -> Gravity.read(context, displayRotationDegrees(), main, reply)
                 "setKeepScreenOn" -> setKeepScreenOn(call.argument<Boolean>("on") == true, reply)
                 "setScreenBrightness" -> setScreenBrightness((call.argument<Any>("level") as? Number)?.toFloat(), reply)
                 "setPreviewPaused" -> session().setPreviewPaused(call.argument<Boolean>("paused") == true, reply)

@@ -150,6 +150,20 @@ class DeviceStatus {
   final bool recording;
 }
 
+/// Which way is up, as a unit vector in the recorded picture's axes: x to
+/// its right, y to its top, z out of the screen (the back camera looks
+/// along -z).
+class UpVector {
+  const UpVector(this.x, this.y, this.z);
+
+  factory UpVector.fromMap(Map<Object?, Object?> m) =>
+      UpVector((m['x'] as num).toDouble(), (m['y'] as num).toDouble(), (m['z'] as num).toDouble());
+
+  final double x;
+  final double y;
+  final double z;
+}
+
 sealed class CameraEvent {
   const CameraEvent();
 
@@ -289,6 +303,13 @@ class DualCamera {
 
   Future<DeviceStatus> status() async =>
       DeviceStatus.fromMap((await _methods.invokeMapMethod('status'))!);
+
+  /// Which way is up for the camera right now (gravity, averaged over a
+  /// moment), or null if the phone can't tell.
+  Future<UpVector?> orientation() async {
+    final m = await _methods.invokeMapMethod<Object?, Object?>('orientation');
+    return m == null ? null : UpVector.fromMap(m);
+  }
 
   Future<void> setKeepScreenOn(bool on) =>
       _methods.invokeMethod('setKeepScreenOn', {'on': on});

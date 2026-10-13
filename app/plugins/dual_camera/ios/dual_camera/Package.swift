@@ -28,6 +28,7 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreMotion"),
                 .linkedFramework("CoreVideo"),
             ]
         )

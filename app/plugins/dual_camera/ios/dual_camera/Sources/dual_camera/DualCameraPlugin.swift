@@ -17,6 +17,7 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var camera: CameraSession?
   private var preview: PreviewTexture?
   private var textureId: Int64?
+  private let gravity = Gravity()
 
   init(textures: FlutterTextureRegistry) {
     self.textures = textures
@@ -76,6 +77,8 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       stopRecording(result)
     case "status":
       result(status())
+    case "orientation":
+      gravity.read(orientation: DeviceInfo.interfaceOrientation()) { result($0) }
     case "requestBluetoothPermission":
       // iOS asks for Bluetooth itself when the app first uses it.
       result(true)
