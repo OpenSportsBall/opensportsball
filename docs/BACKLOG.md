@@ -103,10 +103,19 @@ Footage and logs from these tests decide several items below.
         different amounts at the switch, and `startedAtDeviceMs` doesn't
         show it (BLE+metadata guess was 5 ms off for segment 0, 31 ms for
         segment 1). Re-sync every segment by audio.
-      - Stitch: one cylindrical homography from 12 frame pairs (285
-        inliers) aligns the far field; near touchline and players at the
-        seam ghost with the wide feather blend. Next: fit the homography
-        on field-plane matches and blend along a narrow seam.
+      - Stitch: OpenCV's panorama stitcher (estimated focal lengths and
+        rotations, graph-cut seam, multi-band blend) stitches a single
+        frame pair cleanly, near touchline included. A hand-rolled
+        homography fitted on field points did worse: turf texture gives
+        mostly false matches, and one plane can't align the whole frame.
+      - The phones moved relative to each other during that clip (45.7
+        to 57.1 deg apart, up to 6 deg within 10 s), so one calibration
+        doesn't hold for the whole video. Re-check on the mount; if it
+        still drifts, re-estimate the stitch every second or so.
+- [ ] Pixel 11 Pro reports a 108.8 deg horizontal field of view but its
+      recorded frame is ~104 deg (stitcher's focal estimate); the Pixel
+      11's 103.6 deg matches. Check `CameraSelection.horizontalFovDeg`
+      (crop or zoom ratio). Processing doesn't depend on it today.
 - [ ] Players-only follow on the stitched panorama.
 - [ ] Clap test on the mount: confirm audio sync also aligns video (each
       phone's audio-to-video offset in the file is assumed equal).
