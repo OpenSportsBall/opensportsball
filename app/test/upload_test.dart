@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -48,14 +49,16 @@ class Harness {
   final DeviceActivity activity;
   final screen = <bool>[];
 
-  UploadService service() => UploadService(
+  UploadService service({http.Client? client, Duration stallTimeout = const Duration(minutes: 2)}) =>
+      UploadService(
         store: store,
         account: account,
-        client: backend.client,
+        client: client ?? backend.client,
         network: network,
         activity: activity,
         keepScreenOn: (on) async => screen.add(on),
         chunkBytes: 50,
+        stallTimeout: stallTimeout,
       );
 
   Future<Map<String, Object?>> uploadJson(StoredRecording r) async =>
@@ -68,6 +71,26 @@ class Harness {
       accountId: grantAccountId,
       gameId: 'game-1',
       expiresAt: DateTime.now().add(validFor)));
+}
+
+/// Passes everything to [inner] except S3 PUTs while [stall] is set: those
+/// hang like a dead connection until the request is aborted.
+class StallingClient extends http.BaseClient {
+  StallingClient(this.inner);
+  final http.Client inner;
+  bool stall = false;
+  int stalled = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (stall && request.method == 'PUT' && request.url.host == 's3.test') {
+      stalled++;
+      final trigger = request is http.Abortable ? request.abortTrigger : null;
+      await (trigger ?? Completer<void>().future);
+      throw http.RequestAbortedException(request.url);
+    }
+    return inner.send(request);
+  }
 }
 
 void main() {
@@ -424,6 +447,40 @@ void main() {
       h.network.kind = NetworkKind.offline;
       expect(await s.runPass(), PassResult.blocked);
       expect(s.phase, UploadPhase.offline);
+    });
+
+    test('losing Wi-Fi cuts off a stalled part at once', () async {
+      final h = await Harness.create();
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [500]);
+      final client = StallingClient(h.backend.client)..stall = true;
+      final s = h.service(client: client)..start();
+      await eventually(() => client.stalled == 1);
+      expect(s.phase, UploadPhase.uploading);
+
+      h.network.set(NetworkKind.metered); // Wi-Fi only (the default)
+      await eventually(() => s.phase == UploadPhase.waitingForWifi);
+      await pumpEventQueue();
+      expect(s.phase, UploadPhase.waitingForWifi, reason: 'the next pass agrees');
+      expect(client.stalled, 1, reason: 'no new part on mobile data');
+
+      client.stall = false;
+      h.network.set(NetworkKind.unmetered);
+      await eventually(() => s.phase == UploadPhase.idle);
+      expect(h.backend.files.length, 1);
+      s.dispose();
+    });
+
+    test('a part that sends nothing is retried', () async {
+      final h = await Harness.create();
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [500]);
+      final client = StallingClient(h.backend.client)..stall = true;
+      final s = h.service(client: client, stallTimeout: const Duration(milliseconds: 100));
+      expect(await s.runPass(), PassResult.retry);
+      expect(s.error, 'The connection stalled');
+
+      client.stall = false;
+      expect(await s.runPass(), PassResult.done);
+      expect(h.backend.files.length, 1);
     });
 
     test('no uploads while recording; a recording that starts mid-upload stops it', () async {

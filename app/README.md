@@ -45,14 +45,16 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
   Progress is saved per recording in `upload.json` next to `recording.json`
   (format in `upload_state.dart`), so an upload resumes after a restart
   using that file plus the server's `completedParts`. Expired URLs are
-  re-requested, network and 5xx errors back off from 5 s to 10 min, and a
+  re-requested, a part that sends nothing for 2 min is cut off and
+  retried, network and 5xx errors back off from 5 s to 10 min, and a
   401 on the device token stops this phone's Main recordings until it is
   linked again (a 401 on a grant stops only that game's). Each recording
   uploads with its own credential: Main recordings with the device token,
   Secondary recordings with the game's grant; without one they wait. Uploads pause while
   this phone is recording, wait for Wi-Fi by default ("Upload on Wi-Fi
-  only", with a one-time "Upload now using mobile data"), and keep the
-  screen awake while sending.
+  only", with a one-time "Upload now using mobile data"; losing Wi-Fi
+  cuts off the part being sent at once), and keep the screen awake while
+  sending.
 - Background upload (`lib/src/upload/background.dart`): the queue keeps
   running in Dart with the app off screen while it is uploading, retrying
   or waiting for the network. Android: a `dataSync` foreground service

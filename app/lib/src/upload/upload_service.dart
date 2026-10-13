@@ -165,6 +165,7 @@ class UploadService extends ChangeNotifier {
     DateTime Function()? now,
     this.chunkBytes = 1 << 20,
     this.rescanInterval = const Duration(seconds: 30),
+    this.stallTimeout = const Duration(minutes: 2),
   })  : activity = activity ?? DeviceActivity.instance,
         _keepScreenOn = keepScreenOn ?? ((_) async {}),
         _delay = delay ?? ((d) => Future<void>.delayed(d)),
@@ -185,6 +186,10 @@ class UploadService extends ChangeNotifier {
   /// How often an idle queue looks for newly finished recordings.
   final Duration rescanInterval;
 
+  /// A part that sends nothing for this long is cut off and retried (a
+  /// Wi-Fi network that is still "connected" but out of range).
+  final Duration stallTimeout;
+
   static const _apiTimeout = Duration(seconds: 60);
   static const _partTimeout = Duration(minutes: 30);
 
@@ -200,6 +205,9 @@ class UploadService extends ChangeNotifier {
   bool _disposed = false;
   bool _awake = false;
   Completer<void>? _kick;
+
+  /// Completing it aborts the part being sent.
+  Completer<void>? _abortPut;
   StreamSubscription<NetworkKind>? _netSub;
 
   UploadPhase get phase => _phase;
@@ -232,7 +240,7 @@ class UploadService extends ChangeNotifier {
     account.addListener(kick);
     _netSub = network.changes.listen((k) {
       _net = k;
-      if (!_allowed()) _notify();
+      _stopIfBlocked();
       kick();
     }, onError: (Object e) => debugPrint('connectivity: $e'));
     unawaited(_loop());
@@ -246,6 +254,7 @@ class UploadService extends ChangeNotifier {
 
   void setPaused(bool paused) {
     _paused = paused;
+    _stopIfBlocked();
     _notify();
     kick();
   }
@@ -265,6 +274,7 @@ class UploadService extends ChangeNotifier {
 
   void cancelMobileData() {
     _mobileOverride = false;
+    _stopIfBlocked();
     _notify();
     kick();
   }
@@ -321,6 +331,7 @@ class UploadService extends ChangeNotifier {
   void _onActivity() {
     if (_awake) unawaited(_safeKeepScreenOn(true)); // a camera screen closing turns it off
     if (activity.recording) {
+      _stopIfBlocked();
       _notify();
     } else {
       kick();
@@ -343,6 +354,16 @@ class UploadService extends ChangeNotifier {
   }
 
   bool _allowed() => _blockedBy() == null;
+
+  /// Uploads aren't allowed any more: say so now and cut off the part being
+  /// sent, instead of waiting for it (a stalled socket never asks again).
+  void _stopIfBlocked() {
+    final blocked = _blockedBy();
+    if (blocked == null) return;
+    final abort = _abortPut;
+    if (abort != null && !abort.isCompleted) abort.complete();
+    if (_passing) _setPhase(blocked);
+  }
 
   void _checkAllowed() {
     if (!_allowed()) throw _Interrupted();
@@ -660,25 +681,45 @@ class UploadService extends ChangeNotifier {
   /// PUTs bytes [from, to) of [file] to a presigned URL; returns the ETag.
   Future<String> _putPart(
       File file, String url, int from, int to, void Function(int sent) onSent) async {
+    final abort = _abortPut = Completer<void>();
+    var stalled = false;
+    Timer? watchdog;
+    void watch() {
+      watchdog?.cancel();
+      watchdog = Timer(stallTimeout, () {
+        stalled = true;
+        if (!abort.isCompleted) abort.complete();
+      });
+    }
+
     final req = _FileRangeRequest(
       Uri.parse(url),
       file: file,
       from: from,
       to: to,
       chunkBytes: chunkBytes,
-      onSent: onSent,
+      onSent: (sent) {
+        watch();
+        onSent(sent);
+      },
       check: _checkAllowed,
+      abortTrigger: abort.future,
     );
     final http.Response res;
     try {
+      watch();
       res = await http.Response.fromStream(await client.send(req).timeout(_partTimeout));
     } on _Interrupted {
       rethrow;
     } on FileSystemException catch (e) {
       throw _Permanent('Could not read ${file.uri.pathSegments.last}: ${e.message}');
     } on Object catch (e) {
-      if (!_allowed()) throw _Interrupted(); // the body stream was cut on purpose
+      if (!_allowed()) throw _Interrupted(); // cut off on purpose
+      if (stalled) throw _Transient('The connection stalled');
       throw _Transient(_networkMessage(e));
+    } finally {
+      watchdog?.cancel();
+      if (identical(_abortPut, abort)) _abortPut = null;
     }
     if (res.statusCode == 403) throw _Expired();
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -767,7 +808,7 @@ String _networkMessage(Object e) => switch (e) {
 
 /// A PUT whose body is a byte range of a file, read in chunks with
 /// [RandomAccessFile] so a 64 MiB part never sits in memory whole.
-class _FileRangeRequest extends http.BaseRequest {
+class _FileRangeRequest extends http.BaseRequest with http.Abortable {
   _FileRangeRequest(
     Uri url, {
     required this.file,
@@ -776,6 +817,7 @@ class _FileRangeRequest extends http.BaseRequest {
     required this.chunkBytes,
     required this.onSent,
     required this.check,
+    this.abortTrigger,
   }) : super('PUT', url) {
     contentLength = to - from;
   }
@@ -786,6 +828,9 @@ class _FileRangeRequest extends http.BaseRequest {
   final int chunkBytes;
   final void Function(int sent) onSent;
   final void Function() check;
+
+  @override
+  final Future<void>? abortTrigger;
 
   @override
   http.ByteStream finalize() {
