@@ -44,6 +44,22 @@ Options (pass with `-c key=value`):
 | `stackName` | `OpenSportsBall` | CloudFormation stack name |
 | `authDomainPrefix` | `opensportsball-<account id>` | Cognito login domain; globally unique |
 | `devOrigins` | `http://localhost:5173` | Extra origins allowed for login callbacks and CORS (comma-separated) |
+| `siteDomain` | none | Serve the website at this domain; `www.<domain>` redirects to it |
+| `siteCertArn` | none | ACM certificate **in us-east-1** for `siteDomain` and `www.<siteDomain>` (required with `siteDomain`) |
+
+To keep these between deploys, put them in `infra/cdk.context.json`
+(git-ignored, since they're account-specific).
+
+### Custom domain
+
+1. Request the certificate (CloudFront only uses us-east-1 certificates):
+   `aws acm request-certificate --region us-east-1 --domain-name example.com --subject-alternative-names www.example.com --validation-method DNS`
+2. Add the two validation CNAMEs from `aws acm describe-certificate` at your
+   DNS provider and wait for the certificate to show `ISSUED`.
+3. Deploy with `siteDomain` and `siteCertArn` set.
+4. Point `example.com` and `www.example.com` at the `CdnDomain` output
+   (`d….cloudfront.net`): a CNAME, or an alias / flattened CNAME at the apex. If the DNS provider is Cloudflare, leave these
+   **DNS only** (grey cloud); CloudFront already does the caching and TLS.
 
 Region: `CDK_DEFAULT_REGION` from your AWS CLI profile, else `us-east-1`.
 

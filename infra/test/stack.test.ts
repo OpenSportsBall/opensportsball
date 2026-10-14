@@ -138,3 +138,35 @@ describe('accounts and website', () => {
     });
   });
 });
+
+describe('custom domain', () => {
+  let d: Template;
+  beforeAll(() => {
+    const app = new cdk.App({ context: { '@aws-cdk/customresources:installLatestAwsSdkDefault': false } });
+    const stack = new OpenSportsBallStack(app, 'TestDomain', {
+      repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+      authDomainPrefix: 'osb-test',
+      siteDomain: 'example.com',
+      siteCertArn: 'arn:aws:acm:us-east-1:111111111111:certificate/test',
+    });
+    d = Template.fromStack(stack);
+  }, 120_000);
+
+  it('serves the apex and www with the certificate, redirecting www', () => {
+    d.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        Aliases: ['example.com', 'www.example.com'],
+        ViewerCertificate: Match.objectLike({ AcmCertificateArn: 'arn:aws:acm:us-east-1:111111111111:certificate/test' }),
+      }),
+    });
+    d.resourceCountIs('AWS::CloudFront::Function', 1);
+  });
+
+  it('login accepts the custom domain and the CloudFront address', () => {
+    d.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      CallbackURLs: Match.arrayWith(['https://example.com/callback']),
+    });
+    const client = Object.values(d.findResources('AWS::Cognito::UserPoolClient'))[0];
+    expect(client.Properties.CallbackURLs).toHaveLength(2);
+  });
+});

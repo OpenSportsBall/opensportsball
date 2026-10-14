@@ -55,3 +55,4 @@ web/static/config.json
 
 # Deploy outputs (account-specific)
 infra/cdk-outputs.json
+infra/cdk.context.json

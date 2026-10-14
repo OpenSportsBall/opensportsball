@@ -10,6 +10,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as cdk from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaAuthorizer, HttpLambdaResponseType, HttpUserPoolAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
@@ -35,12 +36,19 @@ export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Extra origins allowed to call the API and use the login, e.g.
    *  http://localhost:5173 for local web development. */
   devOrigins?: string[];
+  /** Custom website domain, e.g. example.com. The site is served there and
+   *  at www.<domain>, which redirects to it. Needs siteCertArn. */
+  siteDomain?: string;
+  /** ACM certificate in us-east-1 covering siteDomain and www.<siteDomain>. */
+  siteCertArn?: string;
 }
 
 export class OpenSportsBallStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: OpenSportsBallStackProps) {
     super(scope, id, props);
     const devOrigins = props.devOrigins ?? [];
+    const { siteDomain, siteCertArn } = props;
+    if (!siteDomain !== !siteCertArn) throw new Error('siteDomain and siteCertArn go together');
 
     // --- Storage ------------------------------------------------------------
 
@@ -76,7 +84,33 @@ export class OpenSportsBallStack extends cdk.Stack {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(site),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: siteDomain
+          ? [
+              {
+                eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+                function: new cloudfront.Function(this, 'WwwRedirect', {
+                  runtime: cloudfront.FunctionRuntime.JS_2_0,
+                  code: cloudfront.FunctionCode.fromInline(`function handler(event) {
+  var r = event.request;
+  if (r.headers.host.value !== 'www.${siteDomain}') return r;
+  var qs = Object.keys(r.querystring).map(function (k) {
+    var v = r.querystring[k];
+    return v.multiValue ? v.multiValue.map(function (m) { return k + '=' + m.value; }).join('&') : k + '=' + v.value;
+  }).join('&');
+  return { statusCode: 301, statusDescription: 'Moved Permanently',
+    headers: { location: { value: 'https://${siteDomain}' + r.uri + (qs ? '?' + qs : '') } } };
+}`),
+                }),
+              },
+            ]
+          : undefined,
       },
+      ...(siteDomain && siteCertArn
+        ? {
+            domainNames: [siteDomain, `www.${siteDomain}`],
+            certificate: acm.Certificate.fromCertificateArn(this, 'SiteCert', siteCertArn),
+          }
+        : {}),
       defaultRootObject: 'index.html',
       // Client-side routes: serve the app shell for unknown paths.
       errorResponses: [403, 404].map((httpStatus) => ({
@@ -86,7 +120,10 @@ export class OpenSportsBallStack extends cdk.Stack {
         ttl: cdk.Duration.seconds(0),
       })),
     });
-    const siteUrl = `https://${cdn.distributionDomainName}`;
+    const cdnUrl = `https://${cdn.distributionDomainName}`;
+    const siteUrl = siteDomain ? `https://${siteDomain}` : cdnUrl;
+    // The CloudFront address keeps working alongside the custom domain.
+    const siteOrigins = [...new Set([siteUrl, cdnUrl])];
 
     // --- Accounts -----------------------------------------------------------
 
@@ -109,8 +146,8 @@ export class OpenSportsBallStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: [`${siteUrl}/callback`, ...devOrigins.map((o) => `${o}/callback`)],
-        logoutUrls: [`${siteUrl}/`, ...devOrigins.map((o) => `${o}/`)],
+        callbackUrls: [...siteOrigins, ...devOrigins].map((o) => `${o}/callback`),
+        logoutUrls: [...siteOrigins, ...devOrigins].map((o) => `${o}/`),
       },
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
@@ -165,7 +202,7 @@ export class OpenSportsBallStack extends cdk.Stack {
 
     const api = new apigw.HttpApi(this, 'Api', {
       corsPreflight: {
-        allowOrigins: [siteUrl, ...devOrigins],
+        allowOrigins: [...siteOrigins, ...devOrigins],
         allowHeaders: ['authorization', 'content-type'],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
@@ -267,6 +304,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     // --- Outputs ------------------------------------------------------------
 
     new cdk.CfnOutput(this, 'SiteUrl', { value: siteUrl });
+    new cdk.CfnOutput(this, 'CdnDomain', { value: cdn.distributionDomainName });
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'UserPoolId', { value: users.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: webClient.userPoolClientId });

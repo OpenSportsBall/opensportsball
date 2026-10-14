@@ -18,5 +18,7 @@ new OpenSportsBallStack(app, ctx('stackName') ?? 'OpenSportsBall', {
   repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
   authDomainPrefix,
   devOrigins: (ctx('devOrigins') ?? 'http://localhost:5173').split(',').filter(Boolean),
+  siteDomain: ctx('siteDomain'),
+  siteCertArn: ctx('siteCertArn'),
   description: 'OpenSportsBall: phone recording uploads, accounts and website',
 });
