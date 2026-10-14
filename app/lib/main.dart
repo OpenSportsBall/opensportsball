@@ -116,7 +116,7 @@ class RolePickerScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Padding(
+      body: SafeArea(child: Padding(
         padding: const EdgeInsets.all(24),
         child: Row(
           children: [
@@ -148,7 +148,7 @@ class RolePickerScreen extends StatelessWidget {
               ),
           ],
         ),
-      ),
+      )),
     );
   }
 }

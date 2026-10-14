@@ -59,19 +59,17 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
       return _SecondarySession(store: widget.store, account: widget.account, gameId: game);
     }
     return Scaffold(
-      body: SafeArea(
-        child: PreviewLayout(
-          preview: game == null
-              ? MobileScanner(controller: _scanner, onDetect: _onDetect)
-              : const CircularProgressIndicator(),
-          panel: [
-            const Row(children: [BackButton(), Text('Secondary phone')]),
-            const SizedBox(height: 16),
-            const Text('Point this phone at the QR code on the Main phone.'),
-            const SizedBox(height: 12),
-            ErrorText(_scanError),
-          ],
-        ),
+      body: PreviewLayout(
+        preview: game == null
+            ? MobileScanner(controller: _scanner, onDetect: _onDetect)
+            : const CircularProgressIndicator(),
+        panel: [
+          const Row(children: [BackButton(), Text('Secondary phone')]),
+          const SizedBox(height: 16),
+          const Text('Point this phone at the QR code on the Main phone.'),
+          const SizedBox(height: 12),
+          ErrorText(_scanError),
+        ],
       ),
     );
   }
@@ -144,34 +142,32 @@ class _SecondarySessionState extends State<_SecondarySession> {
       builder: (context, _) => _darkened(PopScope(
         canPop: !_recording,
         child: Scaffold(
-          body: SafeArea(
-            child: PreviewLayout(
-              preview: c.opened == null
-                  ? const Text('Camera opens once connected to the Main phone.',
-                      style: TextStyle(color: Colors.white))
-                  : DualCameraPreview(opened: c.opened!),
-              panel: [
-                Row(children: [
-                  if (!_recording) const BackButton(),
-                  Text('Secondary phone', style: Theme.of(context).textTheme.titleLarge),
-                ]),
-                const SizedBox(height: 8),
-                ErrorText(c.error),
-                _connectionSection(),
-                _recordingSection(),
-                if (!_recording && c.phase == SecondaryPhase.ready)
-                  Text('Ready. The Main phone starts and stops recording.',
-                      style: Theme.of(context).textTheme.bodyMedium),
-              ],
-              footer: _recording
-                  ? RecordButton(
-                      recording: true,
-                      busy: c.phase == SecondaryPhase.stopping,
-                      onPressed: _stopLocally,
-                      stopLabel: 'Stop on this phone',
-                    )
-                  : null,
-            ),
+          body: PreviewLayout(
+            preview: c.opened == null
+                ? const Text('Camera opens once connected to the Main phone.',
+                    style: TextStyle(color: Colors.white))
+                : DualCameraPreview(opened: c.opened!),
+            panel: [
+              Row(children: [
+                if (!_recording) const BackButton(),
+                Text('Secondary phone', style: Theme.of(context).textTheme.titleLarge),
+              ]),
+              const SizedBox(height: 8),
+              ErrorText(c.error),
+              _connectionSection(),
+              _recordingSection(),
+              if (!_recording && c.phase == SecondaryPhase.ready)
+                Text('Ready. The Main phone starts and stops recording.',
+                    style: Theme.of(context).textTheme.bodyMedium),
+            ],
+            footer: _recording
+                ? RecordButton(
+                    recording: true,
+                    busy: c.phase == SecondaryPhase.stopping,
+                    onPressed: _stopLocally,
+                    stopLabel: 'Stop on this phone',
+                  )
+                : null,
           ),
         ),
       )),

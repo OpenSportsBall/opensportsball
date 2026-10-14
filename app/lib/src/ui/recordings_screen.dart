@@ -93,7 +93,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
           ),
         ],
       ),
-      body: FutureBuilder(
+      body: SafeArea(child: FutureBuilder(
         future: _list,
         builder: (context, snap) {
           if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -156,7 +156,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             ),
           );
         },
-      ),
+      )),
     );
   }
 

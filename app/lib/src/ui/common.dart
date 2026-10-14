@@ -150,16 +150,27 @@ class PreviewLayout extends StatelessWidget {
   final Widget? footer;
   @override
   Widget build(BuildContext context) {
+    // Each side keeps clear of the display cutout on its own edge: the black
+    // preview box runs under the camera hole so the inset doesn't show as a
+    // stripe, and the panel grows by its inset so it keeps its full width.
     return Row(
       children: [
-        Expanded(child: ColoredBox(color: Colors.black, child: Center(child: preview))),
+        Expanded(
+          child: ColoredBox(
+            color: Colors.black,
+            child: SafeArea(right: false, child: Center(child: preview)),
+          ),
+        ),
         SizedBox(
-          width: 300,
-          child: Column(
-            children: [
-              Expanded(child: ListView(padding: const EdgeInsets.all(16), children: panel)),
-              if (footer != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: footer),
-            ],
+          width: 300 + MediaQuery.paddingOf(context).right,
+          child: SafeArea(
+            left: false,
+            child: Column(
+              children: [
+                Expanded(child: ListView(padding: const EdgeInsets.all(16), children: panel)),
+                if (footer != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: footer),
+              ],
+            ),
           ),
         ),
       ],

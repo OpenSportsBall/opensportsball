@@ -90,29 +90,27 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, _) => _darkened(PopScope(
         canPop: !_recording,
         child: Scaffold(
-          body: SafeArea(
-            child: PreviewLayout(
-              preview: c.opened == null
-                  ? const Text('Opening camera…', style: TextStyle(color: Colors.white))
-                  : DualCameraPreview(opened: c.opened!),
-              panel: [
-                Row(children: [
-                  if (!_recording) const BackButton(),
-                  Text('Main phone', style: Theme.of(context).textTheme.titleLarge),
-                ]),
-                const SizedBox(height: 8),
-                ErrorText(c.error),
-                _secondarySection(context),
-                _recordingSection(),
-                _thisPhoneSection(),
-              ],
-              footer: RecordButton(
-                recording: _recording,
-                busy: c.phase == MainPhase.preparing ||
-                    c.phase == MainPhase.stopping ||
-                    c.phase == MainPhase.starting,
-                onPressed: _recording ? _stop : _start,
-              ),
+          body: PreviewLayout(
+            preview: c.opened == null
+                ? const Text('Opening camera…', style: TextStyle(color: Colors.white))
+                : DualCameraPreview(opened: c.opened!),
+            panel: [
+              Row(children: [
+                if (!_recording) const BackButton(),
+                Text('Main phone', style: Theme.of(context).textTheme.titleLarge),
+              ]),
+              const SizedBox(height: 8),
+              ErrorText(c.error),
+              _secondarySection(context),
+              _recordingSection(),
+              _thisPhoneSection(),
+            ],
+            footer: RecordButton(
+              recording: _recording,
+              busy: c.phase == MainPhase.preparing ||
+                  c.phase == MainPhase.stopping ||
+                  c.phase == MainPhase.starting,
+              onPressed: _recording ? _stop : _start,
             ),
           ),
         ),

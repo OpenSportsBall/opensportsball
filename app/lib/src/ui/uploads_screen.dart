@@ -46,7 +46,7 @@ class _UploadsScreenState extends State<UploadsScreen> {
               ),
             ],
           ),
-          body: ListView(
+          body: SafeArea(child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               AccountBanner(account: widget.account),
@@ -100,7 +100,7 @@ class _UploadsScreenState extends State<UploadsScreen> {
               if (u.recordings.isEmpty) const Text('None yet.'),
               for (final r in u.recordings.reversed) _RecordingTile(r),
             ],
-          ),
+          )),
         );
       },
     );

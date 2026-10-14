@@ -55,7 +55,7 @@ class _AccountScreenState extends State<AccountScreen> {
         final showForm = link == null || a.revoked || _relinking;
         return Scaffold(
           appBar: AppBar(title: const Text('Account')),
-          body: showForm
+          body: SafeArea(child: showForm
               ? _LinkForm(
                   account: a,
                   message: a.revoked ? 'This phone was unlinked; link it again.' : null,
@@ -92,7 +92,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       ],
                     ),
                   ],
-                ),
+                )),
         );
       },
     );
