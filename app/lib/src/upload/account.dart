@@ -19,20 +19,30 @@ import '../storage/store.dart';
 
 /// What linking returned. Stored as one JSON value in [SecretStore].
 class AccountLink {
-  const AccountLink({required this.apiUrl, required this.deviceToken, required this.accountId});
+  const AccountLink(
+      {required this.apiUrl, required this.deviceToken, required this.accountId, this.email});
 
   factory AccountLink.fromJson(Map<String, Object?> j) => AccountLink(
         apiUrl: j['apiUrl'] as String,
         deviceToken: j['deviceToken'] as String,
         accountId: j['accountId'] as String,
+        email: j['email'] as String?,
       );
 
   final String apiUrl;
   final String deviceToken;
   final String accountId;
 
-  Map<String, Object?> toJson() =>
-      {'apiUrl': apiUrl, 'deviceToken': deviceToken, 'accountId': accountId};
+  /// The account's email when the phone linked. Null for links made before
+  /// the server sent it.
+  final String? email;
+
+  Map<String, Object?> toJson() => {
+        'apiUrl': apiUrl,
+        'deviceToken': deviceToken,
+        'accountId': accountId,
+        if (email != null) 'email': email,
+      };
 }
 
 /// Builds `<apiUrl><path>`; [apiUrl] may end in a slash or a stage path.
@@ -216,7 +226,12 @@ class AccountManager extends ChangeNotifier {
     if (token is! String || account is! String) {
       throw const LinkException('The server sent an unexpected answer.');
     }
-    final link = AccountLink(apiUrl: r.apiUrl, deviceToken: token, accountId: account);
+    final email = body['email'];
+    final link = AccountLink(
+        apiUrl: r.apiUrl,
+        deviceToken: token,
+        accountId: account,
+        email: email is String ? email : null);
     await secrets.write(_key, jsonEncode(link.toJson()));
     await store.saveUploadSettings(store.uploadSettings.copyWith(lastApiUrl: r.apiUrl));
     _link = link;

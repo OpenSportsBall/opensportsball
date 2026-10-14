@@ -15,8 +15,10 @@ export interface LinkCode {
   linkUri: string;
 }
 
-/** [apiDomain] is the domain the request came in on; the phone needs it too. */
-export async function createLinkCode(acct: string, apiDomain: string): Promise<LinkCode> {
+/** [apiDomain] is the domain the request came in on; the phone needs it too.
+ *  [email] is the signed-in person's, so the phone can show which account
+ *  it joined. */
+export async function createLinkCode(acct: string, email: string | null, apiDomain: string): Promise<LinkCode> {
   const expiresAtMs = Date.now() + LINK_CODE_TTL_MS;
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = newLinkCode();
@@ -27,6 +29,7 @@ export async function createLinkCode(acct: string, apiDomain: string): Promise<L
           Item: {
             ...keys.linkCode(code),
             accountId: acct,
+            ...(email ? { email } : {}),
             expiresAtMs,
             ttl: Math.ceil(expiresAtMs / 1000) + 3600,
           },

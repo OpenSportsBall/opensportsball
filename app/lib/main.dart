@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'src/app_services.dart';
 import 'src/role.dart';
 import 'src/storage/store.dart';
-import 'src/ui/account_screen.dart';
 import 'src/ui/brand.dart';
 import 'src/ui/main_screen.dart';
 import 'src/ui/recordings_screen.dart';
@@ -98,16 +97,6 @@ class RolePickerScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('OpenSportsBall'),
         actions: [
-          ListenableBuilder(
-            listenable: services.account,
-            builder: (context, _) => IconButton(
-              tooltip: 'Link to account',
-              icon: Icon(services.account.linked && !services.account.revoked
-                  ? Icons.link
-                  : Icons.link_off),
-              onPressed: () => _push(context, AccountScreen(account: services.account)),
-            ),
-          ),
           IconButton(
             tooltip: 'Uploads',
             icon: const Icon(Icons.cloud_upload_outlined),
@@ -123,7 +112,7 @@ class RolePickerScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => _push(context, SettingsScreen(store: store)),
+            onPressed: () => _push(context, SettingsScreen(store: store, account: services.account)),
           ),
         ],
       ),

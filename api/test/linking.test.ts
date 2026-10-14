@@ -31,6 +31,7 @@ describe('linking phones', () => {
     const first = await link();
     expect(first.status).toBe(200);
     expect(first.body.accountId).toBe(alice);
+    expect(first.body.email).toBe(`${alice}@example.com`);
     expect(first.body.deviceToken).toMatch(/^osbd_[A-Za-z0-9_-]{43}$/);
 
     expect((await link(randomUUID())).status).toBe(410); // used

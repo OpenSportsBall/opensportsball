@@ -71,6 +71,7 @@ class _AccountScreenState extends State<AccountScreen> {
                           style: Theme.of(context).textTheme.titleMedium),
                     ]),
                     const SizedBox(height: 12),
+                    if (link.email != null) InfoRow('Email', link.email!),
                     InfoRow('Server', Uri.parse(link.apiUrl).host),
                     InfoRow('Account', link.accountId),
                     const SizedBox(height: 24),

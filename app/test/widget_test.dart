@@ -11,6 +11,7 @@ import 'package:opensportsball/src/app_services.dart';
 import 'package:opensportsball/src/role.dart';
 import 'package:opensportsball/src/session/activity.dart';
 import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/ui/settings_screen.dart';
 import 'package:opensportsball/src/ui/uploads_screen.dart';
 import 'package:opensportsball/src/upload/account.dart';
 import 'package:opensportsball/src/upload/upload_service.dart';
@@ -43,8 +44,17 @@ void main() {
       expect(find.text(role.label), findsOneWidget);
       expect(find.text(role.description), findsOneWidget);
     }
-    expect(find.byTooltip('Link to account'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.byTooltip('Uploads'), findsOneWidget);
+  });
+
+  testWidgets('settings screen has an account section', (tester) async {
+    final services = (await tester.runAsync(() async => fakeServices(await tempStore('eeeeeeee'))))!;
+    await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(store: services.store, account: services.account)));
+    await tester.pumpAndSettle();
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Link to account'), findsOneWidget);
   });
 
   testWidgets('uploads screen prompts to link and offers the Wi-Fi switch', (tester) async {

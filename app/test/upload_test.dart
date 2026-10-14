@@ -124,7 +124,7 @@ void main() {
         expect(req.url.toString(), 'https://api.test/devices/link');
         expect(req.headers.containsKey('Authorization'), isFalse);
         sent = (jsonDecode(req.body) as Map).cast();
-        return http.Response(jsonEncode({'deviceToken': 'osbd_new', 'accountId': 'acc-9'}), 200);
+        return http.Response(jsonEncode({'deviceToken': 'osbd_new', 'accountId': 'acc-9', 'email': 'coach@example.com'}), 200);
       });
       final secrets = MemorySecretStore();
       final account = AccountManager(store: store, secrets: secrets, client: client);
@@ -140,6 +140,7 @@ void main() {
         'model': store.identity.model,
       });
       expect(account.link!.deviceToken, 'osbd_new');
+      expect(account.link!.email, 'coach@example.com');
       expect(account.link!.accountId, 'acc-9');
       expect(secrets.values['account_link'], contains('osbd_new'));
 

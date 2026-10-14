@@ -34,7 +34,7 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
       case 'GET /me':
         return json(200, { accountId: acct, email: claims.email ?? null });
       case 'POST /link-codes':
-        return json(201, await createLinkCode(acct, event.requestContext.domainName));
+        return json(201, await createLinkCode(acct, claims.email ? String(claims.email) : null, event.requestContext.domainName));
       case 'GET /devices':
         return listDevices(acct);
       case 'DELETE /devices/{deviceId}':

@@ -125,6 +125,8 @@ async function touch(ctx: DeviceContext) {
 
 interface LinkCodeItem {
   accountId: string;
+  /** Absent on codes made before the website saved it. */
+  email?: string;
   expiresAtMs: number;
   usedAt?: string;
 }
@@ -207,7 +209,7 @@ async function link(b: Record<string, unknown>) {
     }
     throw e;
   }
-  return json(200, { deviceToken: token, accountId: acct });
+  return json(200, { deviceToken: token, accountId: acct, email: c.email ?? null });
 }
 
 // --- Recording grants -------------------------------------------------------

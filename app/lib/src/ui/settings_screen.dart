@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 
 import '../model.dart';
 import '../storage/store.dart';
+import '../upload/account.dart';
+import 'account_screen.dart';
 
-/// Recording settings. Only the Main phone's settings matter: it sends them
-/// to the Secondary when they pair.
+/// Recording settings and the account link. Only the Main phone's recording
+/// settings matter: it sends them to the Secondary when they pair.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.store});
+  const SettingsScreen({super.key, required this.store, required this.account});
   final AppStore store;
+  final AccountManager account;
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -26,11 +29,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Recording settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text('Settings')),
+      // SafeArea so the headings line up with the tiles, which already
+      // inset themselves past the landscape notch.
+      body: SafeArea(
+          child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
-          const Text('Set these on the Main phone; the Secondary uses the Main phone\'s settings.'),
+          const _SectionHeader('Account'),
+          ListenableBuilder(
+            listenable: widget.account,
+            builder: (context, _) {
+              final a = widget.account;
+              final linked = a.linked && !a.revoked;
+              return ListTile(
+                title:
+                    Text(linked ? 'Linked to an account' : 'Link to account'),
+                subtitle: Text(linked
+                    ? a.link!.email ?? Uri.parse(a.link!.apiUrl).host
+                    : a.revoked
+                        ? 'This phone was unlinked; link it again to upload.'
+                        : 'Link this phone to a website account to upload recordings.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => AccountScreen(account: a))),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          const _SectionHeader('Recording'),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+                'Set these on the Main phone; the Secondary uses the Main phone\'s settings.'),
+          ),
           const SizedBox(height: 16),
           ListTile(
             title: const Text('Resolution'),
@@ -39,7 +71,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : 'Longer battery life. About 7 GB per hour per phone.'),
             trailing: SegmentedButton<Resolution>(
               segments: [
-                for (final r in Resolution.values) ButtonSegment(value: r, label: Text(r.label)),
+                for (final r in Resolution.values)
+                  ButtonSegment(value: r, label: Text(r.label)),
               ],
               selected: {_s.resolution},
               onSelectionChanged: (v) => _set(_s.copyWith(resolution: v.first)),
@@ -47,7 +80,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(
             title: const Text('Segment length'),
-            subtitle: const Text('Recording is split into files of this length. Use 1 minute to test.'),
+            subtitle: const Text(
+                'Recording is split into files of this length. Use 1 minute to test.'),
             trailing: SegmentedButton<int>(
               segments: const [
                 ButtonSegment(value: 1, label: Text('1 min')),
@@ -55,7 +89,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ButtonSegment(value: 10, label: Text('10 min')),
               ],
               selected: {_s.segmentMinutes},
-              onSelectionChanged: (v) => _set(_s.copyWith(segmentMinutes: v.first)),
+              onSelectionChanged: (v) =>
+                  _set(_s.copyWith(segmentMinutes: v.first)),
             ),
           ),
           SwitchListTile(
@@ -76,7 +111,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => _set(_s.copyWith(darkenScreen: v)),
           ),
         ],
-      ),
+      )),
     );
   }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Text(text,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(color: Theme.of(context).colorScheme.primary)),
+      );
 }
