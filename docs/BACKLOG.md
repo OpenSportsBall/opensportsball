@@ -117,7 +117,18 @@ Footage and logs from these tests decide several items below.
       recorded frame is ~104 deg (stitcher's focal estimate); the Pixel
       11's 103.6 deg matches. Check `CameraSelection.horizontalFovDeg`
       (crop or zoom ratio). Processing doesn't depend on it today.
-- [ ] Players-only follow on the stitched panorama.
+- [ ] Players-only follow: `processing/spikes/follow.py` renders a 1080p
+      virtual camera straight from both 4K sources, aimed by background
+      subtraction on a fixed low-res panorama (works on a rigid mount;
+      ~22 blobs per frame, spectators standing still drop out). Cameras
+      refined at 1920 px (median error 11 to 4 px at 4K); each pixel comes
+      from one phone along a per-frame seam that avoids players, since the
+      phones never capture the same instant and blending doubled moving
+      players; two-band blend hides the exposure step. A 2-minute excerpt
+      renders in ~10 min on an M-series Mac. Still to do: speed (GPU
+      remap/blend, hardware encode, flip folded into the camera model),
+      frame vertically (too much near-field grass), ignore sideline
+      spectators who move, cross segment boundaries.
 - [ ] Clap test on the mount: confirm audio sync also aligns video (each
       phone's audio-to-video offset in the file is assumed equal).
 
