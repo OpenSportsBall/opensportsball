@@ -118,18 +118,65 @@ Footage and logs from these tests decide several items below.
       11's 103.6 deg matches. Check `CameraSelection.horizontalFovDeg`
       (crop or zoom ratio). Processing doesn't depend on it today.
 - [ ] Players-only follow: `processing/spikes/follow.py` renders a 1080p
-      virtual camera straight from both 4K sources, aimed by background
-      subtraction on a fixed low-res panorama (works on a rigid mount;
-      ~22 blobs per frame, spectators standing still drop out). Cameras
-      refined at 1920 px (median error 11 to 4 px at 4K); each pixel comes
-      from one phone along a per-frame seam that avoids players, since the
-      phones never capture the same instant and blending doubled moving
-      players; two-band blend hides the exposure step. Warping and blending
-      run on the GPU (`gpu.py`, PyTorch: MPS locally, CUDA in the cloud),
-      NV12 from hardware decode to hardware encode; 20 s of video in 64 s
-      on an M-series Mac (pass B ~27 ms/frame, pass A ~27 ms/frame). Still
-      to do: frame vertically (too much near-field grass), ignore sideline
-      spectators who move, cross segment boundaries.
+      virtual camera straight from both 4K sources. Cameras refined at
+      1920 px (median error 11 to 4 px at 4K); each pixel comes from one
+      phone along a per-frame seam that avoids players, since the phones
+      never capture the same instant and blending doubled moving players;
+      two-band blend hides the exposure step. Warping and blending run on
+      the GPU (`gpu.py`, PyTorch: MPS locally, CUDA in the cloud), NV12 from
+      hardware decode to hardware encode; 20 s of video in 64 s on an
+      M-series Mac. Still to do: cross segment boundaries.
+- [ ] Follow cam aim, judged by eye on 2 minutes of the night game
+      (segment 9, 60-180 s; 2026-10-15). Best two so far, both
+      `follow.py ... play goalframe` and `... play goalkick,goalframe,unsure`
+      ("A": catches both missed moments but is fairly zoomed out, median
+      55 deg; next: tighten its zoom). What each step fixed:
+      - Speed-weighted players beat the median of all players (caught a
+        quick counter; in play.py's test, ball in a 60 deg view 100% vs
+        66%), but an average of 3-6 runners jumps between groups.
+      - Hotspot of running (pooled +-0.5 s, weighted by speed, sticky:
+        another spot must be 50% stronger for 0.7 s): followed the attack
+        to the left goal; aim jumps > 40 deg/s dropped 435 -> 73 frames.
+        Needed linear (not squared) speed weights and 0.5 s position
+        smoothing: far-side jitter read as running.
+      - Aim only from people inside the lines; spots by a touchline
+        occupied >= 10% of the time (bench, subs) are ignored.
+      - Lull hold: <= 1 runner for 1 s keeps the aim from just before.
+      - goalframe: >= 4 players within 20 m of a detected goal while the
+        hotspot is elsewhere: frame both and the goal mouth (<= 75 deg).
+        Only worked once goals were detected (pitch.py goals): with the
+        model's goal lines it framed the wrong place at the right end.
+      - goalkick: a lone near-still player in/near a penalty area soon
+        after play was at that end: frame taker and group, held as a
+        state until 3 players run for 0.5 s (max 12 s). A keeper 50 m away
+        is tracked only on and off, so the pattern is judged over +-1 s.
+      - unsure: <= 1 runner near the hotspot keeps the view >= 55 deg,
+        <= 2 >= 42 deg (a quick clearance leaves the players behind).
+      - lead (aim 1 s ahead): no clear gain in this clip.
+      Not solved without the ball: a long clearance until players react.
+- [ ] Pitch map (`pitch.py`): background median, white-paint mask, fit
+      of camera position/height, pitch rotation, ground tilt, length and
+      width, plus a smooth vertical-angle correction (`warpDeg`, what one
+      flat pitch and the camera model can't explain). Goals (`pitch.py
+      footage/rec3 goals`, once per game): goal-shaped white structures
+      near each end are candidates; each left/right pair is tried by
+      refitting so they stand mid goal line; the pair that keeps both
+      ends' goal line and 6/18-yard boxes on the paint wins (stored goals
+      and other pitches' fail). The goals then correct the map: the right
+      end was ~20 m off before. Night game: 109.3 x 60.5 m, camera 2.7 m
+      up, goals 7.6 and 7.4 x 2.44 m. Still one-off parts:
+      - The starting pose is hand-read from the panorama. Automate it
+        (centre circle ellipse + halfway line give distance and height),
+        with a tap-two-points fallback in the app (centre spot, a corner).
+      - Assumes a regulation layout and full-size goals; youth and
+        small-sided pitches need a pitch type or more free sizes.
+      - Thresholds tuned on one game; test other venues and daylight.
+      - Goals moved mid-game (portable) would need a per-segment re-check.
+- [ ] Ball labelling: `labelset.py` (300 random moments, RF-DETR
+      suggestions, stitched panoramas; unlabelled frames turned into
+      both-phone moments) and `label/server.py` (local page: panorama
+      plus a magnifier per phone; every ball marked, the match ball
+      flagged; repeat figments hidden after the first few labels).
 - [ ] Follow cam speed, further ideas (a full game is ~2.5 h locally
       today, half in each pass):
       - Pass A (detection, seam) at 10 fps, reusing results for the frames
