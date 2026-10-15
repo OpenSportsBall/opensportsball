@@ -14,8 +14,6 @@ Footage and logs from these tests decide several items below.
       when the screen darkens.
 - [ ] Dropped link (Bluetooth off on Secondary for 30 s), out of range, and
       interruption (incoming call) tests.
-- [ ] 90-minute 4K run on the mount, outdoors if possible: temperature,
-      battery, storage.
 - [ ] First real website sign-up (Cognito), link Main (it gives Secondary
       a recording grant), upload a recording on Wi-Fi, game reaches Ready.
       Also pair with a Secondary on another account, and on none.
@@ -87,31 +85,29 @@ Footage and logs from these tests decide several items below.
 
 ## Phase 0: feasibility on real footage
 
-- [ ] Record a full real game with both phones on the mount, mounted
-      higher. First field clip (2026-10-12, recording `7fb5bc20`, 5 min,
-      two segments per phone) was shot near ground level: both goals fit
-      in the panorama, but players are small and the near touchline is
-      ~1-2 m away.
-- [ ] `processing/spikes/phase0.py` findings on that clip, to carry into
-      the pipeline:
-      - Audio sync locks cleanly outdoors (sharpness 8-29 per 4 s window).
-      - Offset drifts about -6 ppm (~30 ms per 90 min, one frame), and
-        segment 0 has a 5.5 ms step at ~115 s (an audio discontinuity on
-        one phone). Sync piecewise (per window, then fit), not one offset
-        per segment.
-      - The offset jumps 128 ms between segment 0 and 1: the phones lose
-        different amounts at the switch, and `startedAtDeviceMs` doesn't
-        show it (BLE+metadata guess was 5 ms off for segment 0, 31 ms for
-        segment 1). Re-sync every segment by audio.
+- [ ] Carry the `processing/spikes/phase0.py` findings into the
+      pipeline. From a 5-minute handheld field clip (2026-10-12) and a
+      97.5-minute night game on a fixed mount (2026-10-14, recording
+      `78618588`, 21 segments per phone, run locally off the phones):
+      - Audio sync locks in every segment of the game (most 4 s windows
+        clean). Clock drift is a steady -9 ppm (~50 ms per game, ~2.5 ms
+        per 5-minute segment), so one offset per segment is enough.
+      - Re-sync every segment by audio. The offset jumps by up to 390 ms
+        at segment switches (the phones lose different amounts), and
+        `startedAtDeviceMs` doesn't show it: BLE+metadata was 10 ms off
+        for segment 0 and 309 ms off by segment 20.
       - Stitch: OpenCV's panorama stitcher (estimated focal lengths and
-        rotations, graph-cut seam, multi-band blend) stitches a single
-        frame pair cleanly, near touchline included. A hand-rolled
-        homography fitted on field points did worse: turf texture gives
-        mostly false matches, and one plane can't align the whole frame.
-      - The phones moved relative to each other during that clip (45.7
-        to 57.1 deg apart, up to 6 deg within 10 s), so one calibration
-        doesn't hold for the whole video. Re-check on the mount; if it
-        still drifts, re-estimate the stitch every second or so.
+        rotations, graph-cut seam, multi-band blend). One calibration from
+        segment 0 held for the whole mounted game: overlap points moved
+        ~3 px median at 960 px wide in every segment, the same as the
+        measurement noise within one segment. The handheld clip drifted
+        (45-57 deg apart), so the pipeline needs a rigid mount or a
+        periodic re-estimate. Single-pair estimates of the angle are
+        noisy at night (78.8-86.8 deg); compare homographies instead.
+      - A homography fitted on field points did worse than the stitcher:
+        turf texture gives mostly false matches.
+      - 97.5 min of 4K on battery: thermal nominal throughout; battery
+        100 to 74% (Pixel 11) and 55% (11 Pro); ~24 GB per phone.
 - [ ] Pixel 11 Pro reports a 108.8 deg horizontal field of view but its
       recorded frame is ~104 deg (stitcher's focal estimate); the Pixel
       11's 103.6 deg matches. Check `CameraSelection.horizontalFovDeg`
