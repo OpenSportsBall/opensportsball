@@ -84,11 +84,14 @@ void main() {
   });
 
   test('full recording writes a manifest that lists both phones', () async {
-    await pair();
     secCam.up = const UpVector(0, -0.985, 0.174); // mounted upside down
+    await pair();
     expect(await main.startRecording(), isTrue);
     await eventually(() => secCam.recording, reason: 'secondary recording');
     expect(mainCam.locked && secCam.locked, isTrue);
+    // Read while the preview was open, so the files play upright.
+    expect(mainCam.lastUprightRotationDeg, 0);
+    expect(secCam.lastUprightRotationDeg, 180);
 
     await mainCam.finishSegment();
     await secCam.finishSegment();

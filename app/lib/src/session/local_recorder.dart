@@ -52,6 +52,13 @@ class LocalRecorder {
   /// preview texture changes).
   void Function(OpenResult opened)? onReopened;
 
+  /// Which way up the phone is, refreshed every [_orientationEvery] while
+  /// the camera is open and not recording. Read ahead of time so starting
+  /// a recording doesn't wait for the gravity sensor.
+  MountOrientation? mount;
+  static const _orientationEvery = Duration(seconds: 5);
+  Timer? _orientationTimer;
+
   final _hashing = <Future<void>>[];
   bool _needsReopen = false;
   bool _reopening = false;
@@ -77,7 +84,21 @@ class LocalRecorder {
     _lifecycle ??= AppLifecycleListener(onResume: () {
       if (_needsReopen) unawaited(_reopen());
     });
+    unawaited(_readOrientation());
+    _orientationTimer ??= Timer.periodic(_orientationEvery, (_) {
+      if (!recording) unawaited(_readOrientation());
+    });
     return opened!;
+  }
+
+  Future<MountOrientation?> _readOrientation() async {
+    try {
+      final up = await camera.orientation();
+      if (up != null) mount = MountOrientation.fromUp(up);
+    } on Object catch (e) {
+      debugPrint('orientation: $e');
+    }
+    return mount;
   }
 
   /// After an interruption the OS may have released the camera (Android
@@ -128,6 +149,7 @@ class LocalRecorder {
       rec.startedAtDeviceMs = await camera.startRecording(
         directory: dir.path,
         filePrefix: store.identity.deviceId,
+        uprightRotationDeg: mount?.uprightRotationDeg ?? 0,
       );
     } on Object {
       current = null;
@@ -135,13 +157,8 @@ class LocalRecorder {
       rethrow;
     }
     _power = PowerLog(camera, File('${dir.path}/power.csv'), every: powerLogEvery)..start();
-    // Read once recording runs: the phone is on the mount by now.
-    try {
-      final up = await camera.orientation();
-      if (up != null) rec.orientation = MountOrientation.fromUp(up);
-    } on Object catch (e) {
-      debugPrint('orientation: $e');
-    }
+    // Read again once recording runs: the phone is on the mount by now.
+    rec.orientation = await _readOrientation();
     await store.saveRecording(rec);
     return rec;
   }
@@ -220,6 +237,8 @@ class LocalRecorder {
 
   Future<void> close() async {
     _needsReopen = false;
+    _orientationTimer?.cancel();
+    _orientationTimer = null;
     _lifecycle?.dispose();
     _lifecycle = null;
     try {

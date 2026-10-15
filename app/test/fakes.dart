@@ -130,8 +130,16 @@ class FakeCamera implements DualCamera {
     return const LockResult(exposureLocked: false, whiteBalanceLocked: true, focusLocked: true);
   }
 
+  /// The `uprightRotationDeg` the last [startRecording] was given.
+  int? lastUprightRotationDeg;
+
   @override
-  Future<int> startRecording({required String directory, required String filePrefix}) async {
+  Future<int> startRecording({
+    required String directory,
+    required String filePrefix,
+    int uprightRotationDeg = 0,
+  }) async {
+    lastUprightRotationDeg = uprightRotationDeg;
     _dir = directory;
     _prefix = filePrefix;
     _index = 0;

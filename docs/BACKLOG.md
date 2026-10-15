@@ -18,6 +18,11 @@ Footage and logs from these tests decide several items below.
       a recording grant), upload a recording on Wi-Fi, game reaches Ready.
       Also pair with a Secondary on another account, and on none.
 
+- [ ] Upside-down phone plays upright: record with the new build and
+      check the Secondary's segments open the right way up in QuickTime
+      and the website (Android orientation hint / iOS track transform from
+      the orientation read while the preview is open).
+
 ## Bugs and small fixes
 
 - [ ] Uninstall the old `dev.sportsballvideo.sportsballvideo` app from the

@@ -26,7 +26,7 @@ codes: `permission_denied`, `camera_unavailable`, `unsupported_config`,
 | `availableLenses` | none | `List<String>` of back lenses present: `"ultrawide"`, `"wide"` |
 | `open` | see below | see below. Opens the camera and starts the preview. |
 | `lockSettings` | none | `{exposureLocked: bool, whiteBalanceLocked: bool, focusLocked: bool}` |
-| `startRecording` | `{directory: String, filePrefix: String}` | `{startedAtDeviceMs: int}` |
+| `startRecording` | `{directory: String, filePrefix: String, uprightRotationDeg: int}` | `{startedAtDeviceMs: int}`. `uprightRotationDeg` (0/90/180/270 clockwise, default 0) is added to the files' display rotation (Android orientation hint, iOS track transform) so a phone mounted upside down plays upright; pixels are not rotated. |
 | `stopRecording` | none | `{}`. Returns only after the last segment is finalized and its `segment` event has been sent. |
 | `status` | none | `{batteryPercent: int, charging: bool, freeStorageBytes: int, thermalState: String, recording: bool}` |
 | `orientation` | none | `{x: double, y: double, z: double}` or `null`: which way is up, as a unit vector in the recorded picture's axes (x to its right, y to its top, z out of the screen; the back camera looks along -z), from gravity averaged over up to a second. `null` if the phone has no usable sensor. A phone mounted upside down gives `y` near -1. |

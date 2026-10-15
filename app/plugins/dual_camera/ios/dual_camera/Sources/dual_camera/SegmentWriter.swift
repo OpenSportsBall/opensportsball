@@ -58,7 +58,21 @@ final class SegmentWriter {
   private(set) var droppedAudio = 0
   private var finished = false
 
-  init(index: Int, url: URL, videoSettings: [String: Any], audioSettings: [String: Any]) throws {
+  /// Track transform that shows the recorded frames upright when the phone
+  /// was mounted rotated by `degrees` clockwise (180 when upside down).
+  /// Only metadata: the pixels stay as the sensor delivers them.
+  static func uprightTransform(degrees: Int, width: Int, height: Int) -> CGAffineTransform {
+    let w = CGFloat(width), h = CGFloat(height)
+    switch ((degrees % 360) + 360) % 360 / 90 {
+    case 1: return CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: h, ty: 0)
+    case 2: return CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: w, ty: h)
+    case 3: return CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: w)
+    default: return .identity
+    }
+  }
+
+  init(index: Int, url: URL, videoSettings: [String: Any], audioSettings: [String: Any],
+       transform: CGAffineTransform = .identity) throws {
     self.index = index
     self.url = url
     // AVAssetWriter refuses to overwrite an existing file.
@@ -79,6 +93,7 @@ final class SegmentWriter {
     }
     videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
     videoInput.expectsMediaDataInRealTime = true
+    videoInput.transform = transform
     audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
     audioInput.expectsMediaDataInRealTime = true
     guard writer.canAdd(videoInput), writer.canAdd(audioInput) else {

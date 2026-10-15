@@ -197,8 +197,9 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       return
     }
     let url = URL(fileURLWithPath: directory, isDirectory: true)
+    let upright = args["uprightRotationDeg"] as? Int ?? 0
     camera.queue.async {
-      camera.startRecording(directory: url, filePrefix: prefix) { outcome in
+      camera.startRecording(directory: url, filePrefix: prefix, uprightRotationDeg: upright) { outcome in
         DispatchQueue.main.async {
           switch outcome {
           case .success(let ms): result(["startedAtDeviceMs": ms])

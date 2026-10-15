@@ -24,6 +24,8 @@ final class SegmentRecorder {
     let frameDuration: CMTime
     let videoSettings: [String: Any]
     let audioSettings: [String: Any]
+    /// Display transform for the video track (see `SegmentWriter.uprightTransform`).
+    let transform: CGAffineTransform
   }
 
   /// First frame written; argument is its wall-clock time in ms.
@@ -182,7 +184,8 @@ final class SegmentRecorder {
       index: index,
       url: settings.directory.appendingPathComponent(name),
       videoSettings: settings.videoSettings,
-      audioSettings: settings.audioSettings)
+      audioSettings: settings.audioSettings,
+      transform: settings.transform)
   }
 
   /// Builds the next writer on `prepQueue` so rotation doesn't stall capture.

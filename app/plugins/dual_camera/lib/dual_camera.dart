@@ -287,13 +287,19 @@ class DualCamera {
 
   /// Starts recording segments named `<filePrefix>_000.mp4`, ... into
   /// [directory]. Returns the device time of the first frame.
+  ///
+  /// [uprightRotationDeg] (0, 90, 180 or 270, clockwise) is written into
+  /// the files as display rotation, so players show a phone mounted upside
+  /// down the right way up. The pixels are not rotated.
   Future<int> startRecording({
     required String directory,
     required String filePrefix,
+    int uprightRotationDeg = 0,
   }) async {
     final r = await _methods.invokeMapMethod('startRecording', {
       'directory': directory,
       'filePrefix': filePrefix,
+      'uprightRotationDeg': uprightRotationDeg,
     });
     return r!['startedAtDeviceMs'] as int;
   }

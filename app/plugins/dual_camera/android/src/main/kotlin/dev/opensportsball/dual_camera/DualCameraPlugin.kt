@@ -107,7 +107,8 @@ class DualCameraPlugin :
                     if (dir.isNullOrEmpty() || prefix.isNullOrEmpty()) {
                         reply.error(Codes.INTERNAL, "startRecording needs directory and filePrefix")
                     } else {
-                        session().startRecording(dir, prefix, reply)
+                        val upright = call.argument<Int>("uprightRotationDeg") ?: 0
+                        session().startRecording(dir, prefix, upright, reply)
                     }
                 }
                 "stopRecording" -> session().stopRecording(reply)

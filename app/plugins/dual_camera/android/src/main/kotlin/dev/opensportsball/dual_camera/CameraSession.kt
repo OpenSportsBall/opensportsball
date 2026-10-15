@@ -233,7 +233,7 @@ internal class CameraSession(
         }
     }
 
-    fun startRecording(directory: String, prefix: String, reply: Reply) = post(reply) {
+    fun startRecording(directory: String, prefix: String, uprightRotationDeg: Int, reply: Reply) = post(reply) {
         val o = readyOrThrow()
         if (recording != null) throw CameraError(Codes.ALREADY_RECORDING, "Already recording")
         if (!granted(Manifest.permission.RECORD_AUDIO)) {
@@ -250,7 +250,7 @@ internal class CameraSession(
         val file0 = freshFile(dir, prefix, 0)
         val recorder = newRecorder()
         try {
-            configureRecorder(recorder, o, file0, withAudio = true)
+            configureRecorder(recorder, o, file0, withAudio = true, uprightRotationDeg = uprightRotationDeg)
             // Android only rotates output files on the size limit (there is no
             // public "duration approaching" event), so segments are cut by a
             // byte budget equal to bitrate x segment duration. See CHANNEL.md.
@@ -715,7 +715,9 @@ internal class CameraSession(
     private fun newRecorder(): MediaRecorder =
         if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else MediaRecorder()
 
-    private fun configureRecorder(r: MediaRecorder, o: Opened, file: File, withAudio: Boolean) {
+    private fun configureRecorder(
+        r: MediaRecorder, o: Opened, file: File, withAudio: Boolean, uprightRotationDeg: Int = 0,
+    ) {
         if (withAudio) r.setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
         r.setVideoSource(MediaRecorder.VideoSource.SURFACE)
         r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -735,7 +737,7 @@ internal class CameraSession(
             r.setAudioEncodingBitRate(AUDIO_BITRATE)
             r.setAudioChannels(1)
         }
-        r.setOrientationHint(o.orientationHint)
+        r.setOrientationHint(Selection.recordingHint(o.orientationHint, uprightRotationDeg))
         r.setInputSurface(o.recorderSurface ?: throw IllegalStateException("no recorder surface"))
     }
 

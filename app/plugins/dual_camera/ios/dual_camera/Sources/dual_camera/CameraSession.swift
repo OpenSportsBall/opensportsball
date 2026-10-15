@@ -439,7 +439,7 @@ final class CameraSession: NSObject,
 
   /// Call on `queue`; `completion` runs on `queue` once the first frame is
   /// written (or recording failed to start).
-  func startRecording(directory: URL, filePrefix: String,
+  func startRecording(directory: URL, filePrefix: String, uprightRotationDeg: Int,
                       completion: @escaping (Result<Int64, CameraError>) -> Void) {
     guard !closed, let cfg = config else {
       completion(.failure(CameraError("not_open", "camera is not open")))
@@ -463,7 +463,10 @@ final class CameraSession: NSObject,
       segmentDuration: CMTime(value: CMTimeValue(cfg.segmentDurationMs), timescale: 1000),
       frameDuration: CMTime(value: 1, timescale: CMTimeScale(actualFps)),
       videoSettings: videoSettings(codecType),
-      audioSettings: audioSettings)
+      audioSettings: audioSettings,
+      transform: SegmentWriter.uprightTransform(
+        degrees: uprightRotationDeg,
+        width: recordWidth, height: recordHeight))
     let newRecorder: SegmentRecorder
     do {
       newRecorder = try SegmentRecorder(settings: settings, clock: captureClock, queue: queue)

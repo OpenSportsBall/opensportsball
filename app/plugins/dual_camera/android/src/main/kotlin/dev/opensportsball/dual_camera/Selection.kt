@@ -105,6 +105,15 @@ internal object Selection {
     fun orientationHint(sensorOrientation: Int, displayRotationDeg: Int): Int =
         ((sensorOrientation - displayRotationDeg) % 360 + 360) % 360
 
+    /**
+     * Orientation hint for the recorded files: the camera's own hint plus
+     * the rotation that makes the scene upright on the mount (180 for a
+     * phone mounted upside down), so players show the video the right way
+     * up. Only metadata: the pixels stay as the sensor delivers them.
+     */
+    fun recordingHint(orientationHint: Int, uprightRotationDeg: Int): Int =
+        (((orientationHint + uprightRotationDeg) % 360) + 360) % 360 / 90 * 90
+
     /** Preview texture size after rotating a sensor-oriented buffer upright. */
     fun uprightSize(sensorSize: Dim, orientationHint: Int): Dim =
         if (orientationHint % 180 != 0) Dim(sensorSize.height, sensorSize.width) else sensorSize

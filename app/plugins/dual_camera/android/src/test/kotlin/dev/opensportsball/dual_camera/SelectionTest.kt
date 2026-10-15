@@ -196,4 +196,13 @@ internal class SelectionTest {
         assertEquals(Dim(1920, 1080), Selection.choosePreviewSize(options, Dim(3840, 2160)))
         assertEquals(Dim(1440, 1080), Selection.choosePreviewSize(options, Dim(4000, 3000)))
     }
+
+    @Test
+    fun recordingHintAddsTheMountRotation() {
+        assertEquals(90, Selection.recordingHint(90, 0))
+        assertEquals(270, Selection.recordingHint(90, 180))
+        assertEquals(0, Selection.recordingHint(180, 180))
+        assertEquals(180, Selection.recordingHint(0, 180))
+        assertEquals(0, Selection.recordingHint(270, 90))
+    }
 }
