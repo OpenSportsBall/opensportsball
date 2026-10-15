@@ -124,11 +124,30 @@ Footage and logs from these tests decide several items below.
       refined at 1920 px (median error 11 to 4 px at 4K); each pixel comes
       from one phone along a per-frame seam that avoids players, since the
       phones never capture the same instant and blending doubled moving
-      players; two-band blend hides the exposure step. A 2-minute excerpt
-      renders in ~10 min on an M-series Mac. Still to do: speed (GPU
-      remap/blend, hardware encode, flip folded into the camera model),
-      frame vertically (too much near-field grass), ignore sideline
+      players; two-band blend hides the exposure step. Warping and blending
+      run on the GPU (`gpu.py`, PyTorch: MPS locally, CUDA in the cloud),
+      NV12 from hardware decode to hardware encode; 20 s of video in 64 s
+      on an M-series Mac (pass B ~27 ms/frame, pass A ~27 ms/frame). Still
+      to do: frame vertically (too much near-field grass), ignore sideline
       spectators who move, cross segment boundaries.
+- [ ] Follow cam speed, further ideas (a full game is ~2.5 h locally
+      today, half in each pass):
+      - Pass A (detection, seam) at 10 fps, reusing results for the frames
+        between: about a third of its cost. Check that the seam's player
+        margin still covers fast play near the overlap.
+      - Pass A's panorama: scale on the GPU in the decoder (`scale_vt`)
+        instead of in software; download it smaller (luma only, or half
+        size) or move background subtraction onto the GPU.
+      - Seam search in compiled code (numba) or on the GPU instead of a
+        Python loop over rows.
+      - Fixed mount: precompute a direction -> source pixel lookup once per
+        game, so per-frame geometry is a lookup into it.
+      - Fuse the render's elementwise steps (`torch.compile`, or a custom
+        Metal/CUDA kernel); render in fp16 throughout.
+      - Run passes A and B concurrently (B lagging A by the path's
+        smoothing window), so decode and GPU work overlap across passes.
+      - In the cloud: NVDEC/NVENC and CUDA on the Batch GPU instance, and
+        split a game across instances by segment.
 - [ ] Clap test on the mount: confirm audio sync also aligns video (each
       phone's audio-to-video offset in the file is assumed equal).
 
