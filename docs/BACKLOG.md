@@ -212,8 +212,22 @@ Footage and logs from these tests decide several items below.
       track (+ periodic full scans), judge to clean candidates, tracker
       over confidence x judge. To tune the tracker itself we need ball
       ground truth along a clip (labels every ~2 s), not 13 play boxes.
-      Next: ball coverage (tracked 23-39% of a clip; motion candidates,
-      better tracker), a restart rule for takers in loiter cells, more
+      Clip ball labels (2026-10-16, `labelset.py clip`: a both-phone
+      moment every 2 s along each clip, 120 moments, reviewed): with
+      `balleval.py` the tracker is measured directly. Found at labelled
+      moments, seg 9 / seg 3: as it was 32% / 26% (wrong 9 / 12); with
+      the static filter at 30 s, a 2-hit minimum, judge >= 0.3 and a
+      0.6 s gap: 54% / 62% (wrong 1 / 8; with a looser tolerance 57% /
+      66%, wrong 0 / 4). Now the defaults. Of the remaining misses about
+      half have no detector candidate near the ball at all, the rest are
+      balls on the near touchline just outside the pitch margin, in a
+      player's hands (the judge scores those ~0), or in tracks the chain
+      didn't pick. Also fixed: ballclip.py only read the first segment
+      file, so seg 3's candidates stopped at 1:00; with the full clip
+      A + ball + goalin captures 10/13 play boxes.
+      Next: ball coverage (detector search windows around the track to
+      recover the no-candidate misses cheaply; a judge that accepts a
+      ball in hands), a restart rule for takers in loiter cells, more
       labelled moments from other stretches before tuning further.
 - [ ] Pitch map (`pitch.py`): background median, white-paint mask, fit
       of camera position/height, pitch rotation, ground tilt, length and
