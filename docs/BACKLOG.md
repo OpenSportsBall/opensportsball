@@ -170,6 +170,35 @@ Footage and logs from these tests decide several items below.
         unsure's widening where it's known), motion candidates and a
         better tracker to fill the gaps.
       Not solved without the ball: a long clearance until players react.
+- [ ] Follow-cam evaluation set (2026-10-16): `playeval.py` builds a
+      full-resolution panorama at chosen moments; the page in `evalpage/`
+      records a reviewed "must-see" box per moment (panorama degrees);
+      `playbench.py` plans every variant from cached player detections
+      (seconds per clip) and scores it: moments captured (>= 98% of the
+      box in view) and view width. 13 reviewed moments on two 2-minute
+      clips (segment 9 from 60 s, segment 3 from 225 s, crossing into 4).
+      Note the earlier renders' paths were ~0.7 s off the video (decoder
+      frame repeat after a seek, fixed in frame_stream), so judgements of
+      those renders don't line up with these scores. Results:
+      - A (goalkick,goalframe,unsure): 4/13, median width 54 deg. Misses
+        are aim, not width: the hotspot stays on the chasing pack while
+        a lone runner has the ball, or the shot happens at the goal ahead
+        of the pack; a throw-in taker at the bench is filtered out.
+      - Hotspot tweaks without the ball (weak, nowalk, allnear, flow,
+        lone, goalin, gk2, bigger bandwidth, no lull): none beat 4/13.
+      - A + ball (fine-tuned detector + chain, 10 fps): 8/13 at 54 deg.
+        A + ball + goalin (goal mouth kept in frame when the hotspot is
+        within 30 m of a goal): 9/13, mean coverage 85%, same width:
+        the best principled result. + nowalk (2 m/s) reaches 10/13 but
+        wider (68 deg) and mostly by accident (a wide goal-kick frame).
+      - Still missed: a goal kick where the ball sits in the keeper's
+        hands (seg 9, 70 s: tracker loses it, camera lags), a throw-in
+        taken from the bench spot by the camera (seg 3, 105 s: the taker
+        is 0.1 m outside the line in a loiter cell), and the clip's first
+        seconds (seg 3, 2.5 s: a lull at frame 0; not a full-game issue).
+      Next: ball coverage (tracked 23-39% of a clip; motion candidates,
+      better tracker), a restart rule for takers in loiter cells, more
+      labelled moments from other stretches before tuning further.
 - [ ] Pitch map (`pitch.py`): background median, white-paint mask, fit
       of camera position/height, pitch rotation, ground tilt, length and
       width, plus a smooth vertical-angle correction (`warpDeg`, what one
