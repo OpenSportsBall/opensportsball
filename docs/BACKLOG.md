@@ -196,6 +196,22 @@ Footage and logs from these tests decide several items below.
         taken from the bench spot by the camera (seg 3, 105 s: the taker
         is 0.1 m outside the line in a loiter cell), and the clip's first
         seconds (seg 3, 2.5 s: a lull at frame 0; not a full-game issue).
+      Ball tracking (2026-10-16): the fine-tuned detector finds the match
+      ball in 65-72% of clip frames (conf >= 0.1) but ball.py's chain
+      keeps 23-39%: tracks fragment (median 1 hit; a 0.3 s gap ends one).
+      Tolerating longer gaps raises coverage to 75% but captures fall
+      (9 -> 4-6/13): the extra frames follow false tracks. `balljudge.py`,
+      a 48 px crop classifier trained on the labels (4 min on mps, 1.5 ms
+      per crop), ranks candidates about as well as possible (held-back
+      moments: match ball top-1 in 62% with the stock detector's
+      suggestions, near the 77% candidate ceiling) but filtering the
+      tracker's candidates with it doesn't lift the captures (8/13).
+      Motion candidates alone cap at 55%: half the misses are the ball
+      merged into a player's blob; the detector finds 92% of those. So
+      the production shape is detector in search windows around the
+      track (+ periodic full scans), judge to clean candidates, tracker
+      over confidence x judge. To tune the tracker itself we need ball
+      ground truth along a clip (labels every ~2 s), not 13 play boxes.
       Next: ball coverage (tracked 23-39% of a clip; motion candidates,
       better tracker), a restart rule for takers in loiter cells, more
       labelled moments from other stretches before tuning further.
