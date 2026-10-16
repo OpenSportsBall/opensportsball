@@ -240,6 +240,36 @@ Footage and logs from these tests decide several items below.
       test on the other) raises its crop AP on the held-out clip to
       0.92-0.96 but leaves the tracker's found-rate unchanged (seg 3
       55% vs 58%, seg 9 46-49% vs 49%): not the lever.
+      Ball witnesses from other motion (2026-10-16/17, scored on the
+      clip labels; `witness.py`, `flowcands.py`, `facing.py`):
+      - Keeper bearings (the keeper stands on the ball-goal line): the
+        "keeper" from pass A is a defender 14-17 m out, because a still
+        keeper is absorbed into the background model; bearing errors
+        11-52 deg median, the point 40-46 m off. Needs a real person
+        detector; as a gate it only hurt the tracker.
+      - Motion candidates (double difference over three frames, size and
+        consistent step, judged): 264 blobs/frame before the judge, 0.6
+        after; alone 11-19% found with 16 wrong; in union with the
+        window detector 1-3 more moments have a candidate but the
+        tracker does worse (43% vs 49%, 34% vs 58%): the extra blobs
+        make wrong tracks. Differencing doesn't reach the 5 px far balls
+        either; 54 min per clip on the Mac.
+      - Net ripple (share of the goal mouth that changed per frame):
+        the left goal flags the shot at 0:45-0:50 and the goalmouth
+        scramble at 1:30; specific (1 of 23 far moments) but only fires
+        when the ball reaches the net (2 of 8 and 3 of 18 near-goal
+        moments). The far goal's region is too small at this resolution
+        (noise: active at half the far-away moments). Useful as a
+        shot/goal event for the follow cam's near goal, not as a ball
+        position.
+      - Facing direction (COCO keypoints on each tracked player, a ray
+        from the shoulders and nose; facing found for ~75% of players):
+        single rays within 30 deg of the ball 37-41% of the time (random
+        17%), median 38-45 deg off; the best combination (a vote over
+        rays) lands a median 28 m from the ball, within 8 m at 5/37 and
+        9/53 moments. A weak prior only at this player size.
+      None of the four moves the tracker's found-rate; the limit stays
+      the detector's reach on tiny far balls.
       Next: tiny far-side balls are the limit. Fine-tune the detector
       (not the judge) with the clip labels as extra tiny-ball examples
       (cross-clip to measure), try 3-4x zoom windows for the far third,
