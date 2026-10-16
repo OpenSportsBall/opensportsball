@@ -225,10 +225,27 @@ Footage and logs from these tests decide several items below.
       didn't pick. Also fixed: ballclip.py only read the first segment
       file, so seg 3's candidates stopped at 1:00; with the full clip
       A + ball + goalin captures 10/13 play boxes.
-      Next: ball coverage (detector search windows around the track to
-      recover the no-candidate misses cheaply; a judge that accepts a
-      ball in hands), a restart rule for takers in loiter cells, more
-      labelled moments from other stretches before tuning further.
+      Search-window detector (`ballwin.py`, 2026-10-16): an online track
+      on the pitch, a native 640 px window plus a 2x zoom window for
+      small balls in each phone, full scans every 2 s or when lost. Same
+      recall as full scans within a few points (seg 9 49% vs 54%, seg 3
+      58% vs 58% with a 3 m pitch margin, now the default) at ~6-8x
+      fewer tiles: 6.5 min for 2 min of 4K on the Mac instead of 30.
+      Ceiling check: a usable candidate from either detector exists at
+      only 24/37 and 32/53 labelled moments (~62%); the tracker reaches
+      49-58%. The gap is detection: 27 of 34 no-candidate moments are
+      balls under 8 px, 43-100+ m away; ~8 are judge false negatives
+      (ball in hands, at the keeper, against a fence). Retraining the
+      judge with the clip labels (train on one clip + the random set,
+      test on the other) raises its crop AP on the held-out clip to
+      0.92-0.96 but leaves the tracker's found-rate unchanged (seg 3
+      55% vs 58%, seg 9 46-49% vs 49%): not the lever.
+      Next: tiny far-side balls are the limit. Fine-tune the detector
+      (not the judge) with the clip labels as extra tiny-ball examples
+      (cross-clip to measure), try 3-4x zoom windows for the far third,
+      and plan more pixels per degree at capture. Also a restart rule for
+      takers in loiter cells, and more labelled moments from other
+      stretches before tuning further.
 - [ ] Pitch map (`pitch.py`): background median, white-paint mask, fit
       of camera position/height, pitch rotation, ground tilt, length and
       width, plus a smooth vertical-angle correction (`warpDeg`, what one
