@@ -127,10 +127,12 @@ Footage and logs from these tests decide several items below.
       hardware decode to hardware encode; 20 s of video in 64 s on an
       M-series Mac. Still to do: cross segment boundaries.
 - [ ] Follow cam aim, judged by eye on 2 minutes of the night game
-      (segment 9, 60-180 s; 2026-10-15). Best two so far, both
-      `follow.py ... play goalframe` and `... play goalkick,goalframe,unsure`
-      ("A": catches both missed moments but is fairly zoomed out, median
-      55 deg; next: tighten its zoom). What each step fixed:
+      (segment 9, 60-180 s; 2026-10-15). Best so far: "A",
+      `follow.py ... play goalkick,goalframe,unsure` (hotspot + goal kicks
+      + goal in frame + zoom out when unsure): the only version that
+      catches every key moment in the clip, but zoomed out at times
+      (median 55 deg). Runner-up: `play goalframe`. All tuned on this one
+      clip; check another stretch of the game. What each step fixed:
       - Speed-weighted players beat the median of all players (caught a
         quick counter; in play.py's test, ball in a 60 deg view 100% vs
         66%), but an average of 3-6 runners jumps between groups.
@@ -153,6 +155,20 @@ Footage and logs from these tests decide several items below.
       - unsure: <= 1 runner near the hotspot keeps the view >= 55 deg,
         <= 2 >= 42 deg (a quick clearance leaves the players behind).
       - lead (aim 1 s ahead): no clear gain in this clip.
+      - Hotspot weights, on `play goalframe` (2026-10-15): `nowalk`
+        (players under 2 m/s weigh nothing) frames tighter (median 30 vs
+        36 deg), goalframe fires ~20% less, and the aim moves elsewhere
+        for a few seconds (0:29, 0:42, 0:57); `fastboost` (3x the slope
+        above 4 m/s) changes almost nothing: fast runners already
+        dominated and the switch rule damps them. Neither adopted.
+      - ball (`ballclip.py` candidates from the fine-tuned detector at
+        10 fps, `ball.py`'s chain, aim at the ball where tracked >= 0.5 s,
+        goalframe and lull hold off there): on `play goalframe` it followed
+        the attack to the left goal at :44 with the goal mouth in view,
+        but the ball was tracked only 39% of the clip (none after 1:34),
+        so it missed the 1:55 goal kick. Next: A + ball (the ball replaces
+        unsure's widening where it's known), motion candidates and a
+        better tracker to fill the gaps.
       Not solved without the ball: a long clearance until players react.
 - [ ] Pitch map (`pitch.py`): background median, white-paint mask, fit
       of camera position/height, pitch rotation, ground tilt, length and
@@ -172,11 +188,38 @@ Footage and logs from these tests decide several items below.
         small-sided pitches need a pitch type or more free sizes.
       - Thresholds tuned on one game; test other venues and daylight.
       - Goals moved mid-game (portable) would need a per-segment re-check.
+      Regression test: `processing/tests/test_pitch_regression.py` reruns
+      the whole mapping on saved background panoramas and checks goals,
+      size, camera and 15 key points (<= 0.1 deg) against results checked
+      by eye. Fixtures hold footage, so they stay out of git
+      (`footage/fixtures/pitch/<name>`, made by `pitch.py <rec> fixture
+      <dir>`; back them up privately). One so far: the night game.
 - [ ] Ball labelling: `labelset.py` (300 random moments, RF-DETR
       suggestions, stitched panoramas; unlabelled frames turned into
       both-phone moments) and `label/server.py` (local page: panorama
       plus a magnifier per phone; every ball marked, the match ball
       flagged; repeat figments hidden after the first few labels).
+      408 of 409 frames labelled (183 with the match ball).
+- [ ] Ball detection (night game, 2026-10-15):
+      - Off-the-shelf RF-DETR "sports ball" on 4K tiles: 58% of match
+        balls at conf >= 0.2 with 2.1 wrong suggestions per frame.
+      - Motion (`motion.py`: difference from the median of +-1 s and from
+        the neighbouring frames, blobs of ball size for the distance):
+        55% of match balls but ~120 candidates per frame, and ranking by
+        contrast is poor (top 10: 6%). Detector + motion together: 77%.
+        Decode natively (`-fps_mode passthrough`): ffmpeg's frame-rate
+        filter repeats the first frame after a seek, hiding all motion.
+      - Fine-tuned RF-DETR Medium (`balldata.py` 640 px COCO tiles with
+        hard negatives, `balltrain.py`, batch 2 x 8 accumulation on mps,
+        ~7 min per epoch, early stop at 26, best epoch 18; mAP50 0.64).
+        On held-back moments (`ballcompare.py`, 42 match balls): 76% of
+        match balls at conf >= 0.1 with 1.1 wrong per frame (stock: 69%
+        with 10.5); the top suggestion is the match ball 69% of the time
+        (stock 40%). On training moments 96%: overfit to this game, so
+        label a second game before training more.
+      - Next: the tuned detector as a judge of motion candidates, and a
+        tracker with ball physics (ground rolls, lofted balls projecting
+        long).
 - [ ] Follow cam speed, further ideas (a full game is ~2.5 h locally
       today, half in each pass):
       - Pass A (detection, seam) at 10 fps, reusing results for the frames
