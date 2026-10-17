@@ -283,6 +283,21 @@ Footage and logs from these tests decide several items below.
       after its net moved) is implemented but costs a box on seg 3 (a
       side-netting hit at 0:50 pulls the view off the dribble at 0:54):
       off by default.
+      The view never crosses the canvas's left/right edge: it stops there
+      and zooms in instead (EDGE_MARGIN_DEG 2, floor EDGE_MIN_HFOV 40).
+- [ ] Follow cam: clip further in from the left and right edges. The edge
+      rule stops at the canvas boundary (where a phone's frame ends, less
+      2 deg), but the last several degrees of each phone are poor: lens
+      fall-off and vignetting, the radial distortion's fold-back limit
+      (`Camera.r2_max`), softer focus at the frame corners, and the
+      vertical edges of the panorama are the frame corners' diagonals.
+      Measure where the usable image ends (sharpness and brightness per
+      column near each edge, and r2_max in degrees), set the margin from
+      that, probably per side (the phones differ: focal 1507 vs 1485 px,
+      the Secondary mounted upside down), and check with a render of a
+      near-edge moment (seg 3 at 0:25-0:55 right, 1:40-1:55 left). The
+      zoom floor at the edge can stay at 40 deg: pixels per degree are
+      highest there.
       Next: tiny far-side balls are the limit. Fine-tune the detector
       (not the judge) with the clip labels as extra tiny-ball examples
       (cross-clip to measure), try 3-4x zoom windows for the far third,
