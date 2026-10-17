@@ -270,6 +270,19 @@ Footage and logs from these tests decide several items below.
         9/53 moments. A weak prior only at this player size.
       None of the four moves the tracker's found-rate; the limit stays
       the detector's reach on tiny far balls.
+      Follow cam, round two (2026-10-17, play boxes): the zoom floor
+      raised from 30 to 50 deg (a 1080p view narrower than ~55 deg
+      upsamples the 4K source: ~26 px/deg at a phone's centre, 65 deg
+      for pixel-for-pixel), ballwin.py's candidates as the ball source,
+      and "ballhold" (in a lull, stay on the ball seen in the last 2 s,
+      with the players around it; the stillness test dropped) take
+      "A + ball + goalin" from 8-10/13 to 11/13 captured at a 64 deg
+      median width, mean coverage 98%. Misses: the seg 9 goal kick
+      (76%: the ball in the keeper's hands, the camera lags) and seg 3's
+      first seconds (95%). "netevent" (keep a goal in frame for 2-3 s
+      after its net moved) is implemented but costs a box on seg 3 (a
+      side-netting hit at 0:50 pulls the view off the dribble at 0:54):
+      off by default.
       Next: tiny far-side balls are the limit. Fine-tune the detector
       (not the judge) with the clip labels as extra tiny-ball examples
       (cross-clip to measure), try 3-4x zoom windows for the far third,
