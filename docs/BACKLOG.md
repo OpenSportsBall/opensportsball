@@ -297,11 +297,17 @@ Footage and logs from these tests decide several items below.
       seg 9 gives blue vs green + stripes with a 44% margin, which is the
       right answer (the stripes are the green team's second kit). The
       "kit component" criteria are thresholds tuned by eye on one game.
-      Next: the close-pairs rule (opponents mark each other) as a second
-      vote, referee vs keeper by position, the keeper component as the
-      keeper for bearings and goal kicks, the referee dropped from the
-      hotspot, and team as a matching cost in the player tracker. When
-      the margin is small, ask once in the app with the answer prefilled.
+      Wired in (`roles.py` + follow.py "roles"): people along a clip at
+      half resolution with side / keeper / referee (keeper vs referee by
+      goal-area position; a far, small, saturated person in a goal area
+      counts as the keeper). Referees are dropped before tracking; a
+      keeper in their area with the ball triggers the goal-kick framing.
+      Play boxes 11/13 -> 12/13 (the seg 9 goal kick); keepers seen in
+      85-99% of frames. ~12 min per 2 min clip on the Mac (another
+      ~6 h on a full game; the stage could share ballwin.py's decode).
+      Next: the close-pairs rule as a second vote, team as a matching
+      cost in the player tracker, keeper bearings as a ball witness with
+      the real keeper. When the margin is small, ask once in the app.
 - [ ] Follow cam: clip further in from the left and right edges. The edge
       rule stops at the canvas boundary (where a phone's frame ends, less
       2 deg), but the last several degrees of each phone are poor: lens
