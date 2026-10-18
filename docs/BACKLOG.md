@@ -305,6 +305,16 @@ Footage and logs from these tests decide several items below.
       Play boxes 11/13 -> 12/13 (the seg 9 goal kick); keepers seen in
       85-99% of frames. ~12 min per 2 min clip on the Mac (another
       ~6 h on a full game; the stage could share ballwin.py's decode).
+      Kick-offs ("kickoff", 2026-10-18): the ball parked at the centre
+      spot for 3 s with hardly anyone running, and with roles both sides
+      nearly in their own halves, holds the centre circle until play has
+      moved off it. The sides alone were not enough: at the first
+      kick-off (1:09) the stragglers were still crossing while the ball
+      had sat at the centre since 0:18. Fires at 0:46-1:10, 8:54-9:05
+      and 50:01-50:12 (the second-half kick-off), not at the ball's
+      brief stops at 4:12 and 34:24. Whether 8:54 follows a goal is
+      unconfirmed. A keeper alone is no longer a goal kick (they are at
+      every kick-off), and no goal kick is framed within 8 s of one.
       Next: the close-pairs rule as a second vote, team as a matching
       cost in the player tracker, keeper bearings as a ball witness with
       the real keeper. When the margin is small, ask once in the app.
