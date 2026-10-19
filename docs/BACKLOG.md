@@ -334,8 +334,8 @@ Footage and logs from these tests decide several items below.
       Next: WASB blobs + judge as a second candidate source in ballwin.py
       (the 2x and 4x tiles, in the search window and over the far third),
       through the tracker, scored with balleval.py.
-      Offline path tracker (2026-10-19, `ballpath.py`; OSB_BALL_PATH=1
-      selects it in balleval.py and follow.py): the clip is on disk
+      Offline path tracker (2026-10-19, `ballpath.py`; the default
+      in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
       (tracks die after 0.6 s, median one hit) the match ball is one
       minimum-cost path (Viterbi) through the same filtered candidates:
@@ -379,13 +379,23 @@ Footage and logs from these tests decide several items below.
       which the chain never links), and the goalkick rule's far-ball
       stop (GK_BALL_FAR_M) ends the keeper's framing a second before
       the kick; and 0:13 (95%): identical targets, a slightly
-      different smoothed camera. So the chain stays follow.py's and
-      balleval.py's default and the path is behind OSB_BALL_PATH=1 in
-      both. To adopt it: make the goal-kick stop ignore a ball still
-      near the keeper's corner (or stop only on a ball moving away),
-      then re-run the boxes; ball.py's filters and ballwin.py's online
-      track stay as they are either way (the search windows need the
-      online prediction).
+      different smoothed camera. So at first the chain stayed the
+      default and the path sat behind a flag. Reviewed on the side-by-side render (2026-10-19): the
+      path's camera is right at 1:54-1:57, the ball is in the corner
+      and a keeper framing need not hold, so the 1:57 box was removed
+      from the seg 9 set (12 moments now), and the 0:13 box was redrawn
+      to the clearance itself (its old left edge held two bystanders
+      the path's camera clipped at 95%). On 12: chain and path both
+      11/12, mean coverage 100%, missing only the seg 3 opening (95%);
+      the path is narrower at the captures (55 vs 60 deg median) and
+      aims at the ball in 39% / 70% of the clips against 27% / 65%. So
+      the path is now the default ball linker in follow.py and
+      balleval.py (OSB_BALL_CHAIN=1 gives the chain back); ball.py's
+      filters and ballwin.py's online track stay as they are (the
+      search windows need the online prediction). Still open: the
+      goal-kick far-ball stop (GK_BALL_FAR_M) treats a slow ball in the
+      keeper's corner as play elsewhere; stopping only on a ball moving
+      away would be truer, but no box measures it now.
 - [ ] Teams from kit colour (`teams.py`, 2026-10-17): RF-DETR people on
       the clip label sets, torso patches white-balanced against the turf
       beside the player, colour features, a Gaussian mixture of 8. The
