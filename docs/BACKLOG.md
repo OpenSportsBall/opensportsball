@@ -367,6 +367,32 @@ Footage and logs from these tests decide several items below.
       Next: the close-pairs rule as a second vote, team as a matching
       cost in the player tracker, keeper bearings as a ball witness with
       the real keeper. When the margin is small, ask once in the app.
+- [ ] Camera-log review of the second full render (2026-10-18/19,
+      `camlog.txt`: one line per change of the rule driving the camera):
+      - 25:05 framed a goal kick at the right end during open play at
+        the left (the keeper alone + "play near that goal 11 s ago",
+        the goal at 24:54). Fixed: a confident raw ball candidate far
+        from a goal, with none near it, vetoes a goal kick there (the
+        chain often fails to link those candidates). A lull-based guard
+        was tried first: no help, and it cost a play box.
+      - 54:32 and 54:41 followed the two spare balls by the bench (just
+        inside the 3 m pitch margin, seen only when a scan passed, so
+        the static filter missed them). Fixed: in loiter cells a ball
+        still for 8 s with 3 sightings is static; elsewhere 10 sightings
+        over 30 s regardless of gaps. Excluding loiter cells outright
+        lost the throw-in box (the thrower stands in one).
+      - ballwin.py's online track accepted a 22 m jump, got a 33 m/s
+        velocity and flew off the pitch, refusing good candidates for
+        1.4 s; in the full run its windows sat on the bench ball for 7 s.
+        Fixed: velocity capped (20 m/s), decayed while unseen, prediction
+        kept on the pitch, big jumps need conf >= 0.6. Clip recall a wash
+        (seg 9 46 -> 38%, seg 3 66 -> 68%), 25:04-25:26 now tracked.
+      - 53:42 (a long ball ahead of the players) and 54:02 (a lull hold
+        after the keeper gathered) were correct.
+      Follow-up: restart_taker flashes 95 deg wide for 0.4-2 s in short
+      lulls (54:27-54:50); gate it like the goal kick (far-ball veto,
+      minimum lull length). The ball-stage changes mean a full re-render
+      needs the ball candidates regenerated (~45 min per 10 min chunk).
 - [ ] Full-game runner (`fullgame.py`): name each piece by the
       configuration it was rendered with (a hash of the feature string
       and the constants it uses, plus the candidate and roles file
