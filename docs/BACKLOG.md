@@ -285,6 +285,55 @@ Footage and logs from these tests decide several items below.
       off by default.
       The view never crosses the canvas's left/right edge: it stops there
       and zooms in instead (EDGE_MARGIN_DEG 2, floor EDGE_MIN_HFOV 40).
+      Multi-frame heatmap detectors (2026-10-18, `ballheat.py`, scored
+      per labelled frame on both phones: a candidate within 12 px or 1.5
+      ball diameters of the label): WASB and TrackNetV2 with their
+      authors' football weights (ISSIA-CNR: static 1080p cameras on a
+      pitch, trained at 512x288), TrackNetV3 with its badminton weights,
+      each run on 512x288 tiles of the 4K frame at native, 2x and 4x
+      downscale (64 tiles per frame, ~5 s per frame per model on the
+      Mac, unoptimised). The fine-tuned RF-DETR (ballclip.py full scans)
+      at the same frames: seg 9 13/48 (27%; 44 of the 48 balls are under
+      8 px) at 1.0 candidate per frame, seg 3 35/58 (60%) at 0.9. Raw,
+      WASB finds more only with far more clutter (seg 9 23/48 at 70 per
+      frame, seg 3 42/58 at 108; at <= 1 per frame it is below RF-DETR).
+      With balljudge.py over its blobs (score >= 0.05, judge >= 0.3)
+      WASB alone matches RF-DETR, 14/48 at 1.4 per frame and 35/58 at
+      1.7, and the two are complementary: their union finds 21/48 (44%)
+      and 45/58 (78%). Raw WASB at a low threshold finds nearly every
+      ball of 8 px or more (seg 3: 23/25 vs RF-DETR's 15/25). TrackNetV2
+      is a little behind WASB (union 44/58), TrackNetV3 far behind with
+      10x the clutter. By scale, the far balls come from the 2x and 4x
+      tiles, hardly from the native ones.
+      Found on the way: labelset.py's images are 0.2-0.9 s later than
+      their stored time. phase0.frames_at returns the first frame the
+      decoder yields after a seek, up to a keyframe interval late: seg 9
+      main +0.38 s, secondary +0.66; seg 3 main +0.86, secondary +0.17
+      (ballheat.py measures it per frame by matching the image). Read at
+      the nominal time RF-DETR's recall looks like 17% / 38% instead of
+      27% / 60%.
+      Label times fixed (2026-10-18): the measured offset is stored per
+      frame in items.json ("dtS"; `ballheat.py <set> dt` writes it) and
+      balleval.py reads the tracker at clipT + dtS of the phone whose
+      image was labelled (the two phones of a moment differ; OSB_NOMINAL=1
+      gives the old comparison). Same tracker and candidates, nominal ->
+      label time, found / wrong / missed: seg 9 win 18/37, 4, 15 ->
+      17/37, 1, 19; full scans 18/37, 1, 18 -> 17/37, 0, 20; seg 3 win
+      31/53, 8, 14 -> 35/53, 1, 17; full scans 33/53, 8, 12 -> 37/53, 2,
+      14. Most of the "wrong" were the clock: with `win` candidates the
+      tracker is at 46% / 66% found with 1 wrong on each clip, and the
+      rest are gaps (no estimate), not false tracks. labelset.py now
+      grabs frames with a 1.5 s preroll (phase0.frame_at: the frame at t
+      is identical with a 1 s and a 2 s preroll, and frame_at(t + dtS)
+      reproduces the old label images to JPEG noise), so new sets carry
+      dtS 0. The random set (labels/) is unaffected: its labels sit on
+      its images and nothing reads its times except motion.py, which
+      seeks the same way and lands on the same frame. Also fixed: an
+      empty OSB_BALL_TAG matched `.both.json` by glob order in balleval.py
+      and ballheat.py (the 2026-10-16 full-scan figures predate that file).
+      Next: WASB blobs + judge as a second candidate source in ballwin.py
+      (the 2x and 4x tiles, in the search window and over the far third),
+      through the tracker, scored with balleval.py.
 - [ ] Teams from kit colour (`teams.py`, 2026-10-17): RF-DETR people on
       the clip label sets, torso patches white-balanced against the turf
       beside the player, colour features, a Gaussian mixture of 8. The
@@ -318,6 +367,16 @@ Footage and logs from these tests decide several items below.
       Next: the close-pairs rule as a second vote, team as a matching
       cost in the player tracker, keeper bearings as a ball witness with
       the real keeper. When the margin is small, ask once in the app.
+- [ ] Full-game runner (`fullgame.py`): name each piece by the
+      configuration it was rendered with (a hash of the feature string
+      and the constants it uses, plus the candidate and roles file
+      versions), so a later run re-renders only the chunks whose inputs
+      changed; today a changed rule means re-rendering the whole game
+      (~5 h with the ball candidates reused). Also merge roles.py into
+      ballwin.py's decode (both read the same frames; from scratch the
+      two stages are ~68 min per 10 min chunk). Two hangs seen at the
+      end of the last segment file (the decoder at EOF): the last chunk
+      now stops 1 s short, and the stages exit hard after writing.
 - [ ] Follow cam: clip further in from the left and right edges. The edge
       rule stops at the canvas boundary (where a phone's frame ends, less
       2 deg), but the last several degrees of each phone are poor: lens
