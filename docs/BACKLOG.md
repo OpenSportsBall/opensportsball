@@ -334,6 +334,58 @@ Footage and logs from these tests decide several items below.
       Next: WASB blobs + judge as a second candidate source in ballwin.py
       (the 2x and 4x tiles, in the search window and over the far third),
       through the tracker, scored with balleval.py.
+      Offline path tracker (2026-10-19, `ballpath.py`; OSB_BALL_PATH=1
+      selects it in balleval.py and follow.py): the clip is on disk
+      before tracking runs, so instead of ball.py's greedy online chain
+      (tracks die after 0.6 s, median one hit) the match ball is one
+      minimum-cost path (Viterbi) through the same filtered candidates:
+      a node per candidate at -log(conf x judge), a "no ball" node at 2
+      per frame, edges to a candidate up to 10 frames back (a skipped
+      frame costs the same as "no ball" but needs no gap penalty),
+      entering or leaving "no ball" 2. Motion between candidates of one
+      phone is angular in that phone's view (linear, 2 deg per frame
+      costs 1, steep beyond 8): on the pitch plane a ball in the air
+      runs out and back along the camera's ray at 5-14 m per frame, and
+      any metric cost rejected the long clearance at seg 9 0:06-0:08;
+      between phones it is metric (2 m per frame) plus 1. Under a
+      second per clip. Found / wrong, same candidates and filters, the
+      chain at this commit -> the path: seg 9 full scans 16/37, 0 ->
+      21/37 (57%), 2; win 14/37, 0 -> 18/37 (49%), 2; seg 3 full 36/53,
+      2 -> 38/53 (72%), 2; win 36/53, 1 -> 39/53 (74%), 4; coverage
+      31/28/70/66% -> 44/40/70/72%. Two of the wrongs on each clip are
+      7-8 m from a label 45-58 m away (hit radius 5-6 m). Sweeps: found
+      is flat over no-ball cost 2-3, gap penalty 1-3, motion scale 2-3
+      deg and skip reach 10-30 frames (only wrong moves, 2-6); a no-ball
+      cost of 1 drops short confident runs (the clip's opening track),
+      0.75 drops everything; consecutive-only edges collapse to 5/37;
+      interpolating the skipped frames (as ball.py's 1 s bridge) is
+      worth 6-11 moments; a near-player bonus, a stillness charge and a
+      backward smoothing of the positions change nothing. Holding a
+      run's end position 0.5 s into the frames around it (HOLD_S) lifts
+      found to 24/37, 23/37, 41/53, 39/53 at 3-5 wrong, but that is a
+      stale estimate follow.py already supplies itself (ballhold), so
+      it is off. Ceiling on the filtered candidates: one within the hit
+      radius at the labelled frame exists at 15/37 and 31-32/53
+      moments, within +-0.5 s at 27-28 and 41-42; the path's misses are
+      9/37 and 10/53 moments with no candidate within +-0.5 s, plus 3-8
+      with a lone candidate 1-5 frames off. The remaining gap is
+      detection. Play boxes, same run, chain -> path (ballwin
+      candidates): A2 11/13 -> 9/13, A2 + roles + kickoff 12/13 ->
+      10/13, mean coverage 98-100% -> 96-97%, median width 61-63 deg
+      either way; the path aims at the ball in 39% / 70% of the clips
+      against 27% / 65%. The two lost boxes are both on seg 9: 1:57
+      (67%): the path tracks a slow ball in the left corner at
+      1:54-1:56 (judge 1.0 on the secondary phone, 25 m from the goal,
+      which the chain never links), and the goalkick rule's far-ball
+      stop (GK_BALL_FAR_M) ends the keeper's framing a second before
+      the kick; and 0:13 (95%): identical targets, a slightly
+      different smoothed camera. So the chain stays follow.py's and
+      balleval.py's default and the path is behind OSB_BALL_PATH=1 in
+      both. To adopt it: make the goal-kick stop ignore a ball still
+      near the keeper's corner (or stop only on a ball moving away),
+      then re-run the boxes; ball.py's filters and ballwin.py's online
+      track stay as they are either way (the search windows need the
+      online prediction).
 - [ ] Teams from kit colour (`teams.py`, 2026-10-17): RF-DETR people on
       the clip label sets, torso patches white-balanced against the turf
       beside the player, colour features, a Gaussian mixture of 8. The
