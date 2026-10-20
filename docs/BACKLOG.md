@@ -455,6 +455,36 @@ Footage and logs from these tests decide several items below.
       lulls (54:27-54:50); gate it like the goal kick (far-ball veto,
       minimum lull length). The ball-stage changes mean a full re-render
       needs the ball candidates regenerated (~45 min per 10 min chunk).
+- [ ] Play boxes, round three (2026-10-19): 13 more reviewed moments
+      from the first 23 minutes (sets seg0-0, seg0-600, seg0-1200; the
+      page now lists game time for sets that start at the game's start),
+      25 in all. The default (A2 + roles + kickoff) captures 19/25,
+      players-only 11/25. Of the six misses, four had the ball detected
+      but unused: a throw-in (10:02, in hands for 4.5 s, judge 0), two
+      single-frame sightings (14:05, 19:36), one short run; two (7:34,
+      7:51, the left penalty area 51 m away) have no candidate at all.
+      Halving ballpath.py's gap penalty (2 -> 1) lets isolated sure
+      sightings join the path: 20/25, and on the ball labels the same
+      found-rate with fewer wrong (seg 3: 4 -> 2). Adopted. Tried and
+      not adopted: a longer ballhold (5-8 s: loses two boxes to stale
+      holds), no judge filter (loses a box and 11 points of recall),
+      the path's no-ball cost 1.5 (loses a box).
+      Player-movement heuristics (off by default): "surge" (>= 60% of
+      >= 4 running players heading the same way along the pitch: aim
+      5 m ahead of the frontmost) fires in 19% of frames but moves the
+      smoothed aim only 4.5 deg at the median (the hotspot's running
+      pool already sits near the front); neutral on the boxes with the
+      ball (20/25), +3 without it (14/25 vs 11). Stricter agreement or
+      a 10 m lead: no change. "sideline" (hotspot within 10 m of the
+      near touchline and 25 m of a goal line: frame everyone in that
+      corner, padded) fires in 0.6% of frames, since the hotspot drifts
+      to the pack even when play is on the touchline; neutral on every
+      box, and a wider zone (18 / 40 m) costs coverage at 14:05. The
+      trigger would have to come from the ball or the thrower (roles),
+      not the hotspot.
+      Open at 10:02: the throw-in sits in a judge-rejected gap; a judge
+      that accepts a ball in hands, or a thrower rule from roles (a
+      player on the touchline with a ball candidate overhead).
 - [ ] Full-game runner (`fullgame.py`): name each piece by the
       configuration it was rendered with (a hash of the feature string
       and the constants it uses, plus the candidate and roles file
