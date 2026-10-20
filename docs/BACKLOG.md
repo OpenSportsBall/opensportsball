@@ -475,7 +475,12 @@ Footage and logs from these tests decide several items below.
       smoothed aim only 4.5 deg at the median (the hotspot's running
       pool already sits near the front); neutral on the boxes with the
       ball (20/25), +3 without it (14/25 vs 11). Stricter agreement or
-      a 10 m lead: no change. "sideline" (hotspot within 10 m of the
+      a 10 m lead: no change. Reframed to show the SURGE_FRONT_N
+      forward-most non-keeper players plus 5 m ahead (2026-10-19): with
+      the ball 19/25 at N = 3 or 5 (the surge view pulls off boxes the
+      ball rule had, 19:36 to 76-81%) and 20/25 at N = 7; players only
+      14/25 either way (vs 13 with roles alone). A modest fallback where
+      the ball isn't tracked, never a gain on top of it; off by default. "sideline" (hotspot within 10 m of the
       near touchline and 25 m of a goal line: frame everyone in that
       corner, padded) fires in 0.6% of frames, since the hotspot drifts
       to the pack even when play is on the touchline; neutral on every
