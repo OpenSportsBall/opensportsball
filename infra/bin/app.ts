@@ -20,5 +20,7 @@ new OpenSportsBallStack(app, ctx('stackName') ?? 'OpenSportsBall', {
   devOrigins: (ctx('devOrigins') ?? 'http://localhost:5173').split(',').filter(Boolean),
   siteDomain: ctx('siteDomain'),
   siteCertArn: ctx('siteCertArn'),
+  authDomain: ctx('authDomain'),
+  authCertArn: ctx('authCertArn'),
   description: 'OpenSportsBall: phone recording uploads, accounts and website',
 });

@@ -10,7 +10,7 @@ S3 + CloudFront, and talks to the API described in
 
 | Path | What |
 |---|---|
-| `/` | What OpenSportsBall is, plus **Sign in** (the Cognito hosted UI also handles sign up). Signed-in users go to `/games`. |
+| `/` | What OpenSportsBall is, plus **Sign in** (Cognito managed login also handles sign up). Signed-in users go to `/games`. |
 | `/callback` | Finishes the Cognito sign-in redirect. |
 | `/games` | Games, newest first, with recording count and status. |
 | `/game?id=<gameId>` | Recordings with per-phone upload progress. Refreshes every 15 s while anything is still uploading. |
@@ -75,7 +75,7 @@ The Cognito app client needs:
 
 Sign-in uses authorization code + PKCE (`oidc-client-ts`), and the session
 is kept in `localStorage`. There is no silent renew: when the access token
-expires, or the API returns 401, the user is sent through the hosted login
+expires, or the API returns 401, the user is sent through managed login
 again and comes back to the same page. Sign out clears the local session
 and goes to Cognito's `/logout`, which returns to `/`.
 

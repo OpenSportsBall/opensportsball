@@ -27,12 +27,19 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import type { Construct } from 'constructs';
+import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js';
 
 export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Repository root (contains api/, web/, shared/). */
   repoRoot: string;
-  /** Cognito hosted-login domain prefix; must be globally unique. */
+  /** Cognito login domain prefix; must be globally unique. */
   authDomainPrefix: string;
+  /** Custom login domain, e.g. auth.example.com. The website signs in
+   *  there instead of the Cognito prefix domain. Needs authCertArn, and the
+   *  parent domain must already resolve (Cognito checks). */
+  authDomain?: string;
+  /** ACM certificate in us-east-1 covering authDomain. */
+  authCertArn?: string;
   /** Extra origins allowed to call the API and use the login, e.g.
    *  http://localhost:5173 for local web development. */
   devOrigins?: string[];
@@ -49,6 +56,8 @@ export class OpenSportsBallStack extends cdk.Stack {
     const devOrigins = props.devOrigins ?? [];
     const { siteDomain, siteCertArn } = props;
     if (!siteDomain !== !siteCertArn) throw new Error('siteDomain and siteCertArn go together');
+    const { authDomain, authCertArn } = props;
+    if (!authDomain !== !authCertArn) throw new Error('authDomain and authCertArn go together');
 
     // --- Storage ------------------------------------------------------------
 
@@ -136,9 +145,25 @@ export class OpenSportsBallStack extends cdk.Stack {
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
-    const authDomain = users.addDomain('Login', {
+    // Managed login (not the classic hosted UI), styled like the site. The
+    // prefix domain stays as a fallback when there's a custom one.
+    const prefixLogin = users.addDomain('Login', {
       cognitoDomain: { domainPrefix: props.authDomainPrefix },
+      managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
+    const customLogin =
+      authDomain && authCertArn
+        ? users.addDomain('CustomLogin', {
+            customDomain: {
+              domainName: authDomain,
+              certificate: acm.Certificate.fromCertificateArn(this, 'AuthCert', authCertArn),
+            },
+            managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
+          })
+        : undefined;
+    // Cognito allows one domain change at a time per pool.
+    customLogin?.node.addDependency(prefixLogin);
+    const loginUrl = customLogin ? `https://${authDomain}` : prefixLogin.baseUrl();
     const webClient = users.addClient('Web', {
       generateSecret: false,
       preventUserExistenceErrors: true,
@@ -152,6 +177,12 @@ export class OpenSportsBallStack extends cdk.Stack {
       accessTokenValidity: cdk.Duration.hours(1),
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
+    });
+    new cognito.CfnManagedLoginBranding(this, 'LoginBranding', {
+      userPoolId: users.userPoolId,
+      clientId: webClient.userPoolClientId,
+      settings: loginBrandingSettings(),
+      assets: loginBrandingAssets(),
     });
 
     // --- API ----------------------------------------------------------------
@@ -292,7 +323,7 @@ export class OpenSportsBallStack extends cdk.Stack {
           region: this.region,
           userPoolId: users.userPoolId,
           userPoolClientId: webClient.userPoolClientId,
-          cognitoDomain: authDomain.baseUrl(),
+          cognitoDomain: loginUrl,
         }),
       ],
       destinationBucket: site,
@@ -310,7 +341,8 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'UserPoolId', { value: users.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: webClient.userPoolClientId });
-    new cdk.CfnOutput(this, 'LoginDomain', { value: authDomain.baseUrl() });
+    new cdk.CfnOutput(this, 'LoginDomain', { value: loginUrl });
+    if (customLogin) new cdk.CfnOutput(this, 'LoginCdnDomain', { value: customLogin.cloudFrontEndpoint });
     new cdk.CfnOutput(this, 'FootageBucket', { value: footage.bucketName });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
   }

@@ -4,6 +4,8 @@
     "devOrigins": "http://localhost:5173",
     "siteDomain": "opensportsball.com",
     "siteCertArn": "arn:aws:acm:us-east-1:<account-id>:certificate/<certificate-id>",
+    "authDomain": "auth.opensportsball.com",
+    "authCertArn": "arn:aws:acm:us-east-1:<account-id>:certificate/<certificate-id>",
     "@aws-cdk/customresources:installLatestAwsSdkDefault": false
   }
 }

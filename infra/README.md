@@ -9,7 +9,7 @@ and the website. License: Apache-2.0.
 |---|---|---|
 | S3 `Footage` bucket | Raw segments and manifests, under `accounts/<id>/games/...` | storage only |
 | DynamoDB table (on-demand) | Devices, link codes, games, recordings, upload state | storage only |
-| Cognito user pool + hosted login | Website sign-up and sign-in | free tier |
+| Cognito user pool + managed login | Website sign-up and sign-in, styled like the site (`lib/login-branding.ts`) | free tier |
 | HTTP API + 4 Lambdas (Node 22, arm64) | `docs/API.md` | none |
 | S3 `Site` bucket + CloudFront | The website (`web/build`) and its `config.json` | ~none |
 | EventBridge rule → CloudWatch Logs | Records `RecordingReady` until Phase 3 consumes it | none |
@@ -46,6 +46,8 @@ Options (pass with `-c key=value`):
 | `devOrigins` | `http://localhost:5173` | Extra origins allowed for login callbacks and CORS (comma-separated) |
 | `siteDomain` | none | Serve the website at this domain; `www.<domain>` redirects to it |
 | `siteCertArn` | none | ACM certificate **in us-east-1** for `siteDomain` and `www.<siteDomain>` (required with `siteDomain`) |
+| `authDomain` | none | Serve the sign-in pages at this domain, e.g. `auth.example.com`, instead of the Cognito prefix domain |
+| `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
 
 The opensportsball.com deployment sets `siteDomain` and `siteCertArn` in
 `cdk.json`; to deploy your own copy, change or remove them there. Settings
@@ -62,6 +64,20 @@ you'd rather keep out of git can go in `infra/cdk.context.json`
 4. Point `example.com` and `www.example.com` at the `CdnDomain` output
    (`d….cloudfront.net`): a CNAME, or an alias / flattened CNAME at the apex. If the DNS provider is Cloudflare, leave these
    **DNS only** (grey cloud); CloudFront already does the caching and TLS.
+
+### Custom sign-in domain
+
+1. Request a certificate for it, in us-east-1 like the site's:
+   `aws acm request-certificate --region us-east-1 --domain-name auth.example.com --validation-method DNS`
+2. Add its validation CNAME and wait for `ISSUED`.
+3. The parent domain (`example.com`) must already resolve; Cognito checks.
+4. Deploy with `authDomain` and `authCertArn` set. Creating the domain
+   takes a few minutes.
+5. Point `auth.example.com` at the `LoginCdnDomain` output with a CNAME
+   (**DNS only** on Cloudflare). Sign-in is down from the end of the deploy
+   until this record resolves, so add it right away.
+
+The Cognito prefix domain keeps working alongside it.
 
 Region: `CDK_DEFAULT_REGION` from your AWS CLI profile, else `us-east-1`.
 

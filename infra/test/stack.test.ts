@@ -124,6 +124,18 @@ describe('accounts and website', () => {
     });
   });
 
+  it('login uses managed login, styled for the web client', () => {
+    t.resourceCountIs('AWS::Cognito::UserPoolDomain', 1);
+    t.hasResourceProperties('AWS::Cognito::UserPoolDomain', { ManagedLoginVersion: 2 });
+    t.hasResourceProperties('AWS::Cognito::ManagedLoginBranding', {
+      ClientId: Match.anyValue(),
+      Settings: Match.objectLike({
+        categories: Match.objectLike({ global: Match.objectLike({ colorSchemeMode: 'DYNAMIC' }) }),
+      }),
+      Assets: Match.arrayWith([Match.objectLike({ Category: 'FORM_LOGO', Extension: 'SVG' })]),
+    });
+  });
+
   it('serves the site through CloudFront only', () => {
     t.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
     t.hasResourceProperties('AWS::CloudFront::Distribution', {
@@ -150,6 +162,8 @@ describe('custom domain', () => {
       authDomainPrefix: 'osb-test',
       siteDomain: 'example.com',
       siteCertArn: 'arn:aws:acm:us-east-1:111111111111:certificate/test',
+      authDomain: 'auth.example.com',
+      authCertArn: 'arn:aws:acm:us-east-1:111111111111:certificate/auth',
     });
     d = Template.fromStack(stack);
   }, 120_000);
@@ -170,5 +184,16 @@ describe('custom domain', () => {
     });
     const client = Object.values(d.findResources('AWS::Cognito::UserPoolClient'))[0];
     expect(client.Properties.CallbackURLs).toHaveLength(2);
+  });
+
+  it('signs in at the custom login domain, keeping the prefix domain', () => {
+    d.resourceCountIs('AWS::Cognito::UserPoolDomain', 2);
+    d.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
+      Domain: 'auth.example.com',
+      CustomDomainConfig: { CertificateArn: 'arn:aws:acm:us-east-1:111111111111:certificate/auth' },
+      ManagedLoginVersion: 2,
+    });
+    d.hasOutput('LoginDomain', { Value: 'https://auth.example.com' });
+    d.hasOutput('LoginCdnDomain', {});
   });
 });

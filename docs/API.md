@@ -17,7 +17,7 @@ The contract between the phones, the website and the backend (`api/`,
 
 There are two kinds of caller, on separate routes.
 
-**People, on the website.** Sign in with the Cognito hosted login
+**People, on the website.** Sign in with Cognito managed login
 (authorization code + PKCE). Calls carry `Authorization: Bearer <Cognito
 access token>`. The account id is the token's `sub`.
 
