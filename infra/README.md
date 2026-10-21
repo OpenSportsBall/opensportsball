@@ -47,8 +47,10 @@ Options (pass with `-c key=value`):
 | `siteDomain` | none | Serve the website at this domain; `www.<domain>` redirects to it |
 | `siteCertArn` | none | ACM certificate **in us-east-1** for `siteDomain` and `www.<siteDomain>` (required with `siteDomain`) |
 
-To keep these between deploys, put them in `infra/cdk.context.json`
-(git-ignored, since they're account-specific).
+The opensportsball.com deployment sets `siteDomain` and `siteCertArn` in
+`cdk.json`; to deploy your own copy, change or remove them there. Settings
+you'd rather keep out of git can go in `infra/cdk.context.json`
+(git-ignored).
 
 ### Custom domain
 
