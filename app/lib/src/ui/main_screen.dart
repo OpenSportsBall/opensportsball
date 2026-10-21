@@ -152,9 +152,13 @@ class _MainScreenState extends State<MainScreen> {
           InfoRow(
             'Uploads',
             switch (c.grantState) {
-              GrantState.delivered => 'to this phone\'s account',
+              GrantState.delivered => c.grantIsTicket
+                  ? 'to this phone\'s account (confirmed once online)'
+                  : 'to this phone\'s account',
               GrantState.sending => 'giving permission…',
-              GrantState.waitingForInternet => 'no internet: Secondary cannot upload yet',
+              GrantState.waitingForInternet => (c.account?.ticketsInStock ?? 0) == 0
+                  ? 'no internet and no offline permissions left: open the app online before the next game'
+                  : 'no internet: Secondary cannot upload yet',
               GrantState.mainNotLinked => 'link this phone first, so Secondary can upload',
               GrantState.failed => 'no permission: footage will not upload',
               GrantState.none => '',

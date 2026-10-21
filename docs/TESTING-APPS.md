@@ -85,7 +85,15 @@ quickly.
    It darkens again 15 seconds after the last touch. Stopping restores the
    screen. Check the recorded file has no gap or glitch where the screen
    went dark (only the preview pauses).
-9. **Full length.** 90 minutes at 4K on power banks, phones on the mount in
+9. **No signal at the field.** With Main linked, open the app once on
+   Wi-Fi (Main keeps three offline permissions in stock). Then turn on
+   airplane mode on both phones and turn Bluetooth back on. Pair, record
+   a minute, stop. Main shows the Secondary's footage going "to this
+   phone's account (confirmed once online)". Turn airplane mode off on
+   both: each uploads, and the game reaches Ready on the website. If Main
+   says "no offline permissions left", it hasn't been online since it was
+   linked or since its last offline games.
+10. **Full length.** 90 minutes at 4K on power banks, phones on the mount in
    the sun if possible. Watch temperature and storage on the Main screen.
    For a battery run, start at 100% without a power bank and record until
    the phone stops; `power.csv` gives the drain per hour and when the

@@ -37,6 +37,8 @@ describe('API', () => {
       { key: 'POST /devices/link', auth: 'NONE' },
       { key: 'POST /devices/unlink', auth: 'CUSTOM' },
       { key: 'POST /games/{gameId}/grants', auth: 'CUSTOM' },
+      { key: 'POST /grant-tickets', auth: 'CUSTOM' },
+      { key: 'POST /grants/redeem', auth: 'NONE' },
       { key: 'POST /link-codes', auth: 'JWT' },
       { key: 'POST /uploads', auth: 'CUSTOM' },
       { key: 'POST /uploads/complete', auth: 'CUSTOM' },

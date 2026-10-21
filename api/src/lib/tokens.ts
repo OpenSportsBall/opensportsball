@@ -17,6 +17,12 @@ export const GRANT_TOKEN = /^osbg_[A-Za-z0-9_-]{43}$/;
 /** Long enough for a Secondary to find Wi-Fi after the game. */
 export const GRANT_TTL_MS = 14 * 24 * 3600 * 1000;
 
+/** A grant ticket (lib/grants.ts) waits this long to be bound to a game. */
+export const TICKET_TTL_MS = 90 * 24 * 3600 * 1000;
+
+/** Unbound tickets one Main phone may hold at a time. */
+export const MAX_OPEN_TICKETS = 5;
+
 /** Only hashes are stored, so a leaked table can't be used to upload. */
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 

@@ -13,6 +13,7 @@
  * | ACCOUNT#<acct>      | DEVICE#<deviceId>                       | linked phone            |
  * | ACCOUNT#<acct>      | GAME#<gameId>                           | game                    |
  * | ACCOUNT#<acct>      | GRANT#<gameId>#<deviceId>               | recording grant         |
+ * | ACCOUNT#<acct>      | TICKET#<sha256>                         | unbound grant ticket    |
  * | ACCOUNT#<acct>      | REC#<gameId>#<recordingId>              | recording + manifest    |
  * | ACCOUNT#<acct>      | REPORT#<gameId>#<recordingId>#<dev>     | a phone's own segments  |
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
@@ -65,6 +66,7 @@ export const keys = {
     pk: `ACCOUNT#${acct}`,
     sk: `GRANT#${gameId}#${deviceId}`,
   }),
+  ticket: (acct: string, hash: string) => ({ pk: `ACCOUNT#${acct}`, sk: `TICKET#${hash}` }),
   recording: (acct: string, gameId: string, recId: string) => ({
     pk: `ACCOUNT#${acct}`,
     sk: `REC#${gameId}#${recId}`,

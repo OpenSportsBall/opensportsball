@@ -18,6 +18,13 @@ Footage and logs from these tests decide several items below.
       a recording grant), upload a recording on Wi-Fi, game reaches Ready.
       Also pair with a Secondary on another account, and on none.
 
+- [ ] Pairing without signal (built 2026-10-20, grant tickets): open
+      Main once online so it stocks tickets, then put both phones in
+      airplane mode with Bluetooth on, pair, record, stop. Main should
+      show "to this phone's account (confirmed once online)". Back on
+      Wi-Fi, both upload and the game reaches Ready. Needs the backend
+      deployed with `POST /grant-tickets` and `POST /grants/redeem`.
+
 - [ ] Upside-down phone plays upright: record with the new build and
       check the Secondary's segments open the right way up in QuickTime
       and the website (Android orientation hint / iOS track transform from
@@ -60,10 +67,6 @@ Footage and logs from these tests decide several items below.
       name, status) with view access to the processed video, and optionally
       the raw segments that phone recorded. Main's account can revoke it.
       Decide whether access lasts after Main deletes the game.
-- [ ] Recording grants need Main online at some point while the phones
-      are paired. If fields without signal turn out to be common, let Main
-      fetch a few unbound grant tickets ahead of time, each bound to one
-      phone and game on first use.
 - [ ] Register the `opensportsball://link` deep link so the phone's own
       camera app can open the link QR code.
 - [ ] **Android gap-free recorder: only if the switch gaps prove visible

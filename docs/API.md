@@ -35,7 +35,10 @@ and sends over Bluetooth. The Secondary may be linked to another account,
 or to none; that does not change. A grant reaches only `PUT .../report`,
 `POST /uploads` and `POST /uploads/complete`, only for its game and only
 as its device (`403 forbidden` otherwise), and expires after 14 days
-(`401`). A phone can hold grants from several accounts at once.
+(`401`). A phone can hold grants from several accounts at once. When Main
+has no signal at the field, it gives the Secondary a **grant ticket**
+fetched earlier instead (`POST /grant-tickets`), which either phone binds
+to the game later (`POST /grants/redeem`).
 
 ## Website config
 
@@ -147,6 +150,33 @@ Body: `{"deviceId": "<uuid>"}`
 - Asking again for the same game and phone replaces the grant; the old
   token stops working.
 - `400 bad_request` for the caller's own deviceId.
+
+### `POST /grant-tickets`
+Device token only. For pairings without signal: Main keeps a few
+**tickets**, grant tokens for its account that are not yet tied to a game
+or phone, and hands one to its Secondary over Bluetooth when it can't
+reach the server. Until redeemed, a ticket can call nothing (`401`).
+Body: `{"count": 1-5}`
+→ `201 {"tickets": [{"ticket": "osbg_...", "expiresAt"}], "apiUrl", "accountId", "open": n}`
+
+- Tops up to `count` new tickets, keeping at most 5 unredeemed per Main
+  phone (`open` counts them); fewer, or none, if the stock is full.
+- An unredeemed ticket lapses after 90 days.
+
+### `POST /grants/redeem`
+No token: the ticket is the credential, as the code is for linking. Binds
+a ticket to one game and phone; from then on the ticket is that phone's
+grant for that game (14 days, as `POST /games/{gameId}/grants`).
+Body: `{"ticket": "osbg_...", "gameId", "deviceId"}`
+→ `200`, the same shape as `POST /games/{gameId}/grants`, with
+`grantToken` equal to the ticket.
+
+- Either phone redeems it, whichever reaches the internet first; Main
+  before uploading its manifest (which names the Secondary), the Secondary
+  before its first upload. The same binding again is a no-op.
+- `409 conflict`: already bound to another game or phone.
+  `404 not_found`: no such ticket. `410 gone`: lapsed unredeemed.
+  `400 bad_request`: binding it to the phone that fetched it.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/manifest`
 Body: the manifest (`shared/schemas/manifest.schema.json`). Main must list

@@ -381,6 +381,12 @@ class UploadService extends ChangeNotifier {
         debugPrint('connectivity check failed: $e');
       }
       await _scan();
+      if (_net != NetworkKind.offline) {
+        // A tiny request, so mobile data is fine: Main binds the tickets it
+        // handed over, before uploading the manifest that names that
+        // Secondary. Nothing to send if it handed none over.
+        await account.redeemPending();
+      }
       final blocked = _blockedBy();
       if (blocked != null) {
         _setPhase(blocked);
@@ -390,6 +396,15 @@ class UploadService extends ChangeNotifier {
       UploadPhase? waiting;
       for (final u in _recordings) {
         if (u.complete || !u.recording.stopped) continue;
+        if (u.recording.role == DeviceRole.secondary) {
+          try {
+            await _redeemTicket(u.recording.gameId);
+          } on _Transient catch (e) {
+            _error = e.message;
+            u.error = e.message;
+            return PassResult.retry;
+          }
+        }
         await _target(u);
         final target = u.target;
         if (target == null) {
@@ -427,6 +442,9 @@ class UploadService extends ChangeNotifier {
       }
       _error = null;
       _mobileOverride = false; // one-time: nothing more to send right now
+      // A phone that records as Main restocks grant tickets for the next
+      // pairing without signal. No request when the stock is full.
+      if (!deviceRejected && _recordings.any((u) => u.isMain)) await account.refillTickets();
       if (deviceRejected) {
         _setPhase(UploadPhase.unlinked);
         return PassResult.unauthorized;
@@ -436,6 +454,21 @@ class UploadService extends ChangeNotifier {
       return waiting != null ? PassResult.blocked : PassResult.done;
     } finally {
       _passing = false;
+    }
+  }
+
+  /// A grant Main handed over as a ticket, without signal, is bound to this
+  /// phone and game before its first upload. A refused ticket counts as a
+  /// rejected grant: a new one from Main replaces it.
+  Future<void> _redeemTicket(String gameId) async {
+    final g = await account.grantFor(gameId);
+    if (g == null || !g.unredeemed || g.rejected) return;
+    try {
+      await account.redeemGrant(g, deviceId: account.store.identity.deviceId);
+    } on LinkException catch (e) {
+      if (e.offline) throw _Transient(e.message);
+      debugPrint('grant ticket refused: $e');
+      await account.markGrantRejected(gameId);
     }
   }
 

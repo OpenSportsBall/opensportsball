@@ -241,11 +241,55 @@ class FakeGrantServer {
   bool offline = false;
   var _next = 0;
 
+  /// Tickets issued by `POST /grant-tickets`, and their bindings from
+  /// `POST /grants/redeem`: ticket -> (gameId, deviceId).
+  final tickets = <String>[];
+  final redeemed = <String, (String, String)>{};
+
+  /// Refuse every redemption with 409.
+  bool refuseRedeem = false;
+
   late final http.Client client = MockClient((req) async {
     log.add('${req.method} ${req.url.path}');
     if (offline) throw http.ClientException('no internet');
-    final m = RegExp(r'^/games/([^/]+)/grants$').firstMatch(req.url.path);
     final auth = req.headers['Authorization'] ?? '';
+    String expires(int days) => DateTime.now().toUtc().add(Duration(days: days)).toIso8601String();
+    if (req.method == 'POST' && req.url.path == '/grant-tickets') {
+      if (!auth.startsWith('Bearer osbd_')) return http.Response('{}', 401);
+      final fresh = [
+        for (var i = 0; i < ((jsonDecode(req.body) as Map)['count'] as int); i++) 'osbg_t${tickets.length + i}',
+      ];
+      tickets.addAll(fresh);
+      return http.Response(
+          jsonEncode({
+            'tickets': [for (final t in fresh) {'ticket': t, 'expiresAt': expires(90)}],
+            'apiUrl': 'https://api.test',
+            'accountId': auth.substring('Bearer osbd_'.length),
+            'open': tickets.length - redeemed.length,
+          }),
+          201);
+    }
+    if (req.method == 'POST' && req.url.path == '/grants/redeem') {
+      final b = (jsonDecode(req.body) as Map).cast<String, Object?>();
+      final ticket = b['ticket'] as String, binding = (b['gameId'] as String, b['deviceId'] as String);
+      if (!tickets.contains(ticket)) return http.Response('{"error":"not_found","message":"no ticket"}', 404);
+      final bound = redeemed[ticket];
+      if (refuseRedeem || (bound != null && bound != binding)) {
+        return http.Response('{"error":"conflict","message":"in use"}', 409);
+      }
+      redeemed[ticket] = binding;
+      return http.Response(
+          jsonEncode({
+            'grantToken': ticket,
+            'apiUrl': 'https://api.test',
+            'accountId': 'acc-main',
+            'gameId': binding.$1,
+            'deviceId': binding.$2,
+            'expiresAt': expires(14),
+          }),
+          200);
+    }
+    final m = RegExp(r'^/games/([^/]+)/grants$').firstMatch(req.url.path);
     if (req.method != 'POST' || m == null) return http.Response('{}', 404);
     if (!auth.startsWith('Bearer osbd_')) return http.Response('{}', 401);
     final body = jsonDecode(req.body) as Map;

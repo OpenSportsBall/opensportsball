@@ -114,7 +114,7 @@ export async function callDevice(
   opts: { path?: Record<string, string>; body?: unknown; rawBody?: string } = {},
 ): Promise<Res> {
   let lambda: unknown;
-  if (routeKey !== 'POST /devices/link') {
+  if (routeKey !== 'POST /devices/link' && routeKey !== 'POST /grants/redeem') {
     // API Gateway runs the authorizer first and passes its context on.
     const auth = await authorizer({ headers: { authorization: `Bearer ${token}` } } as any);
     if (!auth.isAuthorized) throw new Error('the phone authorizer must never deny (see authorizer.ts)');

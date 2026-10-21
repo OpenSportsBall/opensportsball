@@ -41,11 +41,11 @@ import {
   type Result,
 } from '../lib/http.js';
 import { unlinkDevice } from '../lib/devices.js';
-import { createGrant, getGrant } from '../lib/grants.js';
+import { createGrant, createTickets, getGrant, redeemTicket } from '../lib/grants.js';
 import { parseManifest, parseReport } from '../lib/manifest.js';
 import { checkReady, ensureRecording, getRecording, recordObject, type ReportItem } from '../lib/recordings.js';
 import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
-import { LINK_CODE, hashToken, newDeviceToken } from '../lib/tokens.js';
+import { GRANT_TOKEN, LINK_CODE, MAX_OPEN_TICKETS, hashToken, newDeviceToken } from '../lib/tokens.js';
 
 /** Who is calling. With a grant token, [accountId] is the account that
  *  issued it (Main's), not the phone's own. */
@@ -74,6 +74,8 @@ const MAX_FILE_BYTES = 50 * 1024 ** 3;
 export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Result> =>
   respond(async () => {
     if (event.routeKey === 'POST /devices/link') return link(body(event));
+    // The ticket is the credential, as the code is for linking.
+    if (event.routeKey === 'POST /grants/redeem') return redeem(body(event), event);
 
     const ctx = (event as DeviceEvent).requestContext.authorizer?.lambda;
     if (!ctx?.accountId || !ctx.deviceId) throw new ApiError(401, 'unauthorized', 'Device token required.');
@@ -95,6 +97,8 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
         return completeUpload(ctx, body(event));
       case 'POST /games/{gameId}/grants':
         return postGrant(ctx, event);
+      case 'POST /grant-tickets':
+        return postTickets(ctx, event);
       case 'POST /devices/unlink':
         // The phone leaves its account, e.g. to join another one.
         await unlinkDevice(ctx.accountId, ctx.deviceId);
@@ -226,6 +230,33 @@ async function postGrant(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
       gameId,
       deviceId,
       issuedBy: ctx.deviceId,
+      apiDomain: event.requestContext.domainName,
+    }),
+  );
+}
+
+/** Main keeps a few unbound tickets for pairings without signal. */
+async function postTickets(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
+  const count = int(body(event), 'count', 1, MAX_OPEN_TICKETS);
+  return json(
+    201,
+    await createTickets({
+      accountId: ctx.accountId,
+      issuedBy: ctx.deviceId,
+      count,
+      apiDomain: event.requestContext.domainName,
+    }),
+  );
+}
+
+/** Binds a ticket to one game and phone (either phone may ask). */
+async function redeem(b: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  return json(
+    200,
+    await redeemTicket({
+      ticket: str(b, 'ticket', GRANT_TOKEN),
+      gameId: str(b, 'gameId', UUID),
+      deviceId: str(b, 'deviceId', UUID),
       apiDomain: event.requestContext.domainName,
     }),
   );

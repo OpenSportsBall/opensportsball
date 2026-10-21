@@ -318,6 +318,7 @@ class RecordingGrant {
     required this.gameId,
     required this.expiresAt,
     this.rejected = false,
+    this.unredeemed = false,
   });
 
   factory RecordingGrant.fromJson(Map<String, Object?> j) => RecordingGrant(
@@ -327,6 +328,7 @@ class RecordingGrant {
         gameId: j['gameId'] as String,
         expiresAt: DateTime.parse(j['expiresAt'] as String),
         rejected: j['rejected'] as bool? ?? false,
+        unredeemed: j['unredeemed'] as bool? ?? false,
       );
 
   final String apiUrl;
@@ -340,10 +342,26 @@ class RecordingGrant {
   /// The server answered 401 (expired or replaced).
   final bool rejected;
 
+  /// A grant ticket Main handed over without signal (docs/API.md,
+  /// `POST /grant-tickets`): it must be bound to this game and phone
+  /// (`POST /grants/redeem`) before it can upload. [expiresAt] is only an
+  /// estimate until then.
+  final bool unredeemed;
+
   bool usableAt(DateTime now) => !rejected && now.isBefore(expiresAt);
 
   RecordingGrant asRejected() => RecordingGrant(
-      apiUrl: apiUrl, token: token, accountId: accountId, gameId: gameId, expiresAt: expiresAt, rejected: true);
+      apiUrl: apiUrl,
+      token: token,
+      accountId: accountId,
+      gameId: gameId,
+      expiresAt: expiresAt,
+      rejected: true,
+      unredeemed: unredeemed);
+
+  /// After `POST /grants/redeem`: an ordinary grant until [expiresAt].
+  RecordingGrant redeemed(DateTime expiresAt) =>
+      RecordingGrant(apiUrl: apiUrl, token: token, accountId: accountId, gameId: gameId, expiresAt: expiresAt);
 
   Map<String, Object?> toJson() => {
         'apiUrl': apiUrl,
@@ -352,5 +370,6 @@ class RecordingGrant {
         'gameId': gameId,
         'expiresAt': expiresAt.toUtc().toIso8601String(),
         if (rejected) 'rejected': true,
+        if (unredeemed) 'unredeemed': true,
       };
 }

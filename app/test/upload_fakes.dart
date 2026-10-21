@@ -68,6 +68,17 @@ class FakeBackend {
   /// The bearer token of each API call, in order.
   final tokens = <String>[];
 
+  /// Each API call with its bearer token, in order.
+  final calls = <(String, String)>[];
+
+  /// Grant tickets issued (POST /grant-tickets) and how each was bound
+  /// (POST /grants/redeem): ticket -> (gameId, deviceId).
+  final ticketsIssued = <String>[];
+  final redeemed = <String, (String, String)>{};
+
+  /// Answer POST /grants/redeem with this status instead (e.g. 409).
+  int? redeemStatus;
+
   /// Fail the next PUT of (fileName, part) with a network error.
   final failPut = <(String, int)>{};
 
@@ -92,8 +103,25 @@ class FakeBackend {
     log.add('${req.method} $path');
     final token = (req.headers['Authorization'] ?? '').replaceFirst('Bearer ', '');
     tokens.add(token);
-    final ok = (token == deviceToken && !unauthorized) || (token == grantToken && !grantRejected);
+    calls.add(('${req.method} $path', token));
+    if (req.method == 'POST' && path == '/grants/redeem') return _redeem(req);
+    final ok = (token == deviceToken && !unauthorized) ||
+        (token == grantToken && !grantRejected) ||
+        (redeemed.containsKey(token) && !grantRejected);
     if (!ok) return _json(401, {'error': 'unauthorized', 'message': 'bad token'});
+    if (req.method == 'POST' && path == '/grant-tickets') {
+      if (token != deviceToken) return _json(403, {'error': 'forbidden', 'message': 'device token only'});
+      final count = (jsonDecode(req.body) as Map)['count'] as int;
+      final expires = DateTime.now().toUtc().add(const Duration(days: 90)).toIso8601String();
+      final fresh = [for (var i = 0; i < count; i++) 'osbg_ticket${ticketsIssued.length + i}'];
+      ticketsIssued.addAll(fresh);
+      return _json(201, {
+        'tickets': [for (final t in fresh) {'ticket': t, 'expiresAt': expires}],
+        'apiUrl': 'https://api.test',
+        'accountId': accountId,
+        'open': ticketsIssued.length - redeemed.length,
+      });
+    }
     final manifest = RegExp(r'^/games/([^/]+)/recordings/([^/]+)/manifest$').firstMatch(path);
     if (req.method == 'PUT' && manifest != null) {
       final body = (jsonDecode(req.body) as Map).cast<String, Object?>();
@@ -154,6 +182,26 @@ class FakeBackend {
       return _json(200, {'ok': true});
     }
     return _json(404, {'error': 'not_found', 'message': path});
+  }
+
+  http.Response _redeem(http.Request req) {
+    if (redeemStatus != null) return _json(redeemStatus!, {'error': 'conflict', 'message': 'refused'});
+    final b = (jsonDecode(req.body) as Map).cast<String, Object?>();
+    final ticket = b['ticket'] as String, binding = (b['gameId'] as String, b['deviceId'] as String);
+    if (!ticketsIssued.contains(ticket) && ticket != grantToken) {
+      return _json(404, {'error': 'not_found', 'message': 'no such ticket'});
+    }
+    final existing = redeemed[ticket];
+    if (existing != null && existing != binding) return _json(409, {'error': 'conflict', 'message': 'bound'});
+    redeemed[ticket] = binding;
+    return _json(200, {
+      'grantToken': ticket,
+      'apiUrl': 'https://api.test',
+      'accountId': accountId,
+      'gameId': binding.$1,
+      'deviceId': binding.$2,
+      'expiresAt': DateTime.now().toUtc().add(const Duration(days: 14)).toIso8601String(),
+    });
   }
 
   http.Response _s3(http.Request req) {

@@ -115,6 +115,8 @@ class MainController extends ChangeNotifier {
       DateTime.now().difference(secondaryStatusAt!) > const Duration(seconds: 6);
 
   Future<void> init() async {
+    // With signal, stock tickets now, for a pairing that might have none.
+    unawaited(account?.refillTickets());
     _sub = link.messages.listen(_onMsg);
     link.state.addListener(_onLinkState);
     recorder.onReopened = (o) {
@@ -237,7 +239,17 @@ class MainController extends ChangeNotifier {
       if (_grant == null || !_grant!.usableAt(DateTime.now())) {
         grantState = GrantState.sending;
         _notify();
-        _grant = await a.createGrant(gameId: gameId, deviceId: device.deviceId);
+        try {
+          _grant = await a.createGrant(gameId: gameId, deviceId: device.deviceId);
+        } on LinkException catch (e) {
+          if (!e.offline) rethrow;
+          // No signal at the field: hand over a ticket fetched earlier. It
+          // is kept in _grant, so retries resend it rather than asking the
+          // server for a second, competing grant once online.
+          final ticket = await a.grantFromTicket(gameId: gameId, deviceId: device.deviceId);
+          if (ticket == null) rethrow;
+          _grant = ticket;
+        }
       }
       grantState = GrantState.sending;
       grantError = null;
@@ -254,6 +266,10 @@ class MainController extends ChangeNotifier {
       _notify();
     }
   }
+
+  /// Secondary's grant is a ticket handed over without signal; the server
+  /// binds it once either phone gets online.
+  bool get grantIsTicket => _grant?.unredeemed ?? false;
 
   /// Tries again while Secondary is connected and has no grant: no
   /// internet earlier, Main linked since, or the confirmation was lost.

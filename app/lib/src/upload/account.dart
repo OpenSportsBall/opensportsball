@@ -155,6 +155,18 @@ class AccountManager extends ChangeNotifier {
 
   static String _grantKey(String gameId) => 'grant_$gameId';
 
+  static const _ticketsKey = 'grant_tickets';
+  static const _pendingKey = 'grant_redemptions';
+
+  /// How many grant tickets Main keeps for pairings without signal.
+  static const ticketStock = 3;
+
+  /// Unbound grant tickets for this phone's account ([GrantTicket]).
+  final _tickets = <GrantTicket>[];
+
+  /// Tickets handed to a Secondary that the server has not bound yet.
+  final _pending = <PendingRedemption>[];
+
   AccountLink? get link => _link;
   bool get linked => _link != null;
   bool get loaded => _loaded;
@@ -169,6 +181,8 @@ class AccountManager extends ChangeNotifier {
     try {
       final raw = await secrets.read(_key);
       if (raw != null) _link = AccountLink.fromJson((jsonDecode(raw) as Map).cast());
+      _tickets.addAll(await _readList(_ticketsKey, GrantTicket.fromJson));
+      _pending.addAll(await _readList(_pendingKey, PendingRedemption.fromJson));
     } on Object catch (e) {
       debugPrint('could not read account link: $e');
     }
@@ -234,9 +248,16 @@ class AccountManager extends ChangeNotifier {
         email: email is String ? email : null);
     await secrets.write(_key, jsonEncode(link.toJson()));
     await store.saveUploadSettings(store.uploadSettings.copyWith(lastApiUrl: r.apiUrl));
+    if (_tickets.any((x) => x.accountId != link.accountId)) {
+      _tickets.clear();
+      await _saveTickets();
+    }
     _link = link;
     _revoked = false;
     notifyListeners();
+    // Linking happens online: stock tickets now, in case this phone records
+    // as Main somewhere without signal before it is online again.
+    unawaited(refillTickets());
     return link;
   }
 
@@ -317,6 +338,160 @@ class AccountManager extends ChangeNotifier {
     await saveGrant(g.asRejected());
   }
 
+  // --- Grant tickets: pairing without signal ------------------------------
+
+  /// Usable tickets in stock, for the screens.
+  int get ticketsInStock => _tickets.where((x) => x.usableAt(DateTime.now())).length;
+
+  /// Tickets handed over that still have to be redeemed, for the screens.
+  int get pendingRedemptions => _pending.length;
+
+  /// While online: tops the stock up to [ticketStock] tickets
+  /// (POST /grant-tickets). Quietly does nothing offline or unlinked.
+  Future<void> refillTickets() async {
+    final link = _link;
+    if (link == null || _revoked) return;
+    final now = DateTime.now();
+    final before = _tickets.length;
+    _tickets.removeWhere((x) => !x.usableAt(now) || x.accountId != link.accountId);
+    final missing = ticketStock - _tickets.length;
+    if (missing <= 0) {
+      if (_tickets.length != before) await _saveTickets();
+      return;
+    }
+    try {
+      final b = await _post(link.apiUrl, '/grant-tickets', {'count': missing},
+          token: link.deviceToken, expect: 201);
+      for (final raw in b['tickets'] as List) {
+        final m = (raw as Map).cast<String, Object?>();
+        _tickets.add(GrantTicket(
+          ticket: m['ticket'] as String,
+          accountId: link.accountId,
+          expiresAt: DateTime.parse(m['expiresAt'] as String),
+        ));
+      }
+    } on LinkException catch (e) {
+      debugPrint('could not refill grant tickets: $e');
+    } on Object catch (e) {
+      debugPrint('unexpected grant ticket answer: $e');
+    }
+    await _saveTickets();
+    notifyListeners();
+  }
+
+  /// For Main without signal: a grant for [deviceId] on [gameId] made from
+  /// a ticket in stock, or null if there is none. The ticket is spent, and
+  /// remembered so this phone redeems it once online ([redeemPending]).
+  Future<RecordingGrant?> grantFromTicket({required String gameId, required String deviceId}) async {
+    final link = _link;
+    if (link == null || _revoked) return null;
+    final now = DateTime.now();
+    final usable = _tickets.where((x) => x.usableAt(now) && x.accountId == link.accountId).toList()
+      ..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
+    if (usable.isEmpty) return null;
+    final ticket = usable.first;
+    _tickets.remove(ticket);
+    _pending.add(PendingRedemption(apiUrl: link.apiUrl, ticket: ticket.ticket, gameId: gameId, deviceId: deviceId));
+    await _saveTickets();
+    await _savePending();
+    notifyListeners();
+    return RecordingGrant(
+      apiUrl: link.apiUrl,
+      token: ticket.ticket,
+      accountId: link.accountId,
+      gameId: gameId,
+      // Redeeming starts the grant's 14 days; until then, the ticket's own.
+      expiresAt: ticket.expiresAt,
+      unredeemed: true,
+    );
+  }
+
+  /// While online: binds every ticket this phone handed over to its game
+  /// and Secondary (POST /grants/redeem), so Main's manifest, which names
+  /// that phone, is accepted. A refused ticket is dropped: retrying won't
+  /// help, and the upload screen shows the manifest's error.
+  Future<void> redeemPending() async {
+    for (final p in List.of(_pending)) {
+      try {
+        await _post(p.apiUrl, '/grants/redeem', {'ticket': p.ticket, 'gameId': p.gameId, 'deviceId': p.deviceId});
+        _pending.remove(p);
+      } on LinkException catch (e) {
+        if (e.offline) return;
+        debugPrint('grant ticket refused: $e');
+        _pending.remove(p);
+      }
+      await _savePending();
+      notifyListeners();
+    }
+  }
+
+  /// For Secondary: binds Main's ticket [g] to this phone ([deviceId]) and
+  /// keeps the result as an ordinary grant. Throws [LinkException].
+  Future<RecordingGrant> redeemGrant(RecordingGrant g, {required String deviceId}) async {
+    final b = await _post(g.apiUrl, '/grants/redeem', {'ticket': g.token, 'gameId': g.gameId, 'deviceId': deviceId});
+    final DateTime expiresAt;
+    try {
+      expiresAt = DateTime.parse(b['expiresAt'] as String);
+    } on Object {
+      throw const LinkException('The server sent an unexpected answer.');
+    }
+    final redeemed = g.redeemed(expiresAt);
+    await saveGrant(redeemed);
+    return redeemed;
+  }
+
+  /// POSTs JSON and returns the decoded answer. Throws [LinkException]
+  /// ([LinkException.offline] when trying later may work).
+  Future<Map<String, Object?>> _post(String apiUrl, String path, Map<String, Object?> body,
+      {String? token, int expect = 200}) async {
+    final http.Response res;
+    try {
+      res = await client
+          .post(
+            apiUri(apiUrl, path),
+            headers: {
+              if (token != null) 'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw _noAnswer;
+    } on SocketException {
+      throw _unreachable;
+    } on http.ClientException {
+      throw _unreachable;
+    }
+    if (res.statusCode == 401 && token != null) {
+      markRevoked();
+      throw const LinkException('This phone was unlinked on the website. Link it again.');
+    }
+    if (res.statusCode >= 500 || res.statusCode == 429) {
+      throw LinkException('The server had a problem (${res.statusCode}${serverMessage(res)}).', offline: true);
+    }
+    if (res.statusCode != expect) {
+      throw LinkException('The server refused (${res.statusCode}${serverMessage(res)}).');
+    }
+    try {
+      return (jsonDecode(res.body) as Map).cast<String, Object?>();
+    } on Object {
+      throw const LinkException('The server sent an unexpected answer.');
+    }
+  }
+
+  Future<List<T>> _readList<T>(String key, T Function(Map<String, Object?>) fromJson) async {
+    final raw = await secrets.read(key);
+    if (raw == null) return [];
+    return [for (final e in jsonDecode(raw) as List) fromJson((e as Map).cast())];
+  }
+
+  Future<void> _saveTickets() => _saveList(_ticketsKey, [for (final x in _tickets) x.toJson()]);
+  Future<void> _savePending() => _saveList(_pendingKey, [for (final x in _pending) x.toJson()]);
+
+  Future<void> _saveList(String key, List<Map<String, Object?>> items) =>
+      items.isEmpty ? secrets.delete(key) : secrets.write(key, jsonEncode(items));
+
   /// Removes this phone from its account (POST /devices/unlink), so it can
   /// join another one, then forgets the token. Throws [LinkException] if the
   /// server could not do it; with [force] the phone forgets the token anyway,
@@ -346,6 +521,11 @@ class AccountManager extends ChangeNotifier {
     await secrets.delete(_key);
     _link = null;
     _revoked = false;
+    // Tickets belong to the account just left. Pending redemptions stay:
+    // they don't need this phone's link, and the Secondary's footage
+    // depends on them.
+    _tickets.clear();
+    await _saveTickets();
     notifyListeners();
   }
 
@@ -364,4 +544,45 @@ String serverMessage(http.Response res) {
   } on Object {
     return '';
   }
+}
+
+/// An unbound grant ticket in Main's stock (docs/API.md, `POST /grant-tickets`).
+class GrantTicket {
+  const GrantTicket({required this.ticket, required this.accountId, required this.expiresAt});
+
+  factory GrantTicket.fromJson(Map<String, Object?> j) => GrantTicket(
+        ticket: j['ticket'] as String,
+        accountId: j['accountId'] as String,
+        expiresAt: DateTime.parse(j['expiresAt'] as String),
+      );
+
+  final String ticket;
+  final String accountId;
+  final DateTime expiresAt;
+
+  /// Leaves a day's margin, so a ticket handed over is still good when the
+  /// first phone reaches the internet.
+  bool usableAt(DateTime now) => now.isBefore(expiresAt.subtract(const Duration(days: 1)));
+
+  Map<String, Object?> toJson() =>
+      {'ticket': ticket, 'accountId': accountId, 'expiresAt': expiresAt.toUtc().toIso8601String()};
+}
+
+/// A ticket Main handed to [deviceId] for [gameId], to bind once online.
+class PendingRedemption {
+  const PendingRedemption({required this.apiUrl, required this.ticket, required this.gameId, required this.deviceId});
+
+  factory PendingRedemption.fromJson(Map<String, Object?> j) => PendingRedemption(
+        apiUrl: j['apiUrl'] as String,
+        ticket: j['ticket'] as String,
+        gameId: j['gameId'] as String,
+        deviceId: j['deviceId'] as String,
+      );
+
+  final String apiUrl;
+  final String ticket;
+  final String gameId;
+  final String deviceId;
+
+  Map<String, Object?> toJson() => {'apiUrl': apiUrl, 'ticket': ticket, 'gameId': gameId, 'deviceId': deviceId};
 }

@@ -15,6 +15,10 @@ import 'fakes.dart';
 
 /// Main gives Secondary a recording grant while they pair, so Secondary
 /// uploads into Main's account whatever account it is on.
+/// Server calls about grants, leaving out Main restocking its grant
+/// tickets when its screen opens.
+List<String> grantCalls(FakeGrantServer server) => server.log.where((l) => l != 'POST /grant-tickets').toList();
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -61,7 +65,7 @@ void main() {
     final secAcct = await account('bbbbbbbb');
     final (main, sec) = await pair(await account('aaaaaaaa', accountId: 'acc-main'), secAcct);
     await eventually(() => main.grantState == GrantState.delivered, reason: 'delivered');
-    expect(server.log, ['POST /games/${main.gameId}/grants']);
+    expect(grantCalls(server), ['POST /games/${main.gameId}/grants']);
 
     final g = (await secAcct.grantFor(main.gameId))!;
     expect(g.accountId, 'acc-main');
@@ -85,7 +89,7 @@ void main() {
     links.disconnect();
     links.connect();
     await eventually(() => links.secondary.sent.whereType<Hello>().length == 2);
-    expect(server.log, hasLength(1));
+    expect(grantCalls(server), hasLength(1));
   });
 
   test('without internet Main keeps trying while they are paired', () async {
@@ -101,7 +105,7 @@ void main() {
   test('an unlinked Main says so and asks nothing', () async {
     final (main, sec) = await pair(await account('aaaaaaaa'), await account('bbbbbbbb'));
     await eventually(() => main.grantState == GrantState.mainNotLinked);
-    expect(server.log, isEmpty);
+    expect(grantCalls(server), isEmpty);
     expect(sec.grant, isNull);
   });
 

@@ -263,8 +263,10 @@ void main() {
       final starts = h.backend.log.where((l) => l == 'POST /uploads').length;
       expect(starts, 2, reason: 'the unfinished recording is skipped');
       expect(s.recordings.map((r) => r.recording.recordingId), ['live', 'old', 'new']);
-      // Secondary footage goes to Main's account, with Main's grant.
-      expect(h.backend.tokens.toSet(), {grantToken});
+      // Secondary footage goes to Main's account, with Main's grant. (The
+      // device token only restocks grant tickets: this phone also has a
+      // Main recording.)
+      expect(h.backend.calls.where((c) => c.$1 != 'POST /grant-tickets').map((c) => c.$2).toSet(), {grantToken});
       expect((await h.uploadJson(s.recordings[1].stored))['accountId'], grantAccountId);
     });
 
@@ -564,6 +566,58 @@ void main() {
       s.kick();
       await eventually(() => h.backend.files.length == 1);
       s.dispose();
+    });
+  });
+
+  group('pairing without signal', () {
+    Future<void> giveTicket(Harness h, String ticket) => h.account.saveGrant(RecordingGrant(
+        apiUrl: apiUrl,
+        token: ticket,
+        accountId: grantAccountId,
+        gameId: 'game-1',
+        expiresAt: DateTime.now().add(const Duration(days: 90)),
+        unredeemed: true));
+
+    test('Secondary binds Main\'s ticket before its first upload, then uploads with it', () async {
+      final h = await Harness.create(linked: false);
+      h.backend.ticketsIssued.add('osbg_ticketA');
+      await giveTicket(h, 'osbg_ticketA');
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.done);
+      expect(h.backend.log.first, 'POST /grants/redeem');
+      expect(h.backend.redeemed['osbg_ticketA'], ('game-1', h.store.identity.deviceId));
+      expect(h.backend.reports.keys, ['sec']);
+      expect(h.backend.calls.where((c) => c.$1 != 'POST /grants/redeem').map((c) => c.$2).toSet(),
+          {'osbg_ticketA'});
+      expect((await h.account.grantFor('game-1'))!.unredeemed, isFalse);
+    });
+
+    test('Main binds the tickets it handed over before uploading its manifest', () async {
+      final h = await Harness.create();
+      await h.account.refillTickets();
+      await h.account.grantFromTicket(gameId: 'game-1', deviceId: 'sec-device');
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [10]);
+      h.backend.log.clear();
+      expect(await h.service().runPass(), PassResult.done);
+      final redeem = h.backend.log.indexOf('POST /grants/redeem');
+      expect(redeem, isNot(-1));
+      expect(redeem, lessThan(h.backend.log.indexOf('PUT /games/game-1/recordings/rec-1/manifest')));
+      expect(h.account.pendingRedemptions, 0);
+      // ...and restocks the ticket it used.
+      expect(h.account.ticketsInStock, AccountManager.ticketStock);
+    });
+
+    test('a refused ticket stops that game only', () async {
+      final h = await Harness.create(linked: false);
+      h.backend.redeemStatus = 409;
+      await giveTicket(h, 'osbg_ticketB');
+      await writeRecording(h.store, recordingId: 'sec', sizes: [10], role: DeviceRole.secondary);
+      final s = h.service();
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.grantExpired);
+      expect((await h.account.grantFor('game-1'))!.rejected, isTrue);
+      expect(h.backend.reports, isEmpty);
     });
   });
 }
