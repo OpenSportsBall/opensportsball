@@ -493,6 +493,21 @@ Footage and logs from these tests decide several items below.
       Open at 10:02: the throw-in sits in a judge-rejected gap; a judge
       that accepts a ball in hands, or a thrower rule from roles (a
       player on the touchline with a ball candidate overhead).
+      7:22 added (2026-10-20, a counter down the near-left wing): captured
+      by the ball rule (two confident sightings 1.5 s apart, bridged by the
+      path), 21/26. Surge would also have fired there (10-16 runners,
+      82-94% heading left) but the ball was 5-10 m ahead of the front
+      five. Surge can't fire at 7:34: only 0-4 players run around it (a
+      set piece), but the five forward-most stand at the left goal line,
+      x -49..-34, 40 m beyond the hotspot: a positional trigger (the
+      forward-most players bunched far from the hotspot) would target
+      7:34 and 7:51. Not built.
+- [ ] Local footage removed (2026-10-21): the phones' segments (48 GB,
+      in S3, checked byte-for-byte), both full renders, the clip and
+      comparison videos and the spare training checkpoints went to the
+      Trash (128 GB). The benches, the tracker scorer and the pitch test
+      run without them (docs/TESTING-PROCESSING.md section 5); renders,
+      new detectors and new label sets need segments back from S3.
 - [ ] Full-game runner (`fullgame.py`): name each piece by the
       configuration it was rendered with (a hash of the feature string
       and the constants it uses, plus the candidate and roles file
