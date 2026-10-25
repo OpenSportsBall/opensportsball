@@ -21,6 +21,25 @@ The hand-off to processing happens exactly once: the switch to `ready` is a
 conditional write, and if publishing the event fails the status is rolled
 back so the next upload or manifest call retries it.
 
+## Admin scripts
+
+For the live stack, run from `api/` with AWS credentials (e.g.
+`AWS_PROFILE=<profile>` after `aws sso login`). Table, bucket and region
+come from `infra/cdk-outputs.json` unless `TABLE_NAME`, `BUCKET_NAME` or
+`AWS_REGION` are set. Both print what they would do and change nothing
+without `--yes`.
+
+| Script | What it does |
+|---|---|
+| `scripts/delete-recording.ts` | Lists an account's games and recordings (`--account <acct>`), or deletes one recording (`--game <gameId> --recording <recId>`) or a whole game (`--game <gameId>`): footage and manifest in S3, unfinished multipart uploads, table items, and a game's grants and their tokens. Runs with `node` directly. |
+| `scripts/import-recording.ts` | Imports a recording copied off the phones (a folder with the phone's `manifest.json` and `<deviceId>/<deviceId>_NNN.mp4` segments) into an account as if the phones had uploaded it: checks the manifest and each file's size and sha256, uploads the segments (`aws s3 cp`), records them with `recordObject`, and `checkReady` marks it `ready`. Skips files already in the bucket, so a stopped import can be rerun. Bundle it with esbuild first (see its header); `node` can't follow the `.js` imports of `src/` to their `.ts` files. |
+
+An account id is the Cognito user's `sub`. To find it from an email:
+
+```
+aws cognito-idp list-users --user-pool-id <UserPoolId> --filter 'email = "<email>"' --query 'Users[].Username'
+```
+
 ## Test
 
 The tests run the handlers against **moto**, a local AWS emulator
