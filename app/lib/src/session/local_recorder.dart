@@ -266,3 +266,13 @@ class RecorderException implements Exception {
   @override
   String toString() => message;
 }
+
+/// What to tell the user when [LocalRecorder.open] threw [e]. A
+/// [RecorderException] is already written for them; anything else (the
+/// plugin's PlatformException, say) goes to the debug log and is replaced
+/// by a plain sentence.
+String cameraOpenProblem(Object e) {
+  if (e is RecorderException) return e.message;
+  debugPrint('camera open failed: $e');
+  return "This phone's camera could not be opened.";
+}

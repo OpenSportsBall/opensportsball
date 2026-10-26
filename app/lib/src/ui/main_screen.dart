@@ -91,9 +91,11 @@ class _MainScreenState extends State<MainScreen> {
         canPop: !_recording,
         child: Scaffold(
           body: PreviewLayout(
-            preview: c.opened == null
-                ? const Text('Opening camera…', style: TextStyle(color: Colors.white))
-                : DualCameraPreview(opened: c.opened!),
+            preview: c.phase == MainPhase.noCamera
+                ? NoCameraPreview(onRetry: c.retryCamera)
+                : c.opened == null
+                    ? const Text('Opening camera…', style: TextStyle(color: Colors.white))
+                    : DualCameraPreview(opened: c.opened!),
             panel: [
               Row(children: [
                 if (!_recording) const BackButton(),
@@ -110,7 +112,7 @@ class _MainScreenState extends State<MainScreen> {
               busy: c.phase == MainPhase.preparing ||
                   c.phase == MainPhase.stopping ||
                   c.phase == MainPhase.starting,
-              onPressed: _recording ? _stop : _start,
+              onPressed: c.phase == MainPhase.noCamera ? null : (_recording ? _stop : _start),
             ),
           ),
         ),

@@ -85,7 +85,9 @@ class FakeLink implements PeerLink {
 /// real. Call [finishSegment] to simulate a segment rollover.
 class FakeCamera implements DualCamera {
   FakeCamera({this.fail = false});
-  final bool fail;
+
+  /// Makes [open] throw, like a camera another app holds.
+  bool fail;
   final _events = StreamController<CameraEvent>.broadcast();
   String? _dir;
   String? _prefix;

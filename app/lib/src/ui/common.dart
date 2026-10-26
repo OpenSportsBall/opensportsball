@@ -124,6 +124,34 @@ class ErrorText extends StatelessWidget {
   }
 }
 
+/// The preview area once the camera failed to open: says so, with a Retry
+/// button, instead of an endless "opening".
+class NoCameraPreview extends StatelessWidget {
+  const NoCameraPreview({super.key, required this.onRetry});
+  final VoidCallback onRetry;
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 48),
+        const SizedBox(height: 8),
+        const Text('No camera', style: TextStyle(color: Colors.white, fontSize: 18)),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white54),
+          ),
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Retry'),
+        ),
+      ],
+    );
+  }
+}
+
 Future<bool> confirm(BuildContext context, String title, String body, String action) async {
   final ok = await showDialog<bool>(
     context: context,

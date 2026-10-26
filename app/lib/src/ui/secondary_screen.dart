@@ -143,10 +143,12 @@ class _SecondarySessionState extends State<_SecondarySession> {
         canPop: !_recording,
         child: Scaffold(
           body: PreviewLayout(
-            preview: c.opened == null
-                ? const Text('Camera opens once connected to the Main phone.',
-                    style: TextStyle(color: Colors.white))
-                : DualCameraPreview(opened: c.opened!),
+            preview: c.phase == SecondaryPhase.noCamera
+                ? NoCameraPreview(onRetry: c.retryCamera)
+                : c.opened == null
+                    ? const Text('Camera opens once connected to the Main phone.',
+                        style: TextStyle(color: Colors.white))
+                    : DualCameraPreview(opened: c.opened!),
             panel: [
               Row(children: [
                 if (!_recording) const BackButton(),

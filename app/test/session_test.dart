@@ -76,6 +76,37 @@ void main() {
     await m.dispose();
   });
 
+  test('Main fails cleanly when its camera will not open, and can retry', () async {
+    final cam = FakeCamera(fail: true);
+    final m = MainController(store: mainStore, camera: cam, linkFactory: (_) => FakeLinkPair().main);
+    await m.init();
+    expect(m.phase, MainPhase.noCamera);
+    expect(m.opened, isNull);
+    expect(m.error, "This phone's camera could not be opened."); // not the raw exception
+    expect(await m.startRecording(alone: true), isFalse);
+
+    cam.fail = false;
+    await m.retryCamera();
+    expect(m.phase, MainPhase.idle);
+    expect(m.error, isNull);
+    expect(m.opened, isNotNull);
+    await m.dispose();
+  });
+
+  test('Secondary fails cleanly when its camera will not open, and can retry', () async {
+    secCam.fail = true;
+    links.connect();
+    await eventually(() => sec.phase == SecondaryPhase.noCamera, reason: 'secondary has no camera');
+    expect(sec.error, "This phone's camera could not be opened.");
+    await eventually(() => main.error == 'Secondary: could not open its camera',
+        reason: 'main hears about it');
+
+    secCam.fail = false;
+    await sec.retryCamera();
+    expect(sec.phase, SecondaryPhase.ready);
+    expect(sec.error, isNull);
+  });
+
   test('pairing opens the Secondary camera with Main settings', () async {
     await pair();
     expect(main.secondary!.model, 'bbbbbbbb-model');

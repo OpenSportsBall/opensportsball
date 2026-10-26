@@ -15,7 +15,17 @@ import '../storage/store.dart';
 import '../upload/account.dart';
 import 'local_recorder.dart';
 
-enum SecondaryPhase { connecting, waitingForMain, ready, recording, stopping }
+enum SecondaryPhase {
+  connecting,
+  waitingForMain,
+  ready,
+  recording,
+  stopping,
+
+  /// The camera would not open; see [SecondaryController.error]. Nothing
+  /// can record until [SecondaryController.retryCamera] succeeds.
+  noCamera,
+}
 
 /// Runs the Secondary phone: connects to Main, follows its commands, keeps
 /// recording if the link drops, and reports segments back.
@@ -47,6 +57,9 @@ class SecondaryController extends ChangeNotifier {
   OpenResult? opened;
   ClockEstimate? clock;
   String? error;
+
+  /// The last camera open failed; the phase is [SecondaryPhase.noCamera].
+  bool cameraFailed = false;
   bool _stopping = false;
 
   /// Main's recording grant for this game, once it arrives (or from an
@@ -71,6 +84,7 @@ class SecondaryController extends ChangeNotifier {
     if (_stopping) return SecondaryPhase.stopping;
     if (recorder.recording) return SecondaryPhase.recording;
     if (link.state.value != LinkState.connected) return SecondaryPhase.connecting;
+    if (cameraFailed) return SecondaryPhase.noCamera;
     if (welcome == null || opened == null) return SecondaryPhase.waitingForMain;
     return SecondaryPhase.ready;
   }
@@ -164,16 +178,33 @@ class SecondaryController extends ChangeNotifier {
         welcome == null || !mapEquals(welcome!.settings.toJson(), m.settings.toJson());
     welcome = m;
     if ((opened == null || settingsChanged) && !recorder.recording) {
-      try {
-        opened = await recorder.open(m.settings.toCaptureConfig());
-        error = null;
-      } on Object catch (e) {
-        error = '$e';
-        await link.send(ErrorMsg(code: 'camera', message: '$e'));
-      }
+      await _openCamera(m.settings.toCaptureConfig());
     }
     unawaited(_clockRound());
     await _resendStoppedRecordings();
+  }
+
+  /// Opens the camera with Main's settings. If it fails, [cameraFailed]
+  /// and [error] say so, and Main is told, until [retryCamera] succeeds
+  /// (or the next Welcome opens it).
+  Future<void> _openCamera(CaptureConfig config) async {
+    try {
+      opened = await recorder.open(config);
+      cameraFailed = false;
+      error = null;
+    } on Object catch (e) {
+      cameraFailed = true;
+      error = cameraOpenProblem(e);
+      await link.send(ErrorMsg(code: 'camera', message: 'could not open its camera'));
+    }
+    _notify();
+  }
+
+  /// Tries the camera again after it failed to open.
+  Future<void> retryCamera() async {
+    final w = welcome;
+    if (!cameraFailed || w == null || recorder.recording) return;
+    await _openCamera(w.settings.toCaptureConfig());
   }
 
   /// After a reconnect, Main may have missed segments or the stopped

@@ -16,7 +16,17 @@ import '../storage/store.dart';
 import '../upload/account.dart';
 import 'local_recorder.dart';
 
-enum MainPhase { starting, idle, preparing, recording, stopping }
+enum MainPhase {
+  starting,
+  idle,
+  preparing,
+  recording,
+  stopping,
+
+  /// The camera would not open; see [MainController.error]. Nothing can
+  /// record until [MainController.retryCamera] succeeds.
+  noCamera,
+}
 
 /// Whether Secondary can upload its footage into this phone's account:
 /// Main asks the server for a recording grant and sends it over Bluetooth.
@@ -134,14 +144,7 @@ class MainController extends ChangeNotifier {
     // (switched off, permission prompt pending), and Main must still be able
     // to aim and record alone. Sequential also keeps Android from showing
     // two permission prompts at once, which cancels one of them.
-    try {
-      opened = await recorder.open(store.settings.toCaptureConfig());
-      await recorder.camera.setKeepScreenOn(true);
-      phase = MainPhase.idle;
-    } on Object catch (e) {
-      error = '$e';
-    }
-    _notify();
+    await _openCamera();
     unawaited(link.start().catchError((Object e) {
       error = 'Bluetooth: $e';
       _notify();
@@ -150,6 +153,33 @@ class MainController extends ChangeNotifier {
     _grantTimer = Timer.periodic(grantRetryEvery, (_) => _retryGrant());
     unawaited(_pollStatus());
     _notify();
+  }
+
+  /// Opens the camera. If it fails the phase is [MainPhase.noCamera] and
+  /// [error] says so, until [retryCamera] succeeds.
+  Future<void> _openCamera() async {
+    phase = MainPhase.starting;
+    _notify();
+    try {
+      opened = await recorder.open(store.settings.toCaptureConfig());
+      phase = MainPhase.idle;
+    } on Object catch (e) {
+      error = cameraOpenProblem(e);
+      phase = MainPhase.noCamera;
+    }
+    _notify();
+    if (opened == null) return;
+    try {
+      await recorder.camera.setKeepScreenOn(true);
+    } on Object catch (_) {}
+  }
+
+  /// Tries the camera again after it failed to open, e.g. once the app
+  /// that had it has let go.
+  Future<void> retryCamera() async {
+    if (phase != MainPhase.noCamera) return;
+    error = null;
+    await _openCamera();
   }
 
   void _onLinkState() {
