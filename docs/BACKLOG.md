@@ -334,9 +334,35 @@ Footage and logs from these tests decide several items below.
       seeks the same way and lands on the same frame. Also fixed: an
       empty OSB_BALL_TAG matched `.both.json` by glob order in balleval.py
       and ballheat.py (the 2026-10-16 full-scan figures predate that file).
-      Next: WASB blobs + judge as a second candidate source in ballwin.py
-      (the 2x and 4x tiles, in the search window and over the far third),
-      through the tracker, scored with balleval.py.
+      WASB in ballwin.py (2026-10-25, `OSB_WIN_WASB=1`): the clip decoded
+      at 30 fps so each 10 fps frame has its neighbours; WASB in fp16 with
+      the crop, downscale and normalisation on the GPU (21 ms per tile on
+      the Mac against ~80 ms in ballheat.py; same top peaks within a few
+      px) on the 2x and 4x tiles in every full scan and one window around
+      the prediction (2x below ZOOM_BELOW_PX, else 4x); peaks above 0.05
+      (at most 30 per phone) not on an RF-DETR box become candidates,
+      conf = the peak, judged inline. Ball stage ~1.5-1.7x (30 s of rec4:
+      3.1 -> 5.3 min; WASB itself 30-40% of a run, the rest the 30 fps
+      decode). Baselines (`base`) re-run with the same code for rec3
+      seg0-0 and seg0-600, whose `win` files predated 2026-10-19; that
+      alone moved rec3's play boxes 20 -> 18/26 (6:30 and 7:22 lost).
+      Tracker on the clip labels: seg 3 39 -> 43/53 found (wrong 2 -> 1),
+      seg 9 18 -> 19/37 (wrong 2 -> 1). Play boxes (peoplesurge default):
+      rec3 18 -> 16/26 (gains 7:22; loses 22:36 100 -> 90%, seg 3 2.5 s
+      100 -> 90% and 105 s 100 -> 47%), rec4 9 -> 10/15 (gains 18:27 0 -> 100%; 28:04 29 -> 0%), so
+      27 -> 26/41. At the lost seg 3 moments the two paths agree within
+      ~1 m (WASB has a 1 s gap at 103-104 s, a short bridge at 3 s): the
+      change is in the framing, and the bench moves by +-2 on a candidate
+      rerun alone. A better ball track, no play-box gain yet: off by
+      default: fullgame.py doesn't set OSB_WIN_WASB (exporting it would
+      reach ballwin.py, but the output keeps the `.win` name and chunks
+      whose `.win.json` exists are skipped, so move those first). Also:
+      ballwin.py exits without writing when no frame was decoded (the
+      segment files not on disk), instead of an empty candidate file.
+      Next: keep WASB candidates out of the raw-candidate rules
+      (kick-off, far-ball goal-kick veto, which read conf >= 0.3 of any
+      source), and calibrate their conf against RF-DETR's in the path's
+      node cost.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
