@@ -1,6 +1,7 @@
 # Testing the capture app on phones
 
-The app is not in any store yet. Install it from the Mac over USB.
+The app is not in any store yet. Install it from the Mac over USB, or
+send iPhone builds to testers through TestFlight (below).
 
 ## Install
 
@@ -35,6 +36,59 @@ are much slower and can drop frames.
    cd app
    flutter run --release -d <android id>
    ```
+
+### TestFlight (iPhone, no cable)
+
+Ships a build to testers through App Store Connect. Each build expires
+90 days after upload.
+
+1. Bump the build number in `app/pubspec.yaml`: the `+N` in
+   `version: 0.1.0+1` must increase for every upload (App Store Connect
+   rejects a build number it has already seen).
+2. Build the archive. CocoaPods lives in `/opt/homebrew/bin`, which must be
+   on `PATH`:
+
+   ```
+   cd app
+   PATH=/opt/homebrew/bin:$PATH flutter build ipa --release
+   ```
+
+   The output is `app/build/ios/ipa/opensportsball.ipa`.
+3. Validate, then upload, with an App Store Connect API key. The key file
+   `~/private_keys/AuthKey_<key id>.p8` is never committed; `altool` finds
+   it in `~/private_keys` by key ID.
+
+   ```
+   xcrun altool --validate-app --type ios -f build/ios/ipa/opensportsball.ipa \
+     --apiKey <key id> --apiIssuer <issuer id>
+   xcrun altool --upload-app --type ios -f build/ios/ipa/opensportsball.ipa \
+     --apiKey <key id> --apiIssuer <issuer id>
+   ```
+
+4. App Store Connect → the app → **TestFlight**. The build appears after
+   a few minutes of processing (an email arrives when it is ready). Then
+   add testers:
+   - **Internal:** members of the App Store Connect team, available as
+     soon as processing finishes.
+   - **External:** anyone by email or a public link; the first build of
+     each version goes through a short Beta App Review first.
+5. Testers install the **TestFlight** app from the App Store and accept
+   the invite. Upload a new build before the 90 days run out.
+
+One-time setup:
+
+- Apple Developer Program membership; a free Apple ID cannot upload.
+- `app/ios/Runner.xcworkspace` in Xcode → Runner target → **Signing &
+  Capabilities** → set the team (automatic signing).
+- Create the app record in App Store Connect (bundle ID
+  `dev.opensportsball.opensportsball`) before the first upload; `altool`
+  fails until it exists.
+- Create an API key under Users and Access → Integrations → App Store
+  Connect API; download the `.p8` (only possible once) into
+  `~/private_keys/` and note the key ID and issuer ID.
+- A team with no iPhone registered fails the archive with "no devices".
+  In Xcode, pick the **My Mac (Designed for iPad)** run destination once,
+  which registers the Mac as a device, then build again.
 
 ## Getting recordings off the phones
 
