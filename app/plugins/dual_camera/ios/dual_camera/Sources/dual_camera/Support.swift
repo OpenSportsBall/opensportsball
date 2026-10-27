@@ -85,10 +85,7 @@ enum DeviceInfo {
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
     guard let scene else { return .landscapeRight }
-    if #available(iOS 16.0, *) {
-      return scene.effectiveGeometry.interfaceOrientation
-    }
-    return scene.interfaceOrientation
+    return scene.effectiveGeometry.interfaceOrientation
   }
 
   static func interruptionReason(_ notification: Notification) -> String {

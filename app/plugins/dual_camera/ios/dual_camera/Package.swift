@@ -7,7 +7,7 @@ import PackageDescription
 let package = Package(
     name: "dual_camera",
     platforms: [
-        .iOS("15.0")
+        .iOS("17.0")
     ],
     products: [
         .library(name: "dual-camera", targets: ["dual_camera"])

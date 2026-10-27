@@ -265,31 +265,19 @@ final class CameraSession: NSObject,
   /// Rotates frames so they are upright for the given interface
   /// orientation. Returns true for a quarter turn (width/height swapped).
   private static func applyRotation(_ connection: AVCaptureConnection, orientation: UIInterfaceOrientation) -> Bool {
-    // The back camera's native frame is upright in landscapeRight
-    // (UIInterfaceOrientation and AVCaptureVideoOrientation names agree for
-    // interface orientation).
+    // The back camera's native frame is upright in landscapeRight.
     let angle: CGFloat
-    let legacy: AVCaptureVideoOrientation
     switch orientation {
-    case .landscapeLeft: angle = 180; legacy = .landscapeLeft
-    case .portrait: angle = 90; legacy = .portrait
-    case .portraitUpsideDown: angle = 270; legacy = .portraitUpsideDown
-    default: angle = 0; legacy = .landscapeRight
+    case .landscapeLeft: angle = 180
+    case .portrait: angle = 90
+    case .portraitUpsideDown: angle = 270
+    default: angle = 0
     }
-    if #available(iOS 17.0, *) {
-      if connection.isVideoRotationAngleSupported(angle) {
-        connection.videoRotationAngle = angle
-      } else {
-        NSLog("dual_camera: rotation %.0f not supported", angle)
-        return false
-      }
-    } else {
-      if connection.isVideoOrientationSupported {
-        connection.videoOrientation = legacy
-      } else {
-        return false
-      }
+    guard connection.isVideoRotationAngleSupported(angle) else {
+      NSLog("dual_camera: rotation %.0f not supported", angle)
+      return false
     }
+    connection.videoRotationAngle = angle
     return angle == 90 || angle == 270
   }
 
@@ -542,10 +530,7 @@ final class CameraSession: NSObject,
   }
 
   private var captureClock: CMClock {
-    if #available(iOS 15.4, *), let clock = session.synchronizationClock {
-      return clock
-    }
-    return CMClockGetHostTimeClock()
+    session.synchronizationClock ?? CMClockGetHostTimeClock()
   }
 
   private func startStorageMonitor(_ directory: URL) {

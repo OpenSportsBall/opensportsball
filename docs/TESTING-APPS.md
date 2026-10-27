@@ -40,7 +40,9 @@ are much slower and can drop frames.
 ### TestFlight (iPhone, no cable)
 
 Ships a build to testers through App Store Connect. Each build expires
-90 days after upload.
+90 days after upload. The app needs iOS 17 or newer; ask testers for an
+iPhone 12 or newer (the ultra-wide lens arrived with the 11, and the 12 is
+the oldest that stays cool through a full game).
 
 1. Bump the build number in `app/pubspec.yaml`: the `+N` in
    `version: 0.1.0+1` must increase for every upload (App Store Connect
