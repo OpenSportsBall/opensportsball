@@ -170,13 +170,18 @@ class MainBleLink extends _BleLinkBase {
         } else if (_central?.uuid == e.central.uuid) {
           await _lost();
         }
-      }))
-      ..add(_manager.connectionStateChanged.listen((e) async {
+      }));
+    if (Platform.isAndroid) {
+      // Darwin's peripheral manager throws on connectionStateChanged;
+      // CoreBluetooth reports a central's disconnect as an unsubscribe,
+      // which the listener above already handles.
+      _subs.add(_manager.connectionStateChanged.listen((e) async {
         if (e.state == ConnectionState.disconnected &&
             _central?.uuid == e.central.uuid) {
           await _lost();
         }
       }));
+    }
 
     _subs.add(_manager.stateChanged.listen((e) async {
       if (e.state == BluetoothLowEnergyState.poweredOn) {
