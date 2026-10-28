@@ -363,6 +363,44 @@ Footage and logs from these tests decide several items below.
       (kick-off, far-ball goal-kick veto, which read conf >= 0.3 of any
       source), and calibrate their conf against RF-DETR's in the path's
       node cost.
+      WASB fine-tuned with the background (2026-10-27, `heattrain.py`):
+      a median of 25 frames per segment and phone (the empty pitch, 2x
+      downscale) as a fourth input frame, its first-layer weights zero
+      at the start (so the stock model exactly); trained 3000 steps at
+      batch 8 (0.8 s a step on the Mac; batch 16 needs ~22 GB and swaps)
+      on 512x288 crops at 1.6-4.5x from 4K, half around a ball, WASB's
+      disk target and weighted BCE. Data: the clip sets and the random
+      set's frames whose segments were on disk (163 of 408; the S3
+      sign-in had expired), 347 frames, 6 GB. Held out per clip (the
+      other clip and the random set minus 20 s around it), full scans
+      at 2x/4x: seg 3 at ~1.6 peaks a frame 19% -> 62% of in-play balls
+      (stock at >= 0.3, tuned at >= 0.5), judged best 40% -> 67%; seg 9
+      17% -> 38%, judged 19% -> 38%. Through ballwin.py and the path it
+      does not carry over: the tracker found 62/90 with stock WASB and
+      61/90 tuned (both with WASB not steering the online track, so
+      the RF-DETR candidates are the same in 1135-1197 of 1200 frames).
+      Why: of the tuned run's 29 misses, 13 have no candidate within 2
+      frames, mostly 50-100+ m out, because WASB looks only in the
+      window around RF-DETR's track between full scans; scanning every
+      frame (OSB_WASB_EVERY, 32 tiles, +28 min per 2-minute clip) cuts
+      those to 10 but the path then skips usable candidates at 12 and
+      found falls to 52/90 (wrong 9): with more candidates the linker,
+      tuned on RF-DETR's confidences, picks wrong. Letting confident
+      tuned peaks pass the judge is worse (seg 9 9/37). Found on the
+      way: drop_jumps kept a 0.8 s blip 4 m nearer the players over a
+      29 s run of the match ball; now the players decide only when one
+      run is >= 10 m (JUMP_PLAY_MARGIN_M) farther from them, else the
+      shorter run goes (base and stock-WASB scores unchanged, play
+      boxes 27/41 unchanged moment by moment, 20:27 kept). Also:
+      ballwin.py's WASB no longer steers the online track by default
+      (OSB_WASB_STEER=1 for the old behaviour); OSB_WASB_CKPT loads a
+      tuned model, OSB_WASB_MIN (0.3 for a tuned one) its threshold.
+      Next: the linker, not the detector. Score each candidate as a
+      probability of the ball from (source, conf, judge, size) fitted
+      on the labels, use that in the path's node cost, and re-tune the
+      path costs with dense candidates (every-frame WASB); then the
+      remaining random-set segments (`aws sso login --profile sbv`)
+      and pseudo-labels from long confident runs.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
