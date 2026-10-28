@@ -401,6 +401,32 @@ Footage and logs from these tests decide several items below.
       path costs with dense candidates (every-frame WASB); then the
       remaining random-set segments (`aws sso login --profile sbv`)
       and pseudo-labels from long confident runs.
+      Linker fixes (2026-10-28, `ballpath.py`, `ball.py`): a learned
+      P(ball) per candidate has nothing to learn from yet: at the
+      labelled moments almost every candidate the path sees is the
+      ball (a handful of negatives in 90 moments). The misses instead
+      fall in three groups, each fixed in the linker. (1) The match
+      ball beyond the 3 m pitch margin: far balls whose depth is
+      metres out and balls just over a line, with judged candidates
+      thrown away (6 moments); PITCH_MARGIN_M 3 -> 10. (2) A ball at
+      rest (goal-kick spot, free kick) the detector loses for just
+      over SKIP_MAX: a candidate may now follow one within REST_M (2 m)
+      up to REST_SKIP_S (2 s) earlier, bridged. (3) Widening the margin
+      let one run stray onto an off-pitch ball at its end; drop_jumps
+      then dropped the next 9.6 s run of the match ball as the shorter
+      "second ball". Two runs both >= JUMP_KEEP_S (5 s) are now both
+      kept, but only when distance from the players cannot tell them
+      apart (rec4's spare ball at 20:27, 50 m from play against 23 m,
+      is still dropped; keeping all long runs cost that box). Tracker
+      found, seg 3 + seg 9: base 57 -> 66/90 (wrong 4 -> 5), stock WASB
+      62 -> 70 (2 -> 3), tuned WASB 61 -> 69 (3 -> 3). Play boxes 29/41
+      before and after (the same moments; today's base bench reads 29,
+      not the 27 of earlier runs). Path costs (NONE_COST, GAP_PENALTY,
+      BRIDGE_S, MIN_JUDGE) re-swept on top: +-1-2 each way, within the
+      noise of 90 labels, left as they were. WASB's linker gap is
+      closed (70 vs 66 base), but it still does not move the play
+      boxes; the remaining misses are mostly moments with no candidate
+      at all (50-100+ m) and fast balls seen every few frames.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
