@@ -1,7 +1,7 @@
 name: opensportsball
 description: Two-phone game recorder. One app, Main or Secondary role.
 publish_to: none
-version: 0.1.0+2
+version: 0.1.0+3
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -22,6 +22,7 @@ dependencies:
   http: ^1.6.0
   connectivity_plus: ^7.3.1
   flutter_secure_storage: ^11.2.0
+  app_links: ^7.2.2
 
 dev_dependencies:
   flutter_test:

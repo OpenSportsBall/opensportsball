@@ -2,12 +2,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { toString as qrToSvg } from 'qrcode';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import { formatBytes, formatDateTime, fraction, percent, roleLabel, shortId } from '#lib/format.ts';
+	import { grantPageUrl } from '#lib/grant.ts';
 	import { poll } from '#lib/poll.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { Game, RecordingDevice } from '#lib/types.ts';
@@ -20,6 +22,66 @@
 	let updatedAt = $state<Date | null>(null);
 	/** Linked phones' models, to name phones before the manifest arrives. */
 	let knownModels = $state<Record<string, string>>({});
+
+	// Upload permission for a phone that recorded without a grant from Main.
+	let grantOpen = $state(false);
+	let grantCreating = $state(false);
+	let grantUrl = $state<string | null>(null);
+	let grantExpiresAt = $state<string | null>(null);
+	let grantQr = $state('');
+	let grantError = $state<unknown>(null);
+	let copied = $state(false);
+	const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+	async function startGrant() {
+		if (!gameId) return;
+		grantOpen = true;
+		grantCreating = true;
+		grantError = null;
+		grantUrl = null;
+		copied = false;
+		try {
+			const t = await session.api.createGameTicket(gameId);
+			const url = grantPageUrl(window.location.origin, t.appUri);
+			grantQr = await qrToSvg(url, {
+				type: 'svg',
+				margin: 2,
+				errorCorrectionLevel: 'M',
+				color: { dark: '#000000', light: '#ffffff' }
+			});
+			grantUrl = url;
+			grantExpiresAt = t.expiresAt;
+		} catch (e) {
+			grantError = e;
+		} finally {
+			grantCreating = false;
+		}
+	}
+
+	async function copyGrant() {
+		if (!grantUrl) return;
+		try {
+			await navigator.clipboard.writeText(grantUrl);
+			copied = true;
+		} catch (e) {
+			grantError = e;
+		}
+	}
+
+	async function shareGrant() {
+		if (!grantUrl) return;
+		try {
+			await navigator.share({ title: 'OpenSportsBall upload permission', url: grantUrl });
+		} catch {
+			/* cancelled */
+		}
+	}
+
+	function closeGrant() {
+		grantOpen = false;
+		grantUrl = null;
+		grantError = null;
+	}
 
 	const stillUploading = $derived(game?.recordings.some((r) => r.status !== 'ready') ?? false);
 
@@ -151,6 +213,41 @@
 				</section>
 			{/each}
 		</div>
+
+		<section class="card grant">
+			{#if !grantOpen}
+				<h2>Footage missing from a phone?</h2>
+				<p class="muted small">
+					If a second phone recorded this game but says it is waiting for upload permission (the main phone was not
+					linked), give it permission with a link.
+				</p>
+				<button class="btn" onclick={startGrant}>Add footage from another phone</button>
+			{:else}
+				<div class="grant-head">
+					<h2>Add footage from another phone</h2>
+					<button class="btn btn-small" onclick={closeGrant}>Close</button>
+				</div>
+				{#if grantError}<ErrorBanner error={grantError} retry={() => void startGrant()} />{/if}
+				{#if grantCreating}
+					<p class="muted">Making a link…</p>
+				{:else if grantUrl}
+					<p>
+						Open this link on that phone, or scan the code with its camera. Then tap
+						<strong>Open in the app</strong>. It works for one phone.
+					</p>
+					<div class="qr">
+						<!-- qrcode's SVG output; generated locally from the link below -->
+						{@html grantQr}
+					</div>
+					<input class="link mono" readonly value={grantUrl} aria-label="Upload permission link" onfocus={(e) => e.currentTarget.select()} />
+					<div class="actions">
+						<button class="btn btn-primary" onclick={copyGrant}>{copied ? 'Copied' : 'Copy link'}</button>
+						{#if canShare}<button class="btn" onclick={shareGrant}>Share…</button>{/if}
+					</div>
+					<p class="muted small">Works until {formatDateTime(grantExpiresAt)}. Anyone with the link can use it.</p>
+				{/if}
+			{/if}
+		</section>
 	{/if}
 {/if}
 
@@ -190,6 +287,52 @@
 		color: var(--warn);
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
+	}
+	.grant {
+		margin-top: 0.9rem;
+	}
+	.grant h2 {
+		margin: 0 0 0.4rem;
+	}
+	.grant-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+	.grant-head h2 {
+		margin: 0;
+	}
+	.qr {
+		width: min(100%, 260px);
+		margin: 0.75rem auto;
+		background: #ffffff;
+		border-radius: 12px;
+		padding: 6px;
+		border: 1px solid var(--border);
+	}
+	.qr :global(svg) {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+	.link {
+		width: 100%;
+		box-sizing: border-box;
+		font-size: 0.8rem;
+		padding: 0.5rem 0.6rem;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-sm);
+		background: var(--surface-2);
+		color: var(--text);
+		text-overflow: ellipsis;
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0.6rem 0;
 	}
 	.devices {
 		list-style: none;

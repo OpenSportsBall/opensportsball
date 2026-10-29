@@ -131,8 +131,18 @@ function segmentsFor(d: ManifestDevice, reports: Map<string, ManifestDevice>) {
   return reports.get(d.deviceId)?.segments ?? d.segments ?? null;
 }
 
+/** Main's devices, plus a Secondary Main's manifest leaves out because it
+ *  never got a grant at the field, once that phone reports with one given
+ *  later (a game ticket from the website, lib/grants.ts). Only phones linked
+ *  to the account or holding a grant can report at all. */
+export function withLateSecondary(m: Manifest, reports: Map<string, ManifestDevice>): ManifestDevice[] {
+  if (m.devices.some((d) => d.role === 'secondary')) return m.devices;
+  const late = [...reports.values()].find((d) => d.role === 'secondary');
+  return late ? [...m.devices, late] : m.devices;
+}
+
 export const expectedDevices = (m: Manifest, reports: Map<string, ManifestDevice>): ExpectedDevice[] =>
-  m.devices.map((d) => ({
+  withLateSecondary(m, reports).map((d) => ({
     deviceId: d.deviceId,
     role: d.role,
     model: d.model,
@@ -143,5 +153,5 @@ export const expectedDevices = (m: Manifest, reports: Map<string, ManifestDevice
  *  filled in. Only valid once every device has segments. */
 export const mergeManifest = (m: Manifest, reports: Map<string, ManifestDevice>): Manifest => ({
   ...m,
-  devices: m.devices.map((d) => ({ ...d, segments: segmentsFor(d, reports) ?? [] })),
+  devices: withLateSecondary(m, reports).map((d) => ({ ...d, segments: segmentsFor(d, reports) ?? [] })),
 });

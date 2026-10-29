@@ -12,13 +12,23 @@
  * - A phone "scans" each link code 5 seconds after POST /link-codes: the
  *   next GET /devices after that includes the new device.
  */
-import type { Device, Game, GameSummary, LinkCode, Recording, RecordingDevice, RecordingStatus } from './types';
+import type {
+	Device,
+	Game,
+	GameSummary,
+	GameTicket,
+	LinkCode,
+	Recording,
+	RecordingDevice,
+	RecordingStatus
+} from './types';
 
 export const MOCK_BASE_URL = 'https://mock.invalid';
 export const MOCK_LINK_DELAY_MS = 5_000;
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_TTL_MS = 10 * 60_000;
 const SEGMENT_INTERVAL_MS = 15_000;
+const GAME_TICKET_TTL_MS = 7 * 24 * 3600_000;
 
 interface MockDeviceProgress {
 	deviceId: string;
@@ -237,6 +247,23 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			const g = games.find((x) => x.gameId === id);
 			if (!g) return fail(404, 'not_found', 'No such game on this account.');
 			return json(200, gameView(g));
+		}
+		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
+			const id = decodeURIComponent(m[1]);
+			if (!games.some((x) => x.gameId === id)) return fail(404, 'not_found', 'No such game.');
+			const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+			const ticket = 'osbg_' + Array.from({ length: 43 }, () => chars[Math.floor(random() * chars.length)]).join('');
+			const expiresAt = iso(now() + GAME_TICKET_TTL_MS);
+			const q = new URLSearchParams({ v: '1', api: MOCK_BASE_URL, account: 'mock-account-0001', game: id, ticket, exp: expiresAt });
+			const body: GameTicket = {
+				ticket,
+				apiUrl: MOCK_BASE_URL,
+				accountId: 'mock-account-0001',
+				gameId: id,
+				expiresAt,
+				appUri: `opensportsball://grant?${q}`
+			};
+			return json(201, body);
 		}
 		return fail(404, 'not_found', `No route for ${method} ${path} in the mock API.`);
 	}

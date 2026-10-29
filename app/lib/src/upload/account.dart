@@ -85,6 +85,26 @@ LinkRequest? parseLinkUri(String raw) {
   return LinkRequest(apiUrl: api, code: code);
 }
 
+final _grantToken = RegExp(r'^osbg_[A-Za-z0-9_-]{43}$');
+
+/// Parses an upload permission link from the website (docs/API.md),
+/// `opensportsball://grant?v=1&api=<url>&account=<id>&game=<id>&ticket=<osbg_...>&exp=<time>`,
+/// into a grant ticket for that game, not yet bound to this phone.
+RecordingGrant? parseGrantUri(String raw) {
+  final uri = Uri.tryParse(raw.trim());
+  if (uri == null || uri.scheme != 'opensportsball' || uri.host != 'grant') return null;
+  final q = uri.queryParameters;
+  if (q['v'] != '1') return null;
+  final api = q['api'], account = q['account'], game = q['game'], ticket = q['ticket'];
+  final expiresAt = DateTime.tryParse(q['exp'] ?? '');
+  if (api == null || !isAcceptableApiUrl(api) || account == null || account.isEmpty) return null;
+  if (game == null || game.isEmpty || ticket == null || !_grantToken.hasMatch(ticket) || expiresAt == null) {
+    return null;
+  }
+  return RecordingGrant(
+      apiUrl: api, token: ticket, accountId: account, gameId: game, expiresAt: expiresAt, unredeemed: true);
+}
+
 class LinkException implements Exception {
   const LinkException(this.message, {this.offline = false});
   final String message;
@@ -438,6 +458,21 @@ class AccountManager extends ChangeNotifier {
     final redeemed = g.redeemed(expiresAt);
     await saveGrant(redeemed);
     return redeemed;
+  }
+
+  /// A ticket from an upload permission link ([parseGrantUri]): binds it
+  /// to this phone now. Without internet it is kept unbound, and the upload
+  /// queue binds it before its first upload; returns false then. Throws
+  /// [LinkException] when the server refuses it.
+  Future<bool> acceptGrantLink(RecordingGrant ticket, {required String deviceId}) async {
+    try {
+      await redeemGrant(ticket, deviceId: deviceId);
+      return true;
+    } on LinkException catch (e) {
+      if (!e.offline) rethrow;
+      await saveGrant(ticket);
+      return false;
+    }
   }
 
   /// POSTs JSON and returns the decoded answer. Throws [LinkException]

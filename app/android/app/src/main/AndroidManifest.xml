@@ -56,6 +56,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Upload permission links from the website (docs/API.md),
+                 handled by app_links, not Flutter's router. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opensportsball" android:host="grant" />
+            </intent-filter>
         </activity>
         <service
             android:name=".UploadKeepAliveService"

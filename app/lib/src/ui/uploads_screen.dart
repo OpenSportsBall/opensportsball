@@ -169,6 +169,13 @@ class _RecordingTile extends StatelessWidget {
                 if (rec.stopped && !r.complete && r.blocked != null)
                   Text(r.blocked!.label,
                       style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error)),
+                if (rec.stopped &&
+                    !r.complete &&
+                    (r.blocked == UploadPhase.waitingForGrant || r.blocked == UploadPhase.grantExpired))
+                  Text(
+                      'Or get an upload permission link from the game\'s page on the website, '
+                      'and open it on this phone.',
+                      style: theme.textTheme.bodySmall),
                 if (current != null && r.currentFileBytes > 0) ...[
                   const SizedBox(height: 4),
                   LinearProgressIndicator(value: r.currentFileSent / r.currentFileBytes),

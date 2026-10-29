@@ -20,6 +20,7 @@ import {
 import { config, ddb, keys, queryPrefix } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
+import { createGameTicket } from '../lib/grants.js';
 
 interface GameItem {
   gameId: string;
@@ -44,6 +45,8 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         return listGames(acct);
       case 'GET /games/{gameId}':
         return getGame(acct, pathParam(event, 'gameId'));
+      case 'POST /games/{gameId}/grant-tickets':
+        return postGameTicket(acct, pathParam(event, 'gameId'), event.requestContext.domainName);
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
@@ -86,6 +89,13 @@ async function listGames(acct: string) {
   });
   out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return json(200, { games: out });
+}
+
+/** A link for a phone that recorded this game without a grant from Main. */
+async function postGameTicket(acct: string, gameId: string, apiDomain: string) {
+  const g = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.game(acct, gameId) }));
+  if (!g.Item) throw notFound('No such game.');
+  return json(201, await createGameTicket({ accountId: acct, gameId, apiDomain }));
 }
 
 async function getGame(acct: string, gameId: string) {

@@ -20,6 +20,10 @@ export const GRANT_TTL_MS = 14 * 24 * 3600 * 1000;
 /** A grant ticket (lib/grants.ts) waits this long to be bound to a game. */
 export const TICKET_TTL_MS = 90 * 24 * 3600 * 1000;
 
+/** A ticket the website makes for one game (createGameTicket) is sent as a
+ *  link, which may sit in a message for a while before the phone opens it. */
+export const GAME_TICKET_TTL_MS = 7 * 24 * 3600 * 1000;
+
 /** Unbound tickets one Main phone may hold at a time. */
 export const MAX_OPEN_TICKETS = 5;
 

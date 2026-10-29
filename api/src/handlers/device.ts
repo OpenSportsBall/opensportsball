@@ -42,8 +42,15 @@ import {
 } from '../lib/http.js';
 import { unlinkDevice } from '../lib/devices.js';
 import { createGrant, createTickets, getGrant, redeemTicket } from '../lib/grants.js';
-import { parseManifest, parseReport } from '../lib/manifest.js';
-import { checkReady, ensureRecording, getRecording, recordObject, type ReportItem } from '../lib/recordings.js';
+import { parseManifest, parseReport, type ManifestDevice } from '../lib/manifest.js';
+import {
+  checkReady,
+  ensureRecording,
+  getRecording,
+  recordObject,
+  type RecordingItem,
+  type ReportItem,
+} from '../lib/recordings.js';
 import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
 import { GRANT_TOKEN, LINK_CODE, MAX_OPEN_TICKETS, hashToken, newDeviceToken } from '../lib/tokens.js';
 
@@ -328,7 +335,8 @@ async function putReport(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
     getRecording(ctx.accountId, gameId, recordingId),
     ddb.send(new GetCommand({ TableName: config.table, Key: key })),
   ]);
-  if (existing?.status === 'ready' && (previous.Item as ReportItem | undefined)?.sha256 !== sha) {
+  const reopen = existing?.status === 'ready' && !previous.Item && isLateSecondary(existing, device);
+  if (existing?.status === 'ready' && !reopen && (previous.Item as ReportItem | undefined)?.sha256 !== sha) {
     throw conflict('This recording is already complete with a different segment list.');
   }
   await ensureRecording(ctx.accountId, gameId, recordingId);
@@ -346,7 +354,31 @@ async function putReport(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
       },
     }),
   );
+  if (reopen) {
+    // It is ready again, with a second RecordingReady, once that phone's
+    // files are in.
+    await ddb.send(
+      new UpdateCommand({
+        TableName: config.table,
+        Key: keys.recording(ctx.accountId, gameId, recordingId),
+        UpdateExpression: 'SET #s = :uploading REMOVE readyAt',
+        ConditionExpression: '#s = :ready',
+        ExpressionAttributeNames: { '#s': 'status' },
+        ExpressionAttributeValues: { ':uploading': 'uploading', ':ready': 'ready' },
+      }),
+    );
+  }
   return json(200, await checkReady(ctx.accountId, gameId, recordingId));
+}
+
+/** A Secondary reporting for the first time on a recording that became
+ *  ready without it: Main's manifest left it out (no grant at the field). */
+function isLateSecondary(rec: RecordingItem, device: ManifestDevice) {
+  return (
+    device.role === 'secondary' &&
+    rec.manifest !== undefined &&
+    !rec.manifest.devices.some((d) => d.role === 'secondary' || d.deviceId === device.deviceId)
+  );
 }
 
 // --- Multipart upload -------------------------------------------------------

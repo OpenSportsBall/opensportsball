@@ -27,6 +27,17 @@ export interface LinkCode {
 	linkUri: string;
 }
 
+/** POST /games/{gameId}/grant-tickets: upload permission for a phone that
+ *  recorded the game without a grant from Main. */
+export interface GameTicket {
+	ticket: string;
+	apiUrl: string;
+	accountId: string;
+	gameId: string;
+	expiresAt: string;
+	appUri: string;
+}
+
 export interface Device {
 	deviceId: string;
 	platform: Platform | string;

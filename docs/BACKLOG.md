@@ -25,6 +25,14 @@ Footage and logs from these tests decide several items below.
       Wi-Fi, both upload and the game reaches Ready. Needs the backend
       deployed with `POST /grant-tickets` and `POST /grants/redeem`.
 
+- [ ] Upload permission link (built 2026-10-28): record with Main not
+      linked (Secondary shows "Waiting for upload permission"), let Main's
+      part finish (Ready). On the website's game page, get the link, open
+      it on the Secondary, tap Open in the app. Secondary uploads; the
+      game shows both phones and is Ready again. Also scan the QR from
+      another screen, and open the link on a phone with no recording of
+      that game (the app says so and the link still works elsewhere).
+
 - [ ] Upside-down phone plays upright: record with the new build and
       check the Secondary's segments open the right way up in QuickTime
       and the website (Android orientation hint / iOS track transform from
@@ -703,7 +711,10 @@ Footage and logs from these tests decide several items below.
 - [ ] GPU Spot quota: request for 8 vCPUs of G instances in `us-west-2` is
       **pending** with AWS (filed 2026-10-06). Needed before any GPU job runs.
 - [ ] Batch GPU job (sync, calibrate, detect, camera path, render),
-      Step Functions triggered by `RecordingReady`.
+      Step Functions triggered by `RecordingReady`. A recording can be
+      ready twice: Main alone, then with a Secondary that got its upload
+      permission later from the website (docs/API.md, report route). The
+      second run replaces the first.
 - [ ] Lifecycle rule deleting raw footage N days after a successful render.
 - [ ] Verify each segment's SHA-256 against the manifest on download.
 - [ ] Android footage: expect ~150 ms missing at every segment switch and

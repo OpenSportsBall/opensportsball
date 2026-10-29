@@ -13,7 +13,14 @@ import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { badRequest, conflict, gone, notFound } from './http.js';
 import { config, ddb, keys, queryPrefix } from './store.js';
-import { GRANT_TTL_MS, MAX_OPEN_TICKETS, TICKET_TTL_MS, hashToken, newGrantToken } from './tokens.js';
+import {
+  GAME_TICKET_TTL_MS,
+  GRANT_TTL_MS,
+  MAX_OPEN_TICKETS,
+  TICKET_TTL_MS,
+  hashToken,
+  newGrantToken,
+} from './tokens.js';
 
 /** The `TOKEN#` item of a grant token. A ticket (below) has no gameId,
  *  deviceId or expiresAtMs until it is redeemed, so the authorizer treats
@@ -24,9 +31,13 @@ export interface GrantTokenItem {
   deviceId: string;
   gameId: string;
   expiresAtMs: number;
-  /** Set on tickets: Main's deviceId, and when an unbound ticket lapses. */
+  /** Set on tickets: Main's deviceId (or `web`), and when an unbound
+   *  ticket lapses. */
   issuedBy?: string;
   ticketExpiresAtMs?: number;
+  /** A ticket made on the website for one game: it can only be bound to
+   *  that game. */
+  ticketGameId?: string;
 }
 
 /** The account's record of a grant, for checking manifests and listing. */
@@ -159,6 +170,48 @@ export async function createTickets(o: { accountId: string; issuedBy: string; co
   return { tickets, apiUrl: `https://${o.apiDomain}`, accountId: o.accountId, open: open + n };
 }
 
+/** A ticket for one game, made by a person on the website, for a phone
+ *  that recorded the game but never got a grant from Main (Main was not
+ *  linked, or the phones never confirmed the hand-over). The website puts
+ *  it in a link that phone opens; the phone redeems it as it would one
+ *  from Main. */
+export async function createGameTicket(o: { accountId: string; gameId: string; apiDomain: string }) {
+  const expiresAtMs = Date.now() + GAME_TICKET_TTL_MS;
+  const token = newGrantToken();
+  const tokenHash = hashToken(token);
+  const ttl = Math.ceil(expiresAtMs / 1000) + 3600;
+  await ddb.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: config.table,
+            Item: {
+              ...keys.token(tokenHash),
+              kind: 'grant',
+              accountId: o.accountId,
+              issuedBy: 'web',
+              ticketExpiresAtMs: expiresAtMs,
+              ticketGameId: o.gameId,
+              ttl,
+            },
+          },
+        },
+        {
+          Put: {
+            TableName: config.table,
+            Item: { ...keys.ticket(o.accountId, tokenHash), issuedBy: 'web', tokenHash, expiresAtMs, gameId: o.gameId, ttl },
+          },
+        },
+      ],
+    }),
+  );
+  const apiUrl = `https://${o.apiDomain}`;
+  const expiresAt = new Date(expiresAtMs).toISOString();
+  const q = new URLSearchParams({ v: '1', api: apiUrl, account: o.accountId, game: o.gameId, ticket: token, exp: expiresAt });
+  return { ticket: token, apiUrl, accountId: o.accountId, gameId: o.gameId, expiresAt, appUri: `opensportsball://grant?${q}` };
+}
+
 /** Binds a ticket to [gameId] and [deviceId], making it that phone's grant
  *  for that game. Either phone may call it, in any order: the same binding
  *  again returns the same grant; a different one is refused. */
@@ -180,6 +233,9 @@ export async function redeemTicket(o: { ticket: string; gameId: string; deviceId
     if (item.gameId) {
       if (item.gameId === o.gameId && item.deviceId === o.deviceId) return answer(item.expiresAtMs);
       throw conflict('That upload permission is already in use for another game or phone.');
+    }
+    if (item.ticketGameId && item.ticketGameId !== o.gameId) {
+      throw conflict('That upload permission is for another game.');
     }
     if (!(Number(item.ticketExpiresAtMs) > Date.now())) throw gone('That upload permission has expired.');
     if (item.issuedBy === o.deviceId) throw badRequest('A phone does not need a grant for itself.');
@@ -203,7 +259,7 @@ export async function redeemTicket(o: { ticket: string; gameId: string; deviceId
               Update: {
                 TableName: config.table,
                 Key: keys.token(tokenHash),
-                UpdateExpression: 'SET gameId = :g, deviceId = :d, expiresAtMs = :e, #ttl = :ttl REMOVE ticketExpiresAtMs',
+                UpdateExpression: 'SET gameId = :g, deviceId = :d, expiresAtMs = :e, #ttl = :ttl REMOVE ticketExpiresAtMs, ticketGameId',
                 ConditionExpression: 'attribute_not_exists(gameId)',
                 ExpressionAttributeNames: { '#ttl': 'ttl' }, // a reserved word
                 ExpressionAttributeValues: {

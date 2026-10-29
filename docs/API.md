@@ -38,7 +38,10 @@ as its device (`403 forbidden` otherwise), and expires after 14 days
 (`401`). A phone can hold grants from several accounts at once. When Main
 has no signal at the field, it gives the Secondary a **grant ticket**
 fetched earlier instead (`POST /grant-tickets`), which either phone binds
-to the game later (`POST /grants/redeem`).
+to the game later (`POST /grants/redeem`). If the Secondary got no grant
+at all (Main was not linked), the account owner makes a ticket for that
+game on the website (`POST /games/{gameId}/grant-tickets`) and sends it to
+the phone as a link ("Upload permission link" below).
 
 ## Website config
 
@@ -71,6 +74,21 @@ a recording grant that Main creates (`POST /games/{gameId}/grants`) and
 sends over Bluetooth (`app/lib/src/protocol/messages.dart`, `GrantMsg`),
 whatever account the Secondary is linked to, if any.
 
+## Upload permission link
+
+The website's game page shows a link and its QR code for a phone that
+recorded the game without a grant:
+
+```
+https://<site>/grant#v=1&api=<url-encoded apiUrl>&account=<accountId>&game=<gameId>&ticket=<osbg_...>&exp=<expiresAt>
+```
+
+The ticket is in the fragment, so it never reaches the web server's logs.
+That page needs no sign-in: its button opens the app with the same
+parameters as `opensportsball://grant?v=1&api=...` (the `appUri` from
+`POST /games/{gameId}/grant-tickets`). The app checks it has a recording
+of that game, then redeems the ticket (`POST /grants/redeem`) for itself.
+
 ## Routes for people (Cognito token)
 
 ### `GET /me`
@@ -89,6 +107,16 @@ whatever account the Secondary is linked to, if any.
 ### `GET /games`
 → `200 {"games": [{"gameId", "createdAt", "recordingCount", "status"}]}`,
 newest first. `status` is the least-finished status of its recordings.
+
+### `POST /games/{gameId}/grant-tickets`
+A grant ticket for one game of the account, for a phone that recorded it
+without a grant from Main.
+→ `201 {"ticket": "osbg_...", "apiUrl", "accountId", "gameId", "expiresAt", "appUri": "opensportsball://grant?..."}`
+
+- Like Main's tickets (`POST /grant-tickets`), it can call nothing until
+  redeemed, but it can only be bound to this game (`409 conflict`
+  otherwise), and lapses unredeemed after 7 days.
+- `404 not_found`: no such game on the account.
 
 ### `GET /games/{gameId}`
 → `200`
@@ -174,7 +202,8 @@ Body: `{"ticket": "osbg_...", "gameId", "deviceId"}`
 - Either phone redeems it, whichever reaches the internet first; Main
   before uploading its manifest (which names the Secondary), the Secondary
   before its first upload. The same binding again is a no-op.
-- `409 conflict`: already bound to another game or phone.
+- `409 conflict`: already bound to another game or phone, or a website
+  ticket for another game.
   `404 not_found`: no such ticket. `410 gone`: lapsed unredeemed.
   `400 bad_request`: binding it to the phone that fetched it.
 
@@ -200,6 +229,11 @@ its `segments`. → same response as the manifest.
 - `deviceId` must be the caller (`403 forbidden`); segments must be named
   for it (`400 invalid_manifest`).
 - A phone's report wins over whatever Main's manifest lists for it.
+- A Secondary that Main's manifest leaves out (it had no grant at the
+  field) counts once it reports, if the manifest has no other Secondary.
+  If the recording was already `ready` with Main alone, its first report
+  sets it back to `uploading`; it is `ready` again, with a second
+  `RecordingReady`, once that phone's files are in.
 - Re-sending the same report is fine; a different one once the recording
   is `ready` is `409 conflict`.
 
@@ -249,7 +283,9 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
 - When the manifest is present, every device's segments are known, and
   every segment is in the bucket, the server writes the merged
   `manifest.json` (every device with its segments) and the recording
-  becomes `ready` (once). Processing never sees a partial manifest. An
+  becomes `ready`. Processing never sees a partial manifest. It becomes
+  `ready` once, except when a Secondary Main left out reports later
+  (`PUT .../report`): then it is `ready` a second time, with both phones. An
   EventBridge event is published on the default bus:
   - `source`: `opensportsball`
   - `detail-type`: `RecordingReady`

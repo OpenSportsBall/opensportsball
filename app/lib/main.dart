@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,13 +16,16 @@ import 'src/ui/recordings_screen.dart';
 import 'src/ui/secondary_screen.dart';
 import 'src/ui/settings_screen.dart';
 import 'src/ui/uploads_screen.dart';
+import 'src/upload/grant_link.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The phones sit sideways on the mount; one fixed orientation keeps the
   // recordings consistent.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft]);
-  runApp(OpenSportsBallApp(store: AppStore.open()));
+  // Subscribed before the first frame, so the link that launched the app
+  // is not missed.
+  runApp(OpenSportsBallApp(store: AppStore.open(), links: AppLinks().uriLinkStream));
 }
 
 class OpenSportsBallApp extends StatefulWidget {
@@ -27,10 +33,14 @@ class OpenSportsBallApp extends StatefulWidget {
     super.key,
     required this.store,
     this.createServices = createAppServices,
+    this.links,
   });
 
   final Future<AppStore> store;
   final Future<AppServices> Function(AppStore store) createServices;
+
+  /// Links that opened the app (upload permission links, docs/API.md).
+  final Stream<Uri>? links;
 
   @override
   State<OpenSportsBallApp> createState() => _OpenSportsBallAppState();
@@ -39,6 +49,8 @@ class OpenSportsBallApp extends StatefulWidget {
 class _OpenSportsBallAppState extends State<OpenSportsBallApp> {
   late final Future<AppServices> _services = widget.store.then(widget.createServices);
   AppServices? _ready;
+  final _navigator = GlobalKey<NavigatorState>();
+  StreamSubscription<Uri>? _links;
   late final AppLifecycleListener _lifecycle =
       AppLifecycleListener(onResume: () {
     _ready?.uploads.kick();
@@ -50,10 +62,28 @@ class _OpenSportsBallAppState extends State<OpenSportsBallApp> {
     super.initState();
     _lifecycle; // create it
     _services.then<void>((s) => _ready = s, onError: (Object _) {});
+    _links = widget.links?.listen(_onLink, onError: (Object e) => debugPrint('app link: $e'));
+  }
+
+  Future<void> _onLink(Uri uri) async {
+    if (uri.scheme != 'opensportsball' || uri.host != 'grant') return;
+    final s = await _services;
+    final r = await openGrantLink(uri.toString(), store: s.store, account: s.account, uploads: s.uploads);
+    final context = _navigator.currentContext;
+    if (context == null || !context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(r.title),
+        content: Text(r.message),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+      ),
+    );
   }
 
   @override
   void dispose() {
+    unawaited(_links?.cancel());
     _lifecycle.dispose();
     super.dispose();
   }
@@ -61,6 +91,7 @@ class _OpenSportsBallAppState extends State<OpenSportsBallApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigator,
       title: 'OpenSportsBall',
       theme: buildBrandTheme(Brightness.light),
       darkTheme: buildBrandTheme(Brightness.dark),

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
-import type { Device, Game, GameSummary, LinkCode, Me } from './types';
+import type { Device, Game, GameSummary, GameTicket, LinkCode, Me } from './types';
 
 /** An API failure: HTTP status plus the `{"error","message"}` body (docs/API.md). */
 export class ApiError extends Error {
@@ -86,7 +86,8 @@ export function createApiClient(opts: ApiClientOptions) {
 		listDevices: async () => (await request<{ devices: Device[] }>('GET', '/devices')).devices,
 		unlinkDevice: (deviceId: string) => request<void>('DELETE', `/devices/${enc(deviceId)}`),
 		listGames: async () => (await request<{ games: GameSummary[] }>('GET', '/games')).games,
-		getGame: (gameId: string) => request<Game>('GET', `/games/${enc(gameId)}`)
+		getGame: (gameId: string) => request<Game>('GET', `/games/${enc(gameId)}`),
+		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`)
 	};
 }
 
