@@ -45,6 +45,7 @@ interface MockDeviceProgress {
 interface MockRecording {
 	recordingId: string;
 	createdAt: string;
+	recordedAt: string | null;
 	hasManifest: boolean;
 	devices: MockDeviceProgress[];
 }
@@ -110,12 +111,14 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				{
 					recordingId: 'rec-1h-7c2e',
 					createdAt: ago(95),
+					recordedAt: ago(220),
 					hasManifest: true,
 					devices: [dev(IPHONE, 'main', 9, 4, 1), dev(PIXEL, 'secondary', 9, 6, 1)]
 				},
 				{
 					recordingId: 'rec-2h-91fa',
 					createdAt: ago(50),
+					recordedAt: null,
 					hasManifest: false,
 					devices: [dev(PIXEL, 'secondary', 9, 1, 0.5)]
 				}
@@ -128,6 +131,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				{
 					recordingId: 'rec-full-3d10',
 					createdAt: ago(60 * 24 * 3),
+					recordedAt: ago(60 * 24 * 4),
 					hasManifest: true,
 					devices: [dev(IPHONE, 'main', 18, 12, 1), dev(PIXEL, 'secondary', 18, 14, 1)]
 				}
@@ -140,12 +144,14 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				{
 					recordingId: 'rec-1h-55b0',
 					createdAt: ago(60 * 24 * 7),
+					recordedAt: ago(60 * 24 * 7 + 180),
 					hasManifest: true,
 					devices: [dev(IPHONE, 'main', 9, 9, 0), dev(PIXEL, 'secondary', 9, 9, 0)]
 				},
 				{
 					recordingId: 'rec-2h-e83d',
 					createdAt: ago(60 * 24 * 7 - 55),
+					recordedAt: ago(60 * 24 * 7 + 115),
 					hasManifest: true,
 					devices: [dev(IPHONE, 'main', 9, 9, 0), dev(PIXEL, 'secondary', 9, 9, 0)]
 				}
@@ -175,12 +181,28 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		if (r.hasManifest) {
 			status = ds.every((d) => d.uploadedSegments >= (d.expectedSegments ?? Infinity)) ? 'ready' : 'uploading';
 		}
-		return { recordingId: r.recordingId, createdAt: r.createdAt, status, hasManifest: r.hasManifest, devices: ds };
+		return {
+			recordingId: r.recordingId,
+			createdAt: r.createdAt,
+			recordedAt: r.recordedAt,
+			status,
+			hasManifest: r.hasManifest,
+			devices: ds
+		};
 	}
 
 	const ORDER: RecordingStatus[] = ['waiting_for_manifest', 'uploading', 'ready'];
+	function gameRecordedAt(g: MockGame): string | null {
+		const known = g.recordings.flatMap((r) => (r.recordedAt ? [r.recordedAt] : [])).sort();
+		return known[0] ?? null;
+	}
 	function gameView(g: MockGame): Game {
-		return { gameId: g.gameId, createdAt: g.createdAt, recordings: g.recordings.map(recordingView) };
+		return {
+			gameId: g.gameId,
+			createdAt: g.createdAt,
+			recordedAt: gameRecordedAt(g),
+			recordings: g.recordings.map(recordingView)
+		};
 	}
 	function gameSummary(g: MockGame): GameSummary {
 		const recs = gameView(g).recordings;
@@ -188,7 +210,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			(acc, r) => (ORDER.indexOf(r.status) < ORDER.indexOf(acc) ? r.status : acc),
 			'ready'
 		);
-		return { gameId: g.gameId, createdAt: g.createdAt, recordingCount: recs.length, status };
+		return { gameId: g.gameId, createdAt: g.createdAt, recordedAt: gameRecordedAt(g), recordingCount: recs.length, status };
 	}
 
 	function uuid(): string {

@@ -5,7 +5,7 @@
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
-	import { formatDateTime } from '#lib/format.ts';
+	import { formatDateTime, recordedTime } from '#lib/format.ts';
 	import { poll } from '#lib/poll.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { GameSummary } from '#lib/types.ts';
@@ -18,7 +18,7 @@
 	async function load(): Promise<boolean> {
 		try {
 			const list = await session.api.listGames();
-			games = [...list].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+			games = [...list].sort((a, b) => recordedTime(b).localeCompare(recordedTime(a)));
 			error = null;
 		} catch (e) {
 			error = e;
@@ -68,7 +68,7 @@
 			<li>
 				<a class="card game" href="{resolve('/game')}?id={encodeURIComponent(g.gameId)}">
 					<div class="main">
-						<div class="date">{formatDateTime(g.createdAt)}</div>
+						<div class="date">{formatDateTime(recordedTime(g))}</div>
 						<div class="muted small">{plural(g.recordingCount, 'recording')}</div>
 					</div>
 					<StatusBadge status={g.status} />

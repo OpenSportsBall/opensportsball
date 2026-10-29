@@ -50,6 +50,10 @@ export function roleLabel(role: string | null): string {
 	return 'Role not known yet';
 }
 
+/** When a game or recording was recorded, or when its first upload arrived
+ *  while that is not known yet. */
+export const recordedTime = (x: { createdAt: string; recordedAt: string | null }) => x.recordedAt ?? x.createdAt;
+
 function toDate(iso: string): Date | null {
 	const d = new Date(iso);
 	return Number.isNaN(d.getTime()) ? null : d;

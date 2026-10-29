@@ -81,6 +81,15 @@ export const listReports = (acct: string, gameId: string, recordingId?: string) 
 
 export const reportMap = (reports: ReportItem[]) => new Map(reports.map((r) => [r.deviceId, r.device]));
 
+/** When recording started: the earliest segment start Main's manifest or a
+ *  phone's report lists, or null before either has arrived. */
+export function recordedAt(rec: RecordingItem, reports: ReportItem[]): string | null {
+  const starts = [...(rec.manifest?.devices ?? []), ...reports.map((r) => r.device)]
+    .flatMap((d) => d.segments ?? [])
+    .map((s) => s.startedAtDeviceMs);
+  return starts.length ? new Date(Math.min(...starts)).toISOString() : null;
+}
+
 export const listObjects = (acct: string, gameId: string, recordingId?: string) =>
   queryPrefix<ObjectItem>(acct, recordingId ? `OBJ#${gameId}#${recordingId}#` : `OBJ#${gameId}#`);
 

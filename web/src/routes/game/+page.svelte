@@ -8,7 +8,7 @@
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
-	import { formatBytes, formatDateTime, fraction, percent, roleLabel, shortId } from '#lib/format.ts';
+	import { formatBytes, formatDateTime, fraction, percent, recordedTime, roleLabel, shortId } from '#lib/format.ts';
 	import { grantPageUrl } from '#lib/grant.ts';
 	import { poll } from '#lib/poll.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -89,7 +89,7 @@
 		if (!gameId) return false;
 		try {
 			const g = await session.api.getGame(gameId);
-			g.recordings.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+			g.recordings.sort((a, b) => recordedTime(a).localeCompare(recordedTime(b)));
 			game = g;
 			error = null;
 			updatedAt = new Date();
@@ -145,7 +145,7 @@
 	{:else if game}
 		<div class="page-head">
 			<div>
-				<h1>{formatDateTime(game.createdAt)}</h1>
+				<h1>{formatDateTime(recordedTime(game))}</h1>
 				<div class="muted small">
 					{plural(game.recordings.length, 'recording')} · <span class="mono">{game.gameId}</span>
 				</div>
@@ -168,7 +168,7 @@
 					<div class="rec-head">
 						<div>
 							<h2>Recording {i + 1}</h2>
-							<div class="muted small">Started {formatDateTime(rec.createdAt)}</div>
+							<div class="muted small">Started {formatDateTime(recordedTime(rec))}</div>
 						</div>
 						<StatusBadge status={rec.status} />
 					</div>

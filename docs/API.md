@@ -105,8 +105,14 @@ of that game, then redeems the ticket (`POST /grants/redeem`) for itself.
 → `204`. The device's token stops working immediately.
 
 ### `GET /games`
-→ `200 {"games": [{"gameId", "createdAt", "recordingCount", "status"}]}`,
-newest first. `status` is the least-finished status of its recordings.
+→ `200 {"games": [{"gameId", "createdAt", "recordedAt", "recordingCount", "status"}]}`,
+newest first (by `recordedAt`, or `createdAt` while that is null). `status`
+is the least-finished status of its recordings.
+
+`createdAt` is when the server first heard of the game or recording;
+`recordedAt` is when recording started: the earliest segment
+`startedAtDeviceMs` in Main's manifest or a phone's report (for a game, its
+earliest recording). It is null until one of those has arrived.
 
 ### `POST /games/{gameId}/grant-tickets`
 A grant ticket for one game of the account, for a phone that recorded it
@@ -125,10 +131,12 @@ without a grant from Main.
 {
   "gameId": "...",
   "createdAt": "...",
+  "recordedAt": "... | null",
   "recordings": [
     {
       "recordingId": "...",
       "createdAt": "...",
+      "recordedAt": "... | null",
       "status": "waiting_for_manifest | uploading | ready",
       "hasManifest": true,
       "devices": [

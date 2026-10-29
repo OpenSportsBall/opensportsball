@@ -11,6 +11,7 @@ import {
   STATUS_ORDER,
   listObjects,
   listReports,
+  recordedAt,
   reportMap,
   type ReportItem,
   type ObjectItem,
@@ -65,6 +66,13 @@ async function listDevices(acct: string) {
   });
 }
 
+/** The earliest of the known times (ISO timestamps compare as strings). */
+const earliest = (times: (string | null)[]) =>
+  times.reduce<string | null>((min, t) => (t !== null && (min === null || t < min) ? t : min), null);
+
+/** Upload-time fallback for anything whose recording time is not known yet. */
+const when = (x: { createdAt: string; recordedAt: string | null }) => x.recordedAt ?? x.createdAt;
+
 const leastFinished = (statuses: RecordingStatus[]) =>
   statuses.reduce<RecordingStatus>(
     (worst, s) => (STATUS_ORDER.indexOf(s) < STATUS_ORDER.indexOf(worst) ? s : worst),
@@ -72,9 +80,10 @@ const leastFinished = (statuses: RecordingStatus[]) =>
   );
 
 async function listGames(acct: string) {
-  const [games, recordings] = await Promise.all([
+  const [games, recordings, reports] = await Promise.all([
     queryPrefix<GameItem>(acct, 'GAME#'),
     queryPrefix<RecordingItem>(acct, 'REC#'),
+    queryPrefix<ReportItem>(acct, 'REPORT#'),
   ]);
   const byGame = new Map<string, RecordingItem[]>();
   for (const r of recordings) byGame.set(r.gameId, [...(byGame.get(r.gameId) ?? []), r]);
@@ -83,11 +92,14 @@ async function listGames(acct: string) {
     return {
       gameId: g.gameId,
       createdAt: g.createdAt,
+      recordedAt: earliest(
+        recs.map((r) => recordedAt(r, reports.filter((p) => p.gameId === g.gameId && p.recordingId === r.recordingId))),
+      ),
       recordingCount: recs.length,
       status: recs.length ? leastFinished(recs.map((r) => r.status)) : 'waiting_for_manifest',
     };
   });
-  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  out.sort((a, b) => when(b).localeCompare(when(a)));
   return json(200, { games: out });
 }
 
@@ -107,13 +119,20 @@ async function getGame(acct: string, gameId: string) {
     listObjects(acct, gameId),
     listReports(acct, gameId),
   ]);
-  recordings.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const recs = recordings.map((r) => ({
+    item: r,
+    createdAt: r.createdAt,
+    recordedAt: recordedAt(r, reports.filter((p) => p.recordingId === r.recordingId)),
+  }));
+  recs.sort((a, b) => when(a).localeCompare(when(b)));
   return json(200, {
     gameId,
     createdAt: game.createdAt,
-    recordings: recordings.map((r) => ({
+    recordedAt: earliest(recs.map((r) => r.recordedAt)),
+    recordings: recs.map(({ item: r, recordedAt }) => ({
       recordingId: r.recordingId,
       createdAt: r.createdAt,
+      recordedAt,
       status: r.status,
       hasManifest: Boolean(r.manifest),
       devices: recordingDevices(

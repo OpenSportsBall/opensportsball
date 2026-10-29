@@ -91,7 +91,11 @@ describe('recording upload', () => {
     expect(await readyEvents()).toEqual([]);
 
     const games = await callWeb(acct, 'GET /games');
-    expect(games.body.games).toEqual([{ gameId, createdAt: expect.any(String), recordingCount: 1, status: 'ready' }]);
+    // Recorded when Main's first segment started, not when it was uploaded.
+    const recordedAt = new Date(1_760_000_000_000).toISOString();
+    expect(games.body.games).toEqual([{ gameId, createdAt: expect.any(String), recordedAt, recordingCount: 1, status: 'ready' }]);
+    expect(game.body.recordedAt).toBe(recordedAt);
+    expect(game.body.recordings[0].recordedAt).toBe(recordedAt);
 
     // A different manifest can't replace a finished recording.
     const changed = manifest(gameId, recordingId, main, [mainFiles[0]!], secondary, secFiles);
@@ -131,6 +135,9 @@ describe('recording upload', () => {
   it('a report that arrives before the manifest counts once it arrives', async () => {
     for (const [i, f] of secFiles.entries()) await uploadFile(secondary, gameId, recordingId, i, f);
     expect((await putReport(deviceEntry(secondary, 'secondary', secFiles))).body.status).toBe('waiting_for_manifest');
+    // The report alone says when recording started.
+    const games = await callWeb(acct, 'GET /games');
+    expect(games.body.games[0].recordedAt).toBe(new Date(1_760_000_000_000).toISOString());
     for (const [i, f] of mainFiles.entries()) await uploadFile(main, gameId, recordingId, i, f);
     expect((await putManifest(manifest(gameId, recordingId, main, mainFiles, secondary))).body.status).toBe('ready');
   });

@@ -49,6 +49,8 @@ export interface Device {
 export interface GameSummary {
 	gameId: string;
 	createdAt: string;
+	/** When recording started; null until a phone has listed its segments. */
+	recordedAt: string | null;
 	recordingCount: number;
 	status: RecordingStatus;
 }
@@ -66,6 +68,7 @@ export interface RecordingDevice {
 export interface Recording {
 	recordingId: string;
 	createdAt: string;
+	recordedAt: string | null;
 	status: RecordingStatus;
 	hasManifest: boolean;
 	devices: RecordingDevice[];
@@ -74,6 +77,7 @@ export interface Recording {
 export interface Game {
 	gameId: string;
 	createdAt: string;
+	recordedAt: string | null;
 	recordings: Recording[];
 }
 
