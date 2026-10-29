@@ -14,10 +14,17 @@ import '../role.dart';
 import '../storage/store.dart';
 import 'activity.dart';
 import 'power_log.dart';
+import 'settle.dart';
 
 /// Drives this phone's camera for one game: opens it, records, and turns
 /// each finished segment file into a hashed [SegmentRecord] saved in
 /// `recording.json`. Used by both the Main and Secondary controllers.
+///
+/// Recording starts with white balance and focus automatic: the phone is
+/// often not on the mount yet. While recording, a [SettleWatcher] decides
+/// when the phone has come to rest on the mount and locks them then (and
+/// again whenever it is moved and settles), noting each lock in
+/// [LocalRecording.locks].
 class LocalRecorder {
   LocalRecorder({
     required this.camera,
@@ -25,6 +32,7 @@ class LocalRecorder {
     required this.role,
     DeviceActivity? activity,
     this.powerLogEvery = const Duration(minutes: 1),
+    this.settlePollEvery = const Duration(seconds: 1),
   }) : activity = activity ?? DeviceActivity.instance;
 
   final DualCamera camera;
@@ -36,6 +44,10 @@ class LocalRecorder {
 
   /// How often `power.csv` gets a battery / thermal row while recording.
   final Duration powerLogEvery;
+
+  /// How often the motion sensors are read while recording. Each read is
+  /// one [SettleWatcher] window.
+  Duration settlePollEvery;
 
   OpenResult? opened;
   CaptureConfig? config;
@@ -66,6 +78,9 @@ class LocalRecorder {
   StreamSubscription<CameraEvent>? _events;
   Future<void>? _stopping;
   PowerLog? _power;
+  Timer? _settleTimer;
+  bool _settleBusy = false;
+  int _fileRotationDeg = 0;
 
   bool get recording => current != null && !current!.stopped;
 
@@ -124,8 +139,6 @@ class LocalRecorder {
     }
   }
 
-  Future<LockResult> lock() => camera.lockSettings();
-
   Future<LocalRecording> start({
     required String gameId,
     required String recordingId,
@@ -145,11 +158,12 @@ class LocalRecorder {
     await dir.create(recursive: true);
     current = rec;
     activity.setRecording(this, true);
+    _fileRotationDeg = mount?.uprightRotationDeg ?? 0;
     try {
       rec.startedAtDeviceMs = await camera.startRecording(
         directory: dir.path,
         filePrefix: store.identity.deviceId,
-        uprightRotationDeg: mount?.uprightRotationDeg ?? 0,
+        uprightRotationDeg: _fileRotationDeg,
       );
     } on Object {
       current = null;
@@ -157,10 +171,58 @@ class LocalRecorder {
       rethrow;
     }
     _power = PowerLog(camera, File('${dir.path}/power.csv'), every: powerLogEvery)..start();
-    // Read again once recording runs: the phone is on the mount by now.
+    // Read again once recording runs, in case the phone never settles;
+    // each settings lock replaces it with a reading from the mount.
     rec.orientation = await _readOrientation();
     await store.saveRecording(rec);
+    _startSettling(rec);
     return rec;
+  }
+
+  void _startSettling(LocalRecording rec) {
+    final watcher = SettleWatcher();
+    final started = DateTime.now();
+    // The first read starts the sensors and returns an empty window.
+    unawaited(camera.motion().then((_) {}, onError: (Object e) => debugPrint('motion: $e')));
+    _settleTimer?.cancel();
+    _settleTimer = Timer.periodic(settlePollEvery, (_) => unawaited(_settleTick(rec, watcher, started)));
+  }
+
+  Future<void> _settleTick(LocalRecording rec, SettleWatcher watcher, DateTime started) async {
+    if (_settleBusy || current != rec || rec.stopped) return;
+    _settleBusy = true;
+    try {
+      final w = await camera.motion();
+      final reason = watcher.add(w, DateTime.now().difference(started));
+      if (reason == null || current != rec || rec.stopped) return;
+      final r = await camera.lockSettings(sweepFocus: true);
+      watcher.didLock(w.up);
+      final o = w.up == null ? null : MountOrientation.fromUp(w.up!);
+      rec.locks.add(SettingsLock(
+        atDeviceMs: DateTime.now().millisecondsSinceEpoch,
+        reason: reason.name,
+        whiteBalanceLocked: r.whiteBalanceLocked,
+        focusLocked: r.focusLocked,
+        exposureLocked: r.exposureLocked,
+        focus: r.focus == null ? null : SettingsLock.focusJson(r.focus!),
+        orientation: o,
+      ));
+      // The mounted reading is the better one, unless the phone ended up
+      // the other way up from how the files were told to play.
+      if (o != null && o.uprightRotationDeg == _fileRotationDeg) rec.orientation = o;
+      if (!rec.stopped) await store.saveRecording(rec);
+    } on Object catch (e) {
+      debugPrint('settle: $e');
+    } finally {
+      _settleBusy = false;
+    }
+  }
+
+  void _stopSettling() {
+    if (_settleTimer == null) return;
+    _settleTimer!.cancel();
+    _settleTimer = null;
+    unawaited(camera.stopMotion().then((_) {}, onError: (Object e) => debugPrint('motion: $e')));
   }
 
   /// Stops recording and waits until every segment is hashed and saved.
@@ -179,6 +241,7 @@ class LocalRecorder {
   }
 
   Future<void> _finish(LocalRecording rec, String? reason) async {
+    _stopSettling();
     final power = _power;
     _power = null;
     await power?.stop(reason ?? 'stop');

@@ -188,6 +188,14 @@ Things only a real phone can confirm, from the camera implementations.
 - Recording and preview are upright and the preview aspect ratio is right.
 - Panning bright to dark: white balance and focus stay fixed; exposure only
   stays fixed with "Lock exposure" on. Distant objects are sharp.
+- **Settle and focus sweep:** start recording with the phone in your hand,
+  walk around, then put it on the tripod. About 5 s after it stops moving
+  the picture hunts focus for a few seconds (the sweep) and settles sharp.
+  Raise the tripod: it does it again once still. Share the recording's
+  `report.json` (or `manifest.json` on Main): `settingsLocks` should show
+  one `settled` lock per placement, `focus.method` `sweep`, and a `sweep`
+  list whose sharpness peaks somewhere short of the far end. The far
+  floodlights and goals must be sharp, not just the near grass.
 - Shaking the phone gently: the image must not "float" (would mean
   electronic stabilization is on). Optical stabilization can't be turned
   off on iOS.
@@ -221,6 +229,10 @@ Things only a real phone can confirm, from the camera implementations.
 - Tapping the mount makes the image shake, not float (stabilization off).
 - After the lock, white balance and focus don't change when panning;
   exposure only stays fixed with "Lock exposure" on.
+- **Settle:** start recording off the tripod, then mount it; `settingsLocks`
+  in `manifest.json` / `report.json` gets a `settled` lock about 5 s after
+  it stops moving (`focus.method` `infinity`), and another after raising
+  the tripod. Shaking it in your hand or lying it flat never locks it.
 - Film a screen showing epoch milliseconds to check the first frame's
   start time (expect about one frame of error).
 - Another camera app or a call ends the recording, saves the last segment,

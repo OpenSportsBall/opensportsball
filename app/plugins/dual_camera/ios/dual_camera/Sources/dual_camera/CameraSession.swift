@@ -348,9 +348,11 @@ final class CameraSession: NSObject,
 
   // MARK: - Lock settings
 
-  /// Lets continuous AE/AWB/AF converge, then locks. Call on `queue`;
+  /// Lets continuous AE/AWB/AF converge, then locks. With `sweepFocus`,
+  /// focus is then chosen by `sweepFocus(_:af:completion:)` rather than
+  /// left where autofocus settled. Works while recording. Call on `queue`;
   /// `completion` runs on `queue`.
-  func lockSettings(completion: @escaping (Result<[String: Bool], CameraError>) -> Void) {
+  func lockSettings(sweepFocus: Bool, completion: @escaping (Result<[String: Any], CameraError>) -> Void) {
     guard let camera = device, let cfg = config else {
       completion(.failure(CameraError("not_open", "camera is not open")))
       return
@@ -370,16 +372,17 @@ final class CameraSession: NSObject,
     // Give the 3A loops a second, then wait (up to 3 s more) for them to
     // report they have settled.
     queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-      self?.waitForConvergence(camera, cfg: cfg, attempt: 0, completion: completion)
+      self?.waitForConvergence(camera, cfg: cfg, sweepFocus: sweepFocus, attempt: 0, completion: completion)
     }
   }
 
-  private func waitForConvergence(_ camera: AVCaptureDevice, cfg: OpenConfig, attempt: Int,
-                                  completion: @escaping (Result<[String: Bool], CameraError>) -> Void) {
+  private func waitForConvergence(_ camera: AVCaptureDevice, cfg: OpenConfig, sweepFocus: Bool, attempt: Int,
+                                  completion: @escaping (Result<[String: Any], CameraError>) -> Void) {
     let adjusting = camera.isAdjustingFocus || camera.isAdjustingExposure || camera.isAdjustingWhiteBalance
     if adjusting && attempt < 30 && !closed {
       queue.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-        self?.waitForConvergence(camera, cfg: cfg, attempt: attempt + 1, completion: completion)
+        self?.waitForConvergence(camera, cfg: cfg, sweepFocus: sweepFocus, attempt: attempt + 1,
+                                 completion: completion)
       }
       return
     }
@@ -398,29 +401,183 @@ final class CameraSession: NSObject,
       camera.whiteBalanceMode = .locked
       whiteBalanceLocked = true
     }
-    var focusLocked = false
-    if camera.isLockingFocusWithCustomLensPositionSupported {
-      // 1.0 is the farthest focus position.
-      camera.setFocusModeLocked(lensPosition: 1.0, completionHandler: nil)
-      focusLocked = true
-    } else if camera.isFocusModeSupported(.locked) {
-      camera.focusMode = .locked
-      focusLocked = true
-    } else if !camera.isFocusModeSupported(.autoFocus) && !camera.isFocusModeSupported(.continuousAutoFocus) {
-      // Fixed-focus lens: focus can't move, so it is effectively locked.
-      focusLocked = true
-    }
     var exposureLocked = false
     if cfg.lockExposure && camera.isExposureModeSupported(.locked) {
       camera.exposureMode = .locked
       exposureLocked = true
     }
+    // Where autofocus settled. Not forced to lensPosition 1.0: that is the
+    // far end of the lens's travel, which on some iPhones (the Pro
+    // ultra-wides, which also focus very close) is past infinity, and a
+    // whole game came out soft.
+    let af = camera.lensPosition
+    var focus: [String: Any] = ["method": "none"]
+    let canSweep = sweepFocus && camera.isLockingFocusWithCustomLensPositionSupported
+    if canSweep {
+      camera.focusMode = .locked // held until the sweep moves it
+    } else if camera.isFocusModeSupported(.locked) {
+      camera.focusMode = .locked
+      focus = ["method": "autofocus", "lensPosition": Double(af), "autofocusLensPosition": Double(af)]
+    } else if !camera.isFocusModeSupported(.autoFocus) && !camera.isFocusModeSupported(.continuousAutoFocus) {
+      // Fixed-focus lens: focus can't move, so it is effectively locked.
+      focus = ["method": "fixed"]
+    }
     camera.unlockForConfiguration()
-    completion(.success([
-      "exposureLocked": exposureLocked,
-      "whiteBalanceLocked": whiteBalanceLocked,
-      "focusLocked": focusLocked,
-    ]))
+    let finish: ([String: Any]) -> Void = { focus in
+      let method = focus["method"] as? String ?? "none"
+      completion(.success([
+        "exposureLocked": exposureLocked,
+        "whiteBalanceLocked": whiteBalanceLocked,
+        "focusLocked": method != "none",
+        "focus": focus,
+      ]))
+    }
+    if canSweep {
+      self.sweepFocus(camera, af: af, completion: finish)
+    } else {
+      finish(focus)
+    }
+  }
+
+  // MARK: - Focus sweep
+
+  /// Lens positions tried first; then a finer pass around the sharpest.
+  private static let coarsePositions: [Float] = Array(stride(from: 0.40, through: 1.0001, by: 0.05)).map { min($0, 1) }
+  private static let fineStep: Float = 0.01
+  private static let fineSpan: Float = 0.04
+  /// Frames scored per position, after skipping the first one with it.
+  private static let framesPerPosition = 2
+
+  /// A sharpness measurement waiting for frames captured with the lens at
+  /// its new position. Touched only on `queue`.
+  private struct FocusProbe {
+    let after: CMTime
+    var skipped = false
+    var scores: [Double] = []
+    let done: (Double) -> Void
+  }
+  private var probe: FocusProbe?
+
+  /// Steps the locked lens through `coarsePositions`, then finer around the
+  /// sharpest, scoring each by the picture's gradient energy, and locks the
+  /// sharpest. Falls back to autofocus's position (`af`) when the picture
+  /// has too little detail to tell (lens cap, dark sky). Takes a few
+  /// seconds; the recording shows the lens hunting meanwhile.
+  private func sweepFocus(_ camera: AVCaptureDevice, af: Float, completion: @escaping ([String: Any]) -> Void) {
+    var samples: [(Float, Double)] = []
+    func measure(_ positions: [Float], then: @escaping () -> Void) {
+      guard let p = positions.first, !closed else { return then() }
+      setLens(camera, p) { [weak self] syncTime in
+        guard let self else { return }
+        self.score(after: syncTime) { s in
+          samples.append((p, s))
+          measure(Array(positions.dropFirst()), then: then)
+        }
+      }
+    }
+    measure(Self.coarsePositions) { [weak self] in
+      guard let self else { return }
+      let coarseBest = samples.max { $0.1 < $1.1 }?.0 ?? af
+      let fine = stride(from: coarseBest - Self.fineSpan, through: coarseBest + Self.fineSpan + 0.0001, by: Self.fineStep)
+        .map { min(max($0, 0), 1) }
+        .filter { p in !samples.contains { abs($0.0 - p) < 0.005 } }
+      measure(fine) { [weak self] in
+        guard let self else { return }
+        let scores = samples.map(\.1)
+        let best = samples.max { $0.1 < $1.1 }
+        let flat = (scores.max() ?? 0) <= (scores.min() ?? 0) * 1.02
+        let chosen = (best == nil || flat) ? af : best!.0
+        self.setLens(camera, chosen) { _ in
+          completion([
+            "method": (best == nil || flat) ? "autofocus" : "sweep",
+            "lensPosition": Double(chosen),
+            "autofocusLensPosition": Double(af),
+            "sweep": samples.map { ["lensPosition": Double($0.0), "sharpness": $0.1] },
+          ])
+        }
+      }
+    }
+  }
+
+  /// Locks the lens at `position`; `done` runs on `queue` with the
+  /// timestamp of the first frame taken there.
+  private func setLens(_ camera: AVCaptureDevice, _ position: Float, done: @escaping (CMTime) -> Void) {
+    do {
+      try camera.lockForConfiguration()
+    } catch {
+      NSLog("dual_camera: focus sweep could not configure camera: %@", error.localizedDescription)
+      queue.async { done(.zero) }
+      return
+    }
+    camera.setFocusModeLocked(lensPosition: position) { [weak self] syncTime in
+      self?.queue.async { done(syncTime) }
+    }
+    camera.unlockForConfiguration()
+  }
+
+  /// Scores frames captured after `after`; `done` runs on `queue` (with 0
+  /// if no frames come within a second).
+  private func score(after: CMTime, done: @escaping (Double) -> Void) {
+    var finished = false
+    let once: (Double) -> Void = { s in
+      guard !finished else { return }
+      finished = true
+      done(s)
+    }
+    probe = FocusProbe(after: after, done: once)
+    queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+      guard let self, !finished else { return }
+      self.probe = nil
+      once(0)
+    }
+  }
+
+  /// Called for each video frame on `queue`.
+  private func feedProbe(_ sampleBuffer: CMSampleBuffer) {
+    guard var p = probe, let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+    let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    if p.after.isValid && CMTimeCompare(pts, p.after) < 0 { return }
+    if !p.skipped {
+      p.skipped = true
+      probe = p
+      return
+    }
+    p.scores.append(Self.sharpness(pixels))
+    if p.scores.count >= Self.framesPerPosition {
+      probe = nil
+      p.done(p.scores.reduce(0, +) / Double(p.scores.count))
+    } else {
+      probe = p
+    }
+  }
+
+  /// Mean squared luma gradient over a sparse grid, ignoring the faintest
+  /// gradients (sensor noise, strongest at night). Higher is sharper; only
+  /// comparable between frames of the same scene.
+  static func sharpness(_ pixels: CVPixelBuffer) -> Double {
+    CVPixelBufferLockBaseAddress(pixels, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
+    guard CVPixelBufferGetPlaneCount(pixels) > 0,
+          let base = CVPixelBufferGetBaseAddressOfPlane(pixels, 0) else { return 0 }
+    let w = CVPixelBufferGetWidthOfPlane(pixels, 0)
+    let h = CVPixelBufferGetHeightOfPlane(pixels, 0)
+    let rowBytes = CVPixelBufferGetBytesPerRowOfPlane(pixels, 0)
+    let luma = base.assumingMemoryBound(to: UInt8.self)
+    var sum = 0
+    var count = 0
+    for y in stride(from: 0, to: h - 1, by: 8) {
+      let row = luma + y * rowBytes
+      let below = row + rowBytes
+      for x in stride(from: 0, to: w - 1, by: 4) {
+        let c = Int(row[x])
+        let dx = Int(row[x + 1]) - c
+        let dy = Int(below[x]) - c
+        let g = dx * dx + dy * dy
+        if g > 16 { sum += g }
+        count += 1
+      }
+    }
+    return count == 0 ? 0 : Double(sum) / Double(count)
   }
 
   // MARK: - Recording
@@ -619,6 +776,7 @@ final class CameraSession: NSObject,
       if let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
         preview.update(pixelBuffer)
       }
+      if probe != nil { feedProbe(sampleBuffer) }
       recorder?.appendVideo(sampleBuffer)
     } else if output === audioOutput {
       recorder?.appendAudio(sampleBuffer)

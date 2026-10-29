@@ -99,17 +99,69 @@ class LockResult {
     required this.exposureLocked,
     required this.whiteBalanceLocked,
     required this.focusLocked,
+    this.focus,
   });
 
   factory LockResult.fromMap(Map<Object?, Object?> m) => LockResult(
         exposureLocked: m['exposureLocked'] as bool,
         whiteBalanceLocked: m['whiteBalanceLocked'] as bool,
         focusLocked: m['focusLocked'] as bool,
+        focus: m['focus'] == null ? null : FocusLock.fromMap(m['focus'] as Map<Object?, Object?>),
       );
 
   final bool exposureLocked;
   final bool whiteBalanceLocked;
   final bool focusLocked;
+
+  /// How focus was chosen, if the platform says.
+  final FocusLock? focus;
+}
+
+/// How [DualCamera.lockSettings] chose the focus it locked.
+class FocusLock {
+  const FocusLock({
+    required this.method,
+    this.lensPosition,
+    this.autofocusLensPosition,
+    this.sweep = const [],
+  });
+
+  factory FocusLock.fromMap(Map<Object?, Object?> m) => FocusLock(
+        method: m['method'] as String,
+        lensPosition: (m['lensPosition'] as num?)?.toDouble(),
+        autofocusLensPosition: (m['autofocusLensPosition'] as num?)?.toDouble(),
+        sweep: [
+          for (final s in (m['sweep'] as List?) ?? const [])
+            FocusSample(
+              ((s as Map)['lensPosition'] as num).toDouble(),
+              (s['sharpness'] as num).toDouble(),
+            ),
+        ],
+      );
+
+  /// `sweep` (the sharpest lens position of a sweep, iOS), `autofocus`
+  /// (where autofocus settled), `infinity` (Android's calibrated infinity),
+  /// `fixed` (the lens can't focus) or `none` (focus could not be locked).
+  final String method;
+
+  /// The locked lens position (iOS, 0 near .. 1 far; not a distance).
+  final double? lensPosition;
+
+  /// Where continuous autofocus had settled before locking (iOS).
+  final double? autofocusLensPosition;
+
+  /// The sweep's measurements, in the order taken.
+  final List<FocusSample> sweep;
+}
+
+class FocusSample {
+  const FocusSample(this.lensPosition, this.sharpness);
+
+  final double lensPosition;
+
+  /// Mean gradient strength of the picture; only comparable within one
+  /// sweep.
+  final double sharpness;
 }
 
 class Permissions {
@@ -162,6 +214,36 @@ class UpVector {
   final double x;
   final double y;
   final double z;
+}
+
+/// How the phone moved since the previous [DualCamera.motion] call.
+class MotionWindow {
+  const MotionWindow({
+    required this.samples,
+    this.up,
+    this.maxRotationDegPerS,
+    this.maxAccelerationG,
+  });
+
+  factory MotionWindow.fromMap(Map<Object?, Object?> m) => MotionWindow(
+        samples: m['samples'] as int,
+        up: m['up'] == null ? null : UpVector.fromMap(m['up'] as Map<Object?, Object?>),
+        maxRotationDegPerS: (m['maxRotationDegPerS'] as num?)?.toDouble(),
+        maxAccelerationG: (m['maxAccelerationG'] as num?)?.toDouble(),
+      );
+
+  /// Sensor readings in the window; 0 on the first call or without sensors.
+  final int samples;
+
+  /// Which way is up, averaged over the window.
+  final UpVector? up;
+
+  /// Fastest turn (gyroscope), or null without one.
+  final double? maxRotationDegPerS;
+
+  /// Largest acceleration apart from gravity, in g, or null without a
+  /// sensor for it.
+  final double? maxAccelerationG;
 }
 
 sealed class CameraEvent {
@@ -281,9 +363,13 @@ class DualCamera {
       (await _methods.invokeMapMethod('open', config.toMap()))!);
 
   /// Meters the scene once, then locks white balance and focus (and
-  /// exposure, if the config asked for it) for the rest of the session.
-  Future<LockResult> lockSettings() async =>
-      LockResult.fromMap((await _methods.invokeMapMethod('lockSettings'))!);
+  /// exposure, if the config asked for it) until the next call. Works while
+  /// recording. With [sweepFocus], an iOS phone steps the lens through its
+  /// range and locks the sharpest position (a few seconds of visible
+  /// refocusing) instead of trusting autofocus; Android locks its
+  /// calibrated infinity either way.
+  Future<LockResult> lockSettings({bool sweepFocus = false}) async => LockResult.fromMap(
+      (await _methods.invokeMapMethod('lockSettings', {'sweepFocus': sweepFocus}))!);
 
   /// Starts recording segments named `<filePrefix>_000.mp4`, ... into
   /// [directory]. Returns the device time of the first frame.
@@ -316,6 +402,14 @@ class DualCamera {
     final m = await _methods.invokeMapMethod<Object?, Object?>('orientation');
     return m == null ? null : UpVector.fromMap(m);
   }
+
+  /// How the phone moved since the previous call. The first call starts
+  /// the motion sensors (and returns an empty window); [stopMotion] stops
+  /// them.
+  Future<MotionWindow> motion() async =>
+      MotionWindow.fromMap((await _methods.invokeMapMethod('motion'))!);
+
+  Future<void> stopMotion() => _methods.invokeMethod('stopMotion');
 
   Future<void> setKeepScreenOn(bool on) =>
       _methods.invokeMethod('setKeepScreenOn', {'on': on});

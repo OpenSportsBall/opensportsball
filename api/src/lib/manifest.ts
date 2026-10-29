@@ -32,6 +32,9 @@ export interface ManifestDevice {
   platform: 'ios' | 'android';
   /** Omitted for a phone that reports its own segments. */
   segments?: ManifestSegment[];
+  /** Validated by the schema; processing reads them. */
+  orientation?: Record<string, unknown>;
+  settingsLocks?: Record<string, unknown>[];
 }
 
 export interface Manifest {
@@ -150,8 +153,18 @@ export const expectedDevices = (m: Manifest, reports: Map<string, ManifestDevice
   }));
 
 /** The full manifest for processing: Main's, with every device's segments
- *  filled in. Only valid once every device has segments. */
+ *  filled in. Only valid once every device has segments. A phone's own
+ *  report also wins for what only it knows: how it was held and when it
+ *  locked its camera settings. */
 export const mergeManifest = (m: Manifest, reports: Map<string, ManifestDevice>): Manifest => ({
   ...m,
-  devices: withLateSecondary(m, reports).map((d) => ({ ...d, segments: segmentsFor(d, reports) ?? [] })),
+  devices: withLateSecondary(m, reports).map((d) => {
+    const r = reports.get(d.deviceId);
+    return {
+      ...d,
+      ...(r?.orientation && { orientation: r.orientation }),
+      ...(r?.settingsLocks && { settingsLocks: r.settingsLocks }),
+      segments: segmentsFor(d, reports) ?? [],
+    };
+  }),
 });

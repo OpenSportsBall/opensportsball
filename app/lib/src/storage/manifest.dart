@@ -23,6 +23,7 @@ Map<String, Object?> _device(
   String role,
   VideoInfo video, {
   MountOrientation? orientation,
+  Iterable<SettingsLock> locks = const [],
   Iterable<SegmentRecord>? segments,
 }) =>
     {
@@ -43,6 +44,7 @@ Map<String, Object?> _device(
         if (video.horizontalFovDeg != null) 'horizontalFovDeg': video.horizontalFovDeg,
       },
       if (orientation != null) 'orientation': orientation.toJson(),
+      if (locks.isNotEmpty) 'settingsLocks': [for (final l in locks) l.toJson()],
       if (segments != null)
         'segments': [
           for (final s in segments)
@@ -73,7 +75,7 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
     'sessionId': main.recordingId,
     'createdAt': (now ?? DateTime.now()).toUtc().toIso8601String(),
     'devices': [
-      _device(main.device, 'main', mainVideo, orientation: main.orientation, segments: main.segments),
+      _device(main.device, 'main', mainVideo, orientation: main.orientation, locks: main.locks, segments: main.segments),
     ],
   };
   // Secondary said how it records when it got ready (Prepared). Left out if
@@ -97,5 +99,5 @@ Map<String, Object?>? buildReport(LocalRecording rec) {
   final video = rec.video;
   if (!rec.stopped || video == null || rec.segments.isEmpty) return null;
   return _device(rec.device, rec.role.name, video,
-      orientation: rec.orientation, segments: rec.segments);
+      orientation: rec.orientation, locks: rec.locks, segments: rec.segments);
 }

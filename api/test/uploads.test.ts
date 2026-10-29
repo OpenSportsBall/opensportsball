@@ -117,7 +117,15 @@ describe('recording upload', () => {
     expect(game.body.recordings[0].devices[1]).toMatchObject({ role: 'secondary', expectedSegments: null, uploadedSegments: 2 });
     expect(await readyEvents()).toEqual([]);
 
-    const r = await putReport(deviceEntry(secondary, 'secondary', secFiles));
+    // Only the phone knows how it was held and when it locked its settings.
+    const orientation = { uprightRotationDeg: 180, rollDeg: 1.5, pitchDeg: -8.2 };
+    const settingsLocks = [{
+      atDeviceMs: 1_760_000_012_000, reason: 'settled', whiteBalanceLocked: true, focusLocked: true, exposureLocked: false,
+      focus: { method: 'sweep', lensPosition: 0.82, autofocusLensPosition: 0.8, sweep: [{ lensPosition: 0.8, sharpness: 41.5 }] },
+      orientation,
+    }];
+    const report = { ...deviceEntry(secondary, 'secondary', secFiles), orientation, settingsLocks };
+    const r = await putReport(report);
     expect(r.body).toEqual({ status: 'ready', missing: [], awaitingReports: [] });
     expect(await readyEvents()).toHaveLength(1);
 
@@ -125,10 +133,11 @@ describe('recording upload', () => {
     const stored = await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: manifestKey(acct, gameId, recordingId) }));
     const merged = JSON.parse(await stored.Body!.transformToString());
     expect(merged.devices[1].segments).toEqual(deviceEntry(secondary, 'secondary', secFiles).segments);
+    expect(merged.devices[1]).toMatchObject({ orientation, settingsLocks });
     expect(merged.devices[0]).toEqual(m.devices[0]);
 
     // Same report again is fine; a different one after ready is not.
-    expect((await putReport(deviceEntry(secondary, 'secondary', secFiles))).status).toBe(200);
+    expect((await putReport(report)).status).toBe(200);
     expect((await putReport(deviceEntry(secondary, 'secondary', [secFiles[0]!]))).status).toBe(409);
   });
 

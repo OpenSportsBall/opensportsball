@@ -48,6 +48,8 @@ void main() {
       pingsPerRound: 5,
       pingSpacing: const Duration(milliseconds: 1),
     );
+    main.recorder.settlePollEvery = const Duration(milliseconds: 5);
+    sec.recorder.settlePollEvery = const Duration(milliseconds: 5);
     await main.init();
     await sec.init();
   });
@@ -119,7 +121,10 @@ void main() {
     await pair();
     expect(await main.startRecording(), isTrue);
     await eventually(() => secCam.recording, reason: 'secondary recording');
-    expect(mainCam.locked && secCam.locked, isTrue);
+    // Not locked when recording starts: once each phone has sat still on
+    // its mount for a few motion windows.
+    await eventually(() => mainCam.locked && secCam.locked, reason: 'settings locked once settled');
+    expect(mainCam.lastSweepFocus, isTrue);
     // Read while the preview was open, so the files play upright.
     expect(mainCam.lastUprightRotationDeg, 0);
     expect(secCam.lastUprightRotationDeg, 180);
@@ -157,6 +162,13 @@ void main() {
     expect(devices[0]['orientation'], {'uprightRotationDeg': 0, 'rollDeg': 0.0, 'pitchDeg': -10.0});
     expect((devices[1] as Map).containsKey('orientation'), isFalse);
     expect(report['orientation'], {'uprightRotationDeg': 180, 'rollDeg': 0.0, 'pitchDeg': -10.0});
+    for (final d in [devices[0] as Map, report]) {
+      final [lock] = d['settingsLocks'] as List;
+      expect(lock['reason'], 'settled');
+      expect(lock['focus'], {'method': 'infinity'});
+      expect(lock['orientation'], d['orientation']);
+      expect(lock['atDeviceMs'], greaterThan((d['segments'] as List).first['startedAtDeviceMs'] as int));
+    }
 
     final out = Platform.environment['OSB_MANIFEST_OUT'];
     if (out != null) File(out).writeAsStringSync(jsonEncode(manifest));

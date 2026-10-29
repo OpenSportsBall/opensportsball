@@ -65,15 +65,13 @@
           }
         },
         "orientation": {
-          "type": "object",
-          "description": "How the phone was held when recording started, from gravity. Missing if the phone could not tell. Mounting the phones close together usually puts one upside down.",
-          "required": ["uprightRotationDeg", "rollDeg", "pitchDeg"],
-          "additionalProperties": false,
-          "properties": {
-            "uprightRotationDeg": { "enum": [0, 90, 180, 270], "description": "Clockwise rotation that makes the video upright; 180 for a phone mounted upside down. The files carry no rotation of their own for this." },
-            "rollDeg": { "type": "number", "minimum": -45, "maximum": 45, "description": "After that rotation, how far the scene is still turned clockwise: positive means the horizon falls to the right." },
-            "pitchDeg": { "type": "number", "minimum": -90, "maximum": 90, "description": "Camera angle above the horizontal; negative when looking down at the field." }
-          }
+          "$ref": "#/$defs/orientation",
+          "description": "How the phone was held, from gravity: when settings were last locked (it was on the mount by then), or when recording started if they never were. Missing if the phone could not tell. Mounting the phones close together usually puts one upside down."
+        },
+        "settingsLocks": {
+          "type": "array",
+          "description": "Each time white balance and focus were locked, in order. Recording starts with them automatic, because the phone is often not yet on the mount; the app locks them once the phone has been still in a mount-like pose for a few seconds, and again whenever it is moved and settles. Frames from the last lock on have steady focus and colour. Missing in recordings from before this was added.",
+          "items": { "$ref": "#/$defs/settingsLock" }
         },
         "segments": {
           "description": "Required for Main in its manifest and in every device report; Main may leave it out for the Secondary. Always present in the merged manifest processing reads.",
@@ -81,6 +79,52 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/segment" }
         }
+      }
+    },
+    "orientation": {
+      "type": "object",
+      "required": ["uprightRotationDeg", "rollDeg", "pitchDeg"],
+      "additionalProperties": false,
+      "properties": {
+        "uprightRotationDeg": { "enum": [0, 90, 180, 270], "description": "Clockwise rotation that makes the video upright; 180 for a phone mounted upside down. The files carry no rotation of their own for this." },
+        "rollDeg": { "type": "number", "minimum": -45, "maximum": 45, "description": "After that rotation, how far the scene is still turned clockwise: positive means the horizon falls to the right." },
+        "pitchDeg": { "type": "number", "minimum": -90, "maximum": 90, "description": "Camera angle above the horizontal; negative when looking down at the field." }
+      }
+    },
+    "settingsLock": {
+      "type": "object",
+      "required": ["atDeviceMs", "reason", "whiteBalanceLocked", "focusLocked", "exposureLocked"],
+      "additionalProperties": false,
+      "properties": {
+        "atDeviceMs": { "type": "integer", "description": "Device clock (ms since epoch) when the lock took effect." },
+        "reason": { "enum": ["settled", "timeout"], "description": "settled: the phone came to rest on the mount. timeout: it never did within a few minutes of recording, so settings were locked anyway." },
+        "whiteBalanceLocked": { "type": "boolean" },
+        "focusLocked": { "type": "boolean" },
+        "exposureLocked": { "type": "boolean" },
+        "focus": {
+          "type": "object",
+          "required": ["method"],
+          "additionalProperties": false,
+          "properties": {
+            "method": { "enum": ["sweep", "autofocus", "infinity", "fixed", "none"], "description": "sweep: the sharpest lens position of a sweep (iOS). autofocus: where autofocus settled. infinity: the platform's calibrated infinity (Android). fixed: the lens cannot focus. none: focus could not be locked." },
+            "lensPosition": { "type": "number", "minimum": 0, "maximum": 1, "description": "Locked iOS lens position (0 near, 1 far end of travel; not a distance)." },
+            "autofocusLensPosition": { "type": "number", "minimum": 0, "maximum": 1, "description": "Where iOS autofocus had settled before locking." },
+            "sweep": {
+              "type": "array",
+              "description": "The sweep's measurements in the order taken. Sharpness is only comparable within one sweep.",
+              "items": {
+                "type": "object",
+                "required": ["lensPosition", "sharpness"],
+                "additionalProperties": false,
+                "properties": {
+                  "lensPosition": { "type": "number" },
+                  "sharpness": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "orientation": { "$ref": "#/$defs/orientation", "description": "Which way up the phone was at the lock." }
       }
     },
     "segment": {

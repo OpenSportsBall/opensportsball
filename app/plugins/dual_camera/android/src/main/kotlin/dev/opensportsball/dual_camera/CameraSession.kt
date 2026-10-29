@@ -698,14 +698,23 @@ internal class CameraSession(
         return awbOk && aeOk && afOk
     }
 
-    private fun lockReport(o: Opened, r: TotalCaptureResult?): Map<String, Boolean> {
+    private fun lockReport(o: Opened, r: TotalCaptureResult?): Map<String, Any> {
         val awb = r?.get(CaptureResult.CONTROL_AWB_STATE)
         val ae = r?.get(CaptureResult.CONTROL_AE_STATE)
         val fixedFocus = o.minFocusDistance <= 0f
+        // Android's focus distance 0 is infinity, so there is nothing to
+        // sweep for (iOS lens positions are not calibrated; see CHANNEL.md).
+        val focusMethod = when {
+            fixedFocus -> "fixed"
+            o.focusLock == FocusLock.INFINITY -> "infinity"
+            o.focusLock == FocusLock.HOLD -> "autofocus"
+            else -> "none"
+        }
         return mapOf(
             "exposureLocked" to (o.aeLock && (ae == null || ae == CameraMetadata.CONTROL_AE_STATE_LOCKED)),
             "whiteBalanceLocked" to (o.awbLock && (awb == null || awb == CameraMetadata.CONTROL_AWB_STATE_LOCKED)),
             "focusLocked" to (fixedFocus || o.focusLock != FocusLock.NONE),
+            "focus" to mapOf("method" to focusMethod),
         )
     }
 

@@ -294,8 +294,10 @@ class LocalRecording {
     this.stoppedAtMs,
     this.endReason,
     List<SegmentRecord>? segments,
+    List<SettingsLock>? locks,
     this.peer,
-  }) : segments = segments ?? [];
+  })  : segments = segments ?? [],
+        locks = locks ?? [];
 
   factory LocalRecording.fromJson(Map<String, Object?> j) => LocalRecording(
         recordingId: j['recordingId'] as String,
@@ -313,6 +315,9 @@ class LocalRecording {
         segments: [
           for (final s in j['segments'] as List) SegmentRecord.fromJson((s as Map).cast()),
         ],
+        locks: [
+          for (final l in (j['locks'] as List?) ?? const []) SettingsLock.fromJson((l as Map).cast()),
+        ],
         peer: j['peer'] == null ? null : PeerRecord.fromJson((j['peer'] as Map).cast()),
       );
 
@@ -323,7 +328,8 @@ class LocalRecording {
   final int createdAtMs;
   VideoInfo? video;
 
-  /// Measured when recording starts; null if the phone couldn't tell.
+  /// Measured when recording starts, then again at each settings lock
+  /// (the phone is on the mount by then); null if the phone couldn't tell.
   MountOrientation? orientation;
   int? startedAtDeviceMs;
   int? stoppedAtMs;
@@ -331,6 +337,9 @@ class LocalRecording {
   /// Why recording ended if not by a normal stop (error / interruption).
   String? endReason;
   final List<SegmentRecord> segments;
+
+  /// Each time white balance and focus were locked, in order.
+  final List<SettingsLock> locks;
   PeerRecord? peer;
 
   bool get stopped => stoppedAtMs != null;
@@ -347,6 +356,7 @@ class LocalRecording {
         'stoppedAtMs': stoppedAtMs,
         'endReason': endReason,
         'segments': [for (final s in segments) s.toJson()],
+        'locks': [for (final l in locks) l.toJson()],
         'peer': peer?.toJson(),
       };
 }

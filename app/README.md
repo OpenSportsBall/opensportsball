@@ -14,11 +14,18 @@ Built (not yet tested on phones; see `docs/TESTING-APPS.md`):
 - BLE pairing by QR code and control: start, stop, heartbeat with battery /
   storage / temperature, clock-sync ping/pong. Main is the BLE peripheral,
   Secondary the central (`lib/src/link/`).
-- Recording through `plugins/dual_camera` in gap-free segments, white
-  balance and focus locked, stabilization off, ultra-wide lens. When
-  recording starts each phone reads which way up it is from gravity and
-  records it as the manifest's `orientation` (180 for a phone mounted
-  upside down, plus roll and pitch), since the files carry no rotation.
+- Recording through `plugins/dual_camera` in gap-free segments,
+  stabilization off, ultra-wide lens. Recording starts with white balance
+  and focus automatic, since the phone is often not on the mount yet;
+  `session/settle.dart` watches the motion sensors and locks them once the
+  phone has been still in a mount-like pose (landscape, about level) for
+  5 s, and again whenever it is moved and settles (or after 3 minutes if it
+  never does). iPhones lock focus by sweeping the lens and keeping the
+  sharpest position; Android locks its calibrated infinity. Each lock goes
+  into the manifest's `settingsLocks`. Each phone reads which way up it is
+  from gravity and records it as the manifest's `orientation` (180 for a
+  phone mounted upside down, plus roll and pitch), since the files carry no
+  rotation; the reading at the last lock replaces the one from the start.
 - Secondary keeps recording if the link drops and re-sends its segment list
   when it reconnects (for Main's screen). Uploads never need the phones
   together: Main writes `manifest.json` when it stops, naming Secondary but

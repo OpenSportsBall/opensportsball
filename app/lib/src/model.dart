@@ -244,6 +244,68 @@ class MountOrientation {
       };
 }
 
+/// One time white balance and focus were locked during a recording (see
+/// `SettleWatcher`). Becomes an entry of the manifest device's
+/// `settingsLocks`, so processing knows from when the picture is steady.
+class SettingsLock {
+  const SettingsLock({
+    required this.atDeviceMs,
+    required this.reason,
+    required this.whiteBalanceLocked,
+    required this.focusLocked,
+    required this.exposureLocked,
+    this.focus,
+    this.orientation,
+  });
+
+  factory SettingsLock.fromJson(Map<String, Object?> j) => SettingsLock(
+        atDeviceMs: j['atDeviceMs'] as int,
+        reason: j['reason'] as String,
+        whiteBalanceLocked: j['whiteBalanceLocked'] as bool,
+        focusLocked: j['focusLocked'] as bool,
+        exposureLocked: j['exposureLocked'] as bool,
+        focus: (j['focus'] as Map?)?.cast<String, Object?>(),
+        orientation: j['orientation'] == null
+            ? null
+            : MountOrientation.fromJson((j['orientation'] as Map).cast()),
+      );
+
+  /// Device wall clock when the lock took effect.
+  final int atDeviceMs;
+
+  /// `settled` or `timeout` (`LockReason`).
+  final String reason;
+  final bool whiteBalanceLocked;
+  final bool focusLocked;
+  final bool exposureLocked;
+
+  /// How focus was chosen ([FocusLock], as the manifest has it).
+  final Map<String, Object?>? focus;
+
+  /// Which way up the phone was when it locked.
+  final MountOrientation? orientation;
+
+  static Map<String, Object?> focusJson(FocusLock f) => {
+        'method': f.method,
+        if (f.lensPosition != null) 'lensPosition': f.lensPosition,
+        if (f.autofocusLensPosition != null) 'autofocusLensPosition': f.autofocusLensPosition,
+        if (f.sweep.isNotEmpty)
+          'sweep': [
+            for (final s in f.sweep) {'lensPosition': s.lensPosition, 'sharpness': s.sharpness},
+          ],
+      };
+
+  Map<String, Object?> toJson() => {
+        'atDeviceMs': atDeviceMs,
+        'reason': reason,
+        'whiteBalanceLocked': whiteBalanceLocked,
+        'focusLocked': focusLocked,
+        'exposureLocked': exposureLocked,
+        if (focus != null) 'focus': focus,
+        if (orientation != null) 'orientation': orientation!.toJson(),
+      };
+}
+
 /// One finished, hashed segment file.
 class SegmentRecord {
   const SegmentRecord({

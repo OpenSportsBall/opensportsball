@@ -38,6 +38,7 @@ class DualCameraPlugin :
 
     private val main = Handler(Looper.getMainLooper())
     private lateinit var context: Context
+    private val motion by lazy { Motion(context, main) }
     private lateinit var textures: TextureRegistry
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
@@ -114,10 +115,18 @@ class DualCameraPlugin :
                 "stopRecording" -> session().stopRecording(reply)
                 "status" -> reply.success(status())
                 "orientation" -> Gravity.read(context, displayRotationDegrees(), main, reply)
+                "motion" -> reply.success(motion.take(displayRotationDegrees()))
+                "stopMotion" -> {
+                    motion.stop()
+                    reply.success(null)
+                }
                 "setKeepScreenOn" -> setKeepScreenOn(call.argument<Boolean>("on") == true, reply)
                 "setScreenBrightness" -> setScreenBrightness((call.argument<Any>("level") as? Number)?.toFloat(), reply)
                 "setPreviewPaused" -> session().setPreviewPaused(call.argument<Boolean>("paused") == true, reply)
-                "close" -> session().close(reply)
+                "close" -> {
+                    motion.stop()
+                    session().close(reply)
+                }
                 else -> result.notImplemented()
             }
         } catch (e: CameraError) {

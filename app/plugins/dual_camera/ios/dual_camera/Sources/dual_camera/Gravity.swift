@@ -62,3 +62,64 @@ final class Gravity {
     return ["x": sx / len, "y": sy / len, "z": z / len]
   }
 }
+
+/// Keeps Core Motion running for the `motion` method and sums up each
+/// window between calls: up (averaged gravity, as `Gravity` reports it),
+/// the fastest rotation and the largest acceleration apart from gravity.
+/// The first call starts the sensors and returns an empty window. Main
+/// thread only.
+final class Motion {
+  private let manager = CMMotionManager()
+  private var running = false
+  private var n = 0
+  private var sum = (x: 0.0, y: 0.0, z: 0.0)
+  private var maxRotation = 0.0 // rad/s
+  private var maxAcceleration = 0.0 // g
+
+  func take(orientation: UIInterfaceOrientation) -> [String: Any] {
+    guard manager.isDeviceMotionAvailable else { return ["samples": 0] }
+    guard running else {
+      start()
+      return ["samples": 0]
+    }
+    var window: [String: Any] = ["samples": n]
+    if n > 0 {
+      // Core Motion's gravity points at the ground; up is the opposite.
+      if let up = Gravity.upInDisplay(-sum.x, -sum.y, -sum.z, orientation) { window["up"] = up }
+      window["maxRotationDegPerS"] = maxRotation * 180 / .pi
+      window["maxAccelerationG"] = maxAcceleration
+    }
+    reset()
+    return window
+  }
+
+  func stop() {
+    guard running else { return }
+    manager.stopDeviceMotionUpdates()
+    running = false
+  }
+
+  private func start() {
+    running = true
+    reset()
+    manager.deviceMotionUpdateInterval = 0.04
+    manager.startDeviceMotionUpdates(to: .main) { [weak self] m, _ in
+      guard let self, let m else { return }
+      self.sum.x += m.gravity.x
+      self.sum.y += m.gravity.y
+      self.sum.z += m.gravity.z
+      self.n += 1
+      let r = m.rotationRate
+      self.maxRotation = max(self.maxRotation, (r.x * r.x + r.y * r.y + r.z * r.z).squareRoot())
+      let a = m.userAcceleration
+      self.maxAcceleration = max(self.maxAcceleration, (a.x * a.x + a.y * a.y + a.z * a.z).squareRoot())
+    }
+  }
+
+  private func reset() {
+    n = 0
+    sum = (0, 0, 0)
+    maxRotation = 0
+    maxAcceleration = 0
+  }
+}

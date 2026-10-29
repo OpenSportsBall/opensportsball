@@ -126,11 +126,38 @@ class FakeCamera implements DualCamera {
     );
   }
 
+  /// How often settings were locked, and whether a focus sweep was asked.
+  int locks = 0;
+  bool? lastSweepFocus;
+
   @override
-  Future<LockResult> lockSettings() async {
+  Future<LockResult> lockSettings({bool sweepFocus = false}) async {
     locked = true;
-    return const LockResult(exposureLocked: false, whiteBalanceLocked: true, focusLocked: true);
+    locks++;
+    lastSweepFocus = sweepFocus;
+    return const LockResult(
+      exposureLocked: false,
+      whiteBalanceLocked: true,
+      focusLocked: true,
+      focus: FocusLock(method: 'infinity'),
+    );
   }
+
+  /// What [motion] answers: still, the way [up] points (on a tripod).
+  MotionWindow Function()? motionWindow;
+  bool motionRunning = false;
+
+  @override
+  Future<MotionWindow> motion() async {
+    final first = !motionRunning;
+    motionRunning = true;
+    if (first) return const MotionWindow(samples: 0);
+    return motionWindow?.call() ??
+        MotionWindow(samples: 50, up: up, maxRotationDegPerS: 0.2, maxAccelerationG: 0.01);
+  }
+
+  @override
+  Future<void> stopMotion() async => motionRunning = false;
 
   /// The `uprightRotationDeg` the last [startRecording] was given.
   int? lastUprightRotationDeg;

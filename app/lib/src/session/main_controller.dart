@@ -361,7 +361,6 @@ class MainController extends ChangeNotifier {
           return false;
         }
       }
-      await recorder.lock();
 
       final startAt = DateTime.now().add(withSecondary ? startDelay : Duration.zero);
       if (withSecondary) {

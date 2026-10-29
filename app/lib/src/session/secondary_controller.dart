@@ -227,7 +227,6 @@ class SecondaryController extends ChangeNotifier {
       return;
     }
     try {
-      if (!recorder.recording) await recorder.lock();
       await link.send(Prepared(recordingId: m.recordingId, video: VideoInfo.fromOpen(o, c)));
     } on Object catch (e) {
       await link.send(Prepared(recordingId: m.recordingId, error: '$e'));

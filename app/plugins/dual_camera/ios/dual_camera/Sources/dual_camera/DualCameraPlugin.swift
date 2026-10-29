@@ -18,6 +18,7 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var preview: PreviewTexture?
   private var textureId: Int64?
   private let gravity = Gravity()
+  private let motion = Motion()
 
   init(textures: FlutterTextureRegistry) {
     self.textures = textures
@@ -70,7 +71,7 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     case "open":
       open(args, result)
     case "lockSettings":
-      lockSettings(result)
+      lockSettings(sweepFocus: (args["sweepFocus"] as? NSNumber)?.boolValue ?? false, result)
     case "startRecording":
       startRecording(args, result)
     case "stopRecording":
@@ -79,6 +80,11 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       result(status())
     case "orientation":
       gravity.read(orientation: DeviceInfo.interfaceOrientation()) { result($0) }
+    case "motion":
+      result(motion.take(orientation: DeviceInfo.interfaceOrientation()))
+    case "stopMotion":
+      motion.stop()
+      result(nil)
     case "requestBluetoothPermission":
       // iOS asks for Bluetooth itself when the app first uses it.
       result(true)
@@ -92,6 +98,7 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       UIApplication.shared.isIdleTimerDisabled = (args["on"] as? NSNumber)?.boolValue ?? false
       result(nil)
     case "close":
+      motion.stop()
       closeCamera { result(nil) }
     default:
       result(FlutterMethodNotImplemented)
@@ -168,13 +175,13 @@ public class DualCameraPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     }
   }
 
-  private func lockSettings(_ result: @escaping FlutterResult) {
+  private func lockSettings(sweepFocus: Bool, _ result: @escaping FlutterResult) {
     guard let camera else {
       result(CameraError("not_open", "camera is not open").flutterError)
       return
     }
     camera.queue.async {
-      camera.lockSettings { outcome in
+      camera.lockSettings(sweepFocus: sweepFocus) { outcome in
         DispatchQueue.main.async {
           switch outcome {
           case .success(let locks): result(locks)
