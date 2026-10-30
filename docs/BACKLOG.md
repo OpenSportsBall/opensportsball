@@ -458,9 +458,13 @@ Footage and logs from these tests decide several items below.
       Found / wrong with the fix: old `.win` 66 -> 68/90, 3; 0.5 s
       66 -> 68, 3; 0.2 s 70 -> 71, 3 -> 5. Play boxes: old `.win` 29/41
       unchanged; rec3 0.5 s 18 -> 20/26, 0.2 s 19 -> 20/26 (coverage
-      88% -> 90%); rec4cal with fresh candidates pending. 0.5 s stays
-      the default: after the fix 0.2 s buys a label or two for ~17%
-      more time, and the far band nothing.
+      88% -> 90%); rec4cal 0.5 s 9/15, box for box the old files' score,
+      0.2 s 10/15 (gains 18:27 0 -> 100%; 28:04 24 -> 14%, 16:37 95 ->
+      90%; coverage 68% -> 74%), so 29 -> 30/41. On rec4cal 0.2 s costs
+      more: 63.5 -> 87.9 and 69.3 -> 94.2 min per 10-minute clip (+36-
+      38%; twice the full scans, the ball is lost more at night).
+      0.5 s stays the default for now: 0.2 s buys one box and a label
+      or two for 17-38% more ball-stage time, and the far band nothing.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
