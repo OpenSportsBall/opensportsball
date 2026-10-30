@@ -465,6 +465,20 @@ Footage and logs from these tests decide several items below.
       38%; twice the full scans, the ball is lost more at night).
       0.5 s stays the default for now: 0.2 s buys one box and a label
       or two for 17-38% more ball-stage time, and the far band nothing.
+      Orange ball (2026-10-29/30): rec5's match ball is orange, and the
+      judge, trained on rec3's white ball, rejected it (5% of frames
+      judged ball, path 7% of rec5 0-10 min). 98 labels on rec5's Pixel
+      (labelset.py ball mode; 71 ball) went into a detector trained on
+      rec3 + rec5 (rec5 x3, ballmerge.py; 275 white boxes, 54 orange) and
+      a judge on rec3's crops + rec5's (x3, `balljudge.py merge`). rec5
+      path 7% -> 34% (old detector + new judge 25%; 29/32 sampled path
+      frames on the real ball). White-ball games: rec4cal play boxes
+      9/15 for every combination (aim at the ball 39/25% -> 37/22%, new
+      judge alone 42/27%); rec3 boxes 20 -> 20/26, balleval 68 -> 67/90
+      found, wrong 5 -> 6 (today's base reads 5, not 3; new judge alone
+      21/26 but seg9 23 -> 19). The pair is the standard for every game
+      since 2026-10-30 (footage/models/). Next: a second orange-ball
+      game, and more varied labels so one model gains on both.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
