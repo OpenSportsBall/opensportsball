@@ -87,6 +87,11 @@ export function createApiClient(opts: ApiClientOptions) {
 		unlinkDevice: (deviceId: string) => request<void>('DELETE', `/devices/${enc(deviceId)}`),
 		listGames: async () => (await request<{ games: GameSummary[] }>('GET', '/games')).games,
 		getGame: (gameId: string) => request<Game>('GET', `/games/${enc(gameId)}`),
+		/** Deletes the game, every recording in it and their footage, for good. */
+		deleteGame: (gameId: string) => request<void>('DELETE', `/games/${enc(gameId)}`),
+		/** Deletes one recording and its footage, for good. */
+		deleteRecording: (gameId: string, recordingId: string) =>
+			request<void>('DELETE', `/games/${enc(gameId)}/recordings/${enc(recordingId)}`),
 		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`)
 	};
 }

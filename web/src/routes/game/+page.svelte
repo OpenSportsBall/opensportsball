@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { toString as qrToSvg } from 'qrcode';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
@@ -83,6 +84,39 @@
 		grantError = null;
 	}
 
+	// Deleting: which recording (or 'game') is asking "are you sure?".
+	let confirming = $state<string | null>(null);
+	let deleting = $state<string | null>(null);
+	let deleteError = $state<unknown>(null);
+
+	async function deleteRecording(recordingId: string) {
+		if (!gameId || !game) return;
+		deleting = recordingId;
+		deleteError = null;
+		try {
+			await session.api.deleteRecording(gameId, recordingId);
+			game.recordings = game.recordings.filter((r) => r.recordingId !== recordingId);
+			confirming = null;
+		} catch (e) {
+			deleteError = e;
+		} finally {
+			deleting = null;
+		}
+	}
+
+	async function deleteGame() {
+		if (!gameId) return;
+		deleting = 'game';
+		deleteError = null;
+		try {
+			await session.api.deleteGame(gameId);
+			await goto(resolve('/games'));
+		} catch (e) {
+			deleteError = e;
+			deleting = null;
+		}
+	}
+
 	const stillUploading = $derived(game?.recordings.some((r) => r.status !== 'ready') ?? false);
 
 	async function load(): Promise<boolean> {
@@ -139,6 +173,7 @@
 	<ErrorBanner error="No game selected. Pick one from the Games page." />
 {:else}
 	{#if error}<ErrorBanner {error} retry={() => void load()} />{/if}
+	{#if deleteError}<ErrorBanner error={deleteError} />{/if}
 
 	{#if game === null && !error}
 		<p class="muted">Loading game…</p>
@@ -170,8 +205,34 @@
 							<h2>Recording {i + 1}</h2>
 							<div class="muted small">Started {formatDateTime(recordedTime(rec))}</div>
 						</div>
-						<StatusBadge status={rec.status} />
+						<div class="rec-tools">
+							<StatusBadge status={rec.status} />
+							{#if confirming !== rec.recordingId}
+								<button class="btn btn-small btn-danger" onclick={() => (confirming = rec.recordingId)}>Delete</button>
+							{/if}
+						</div>
 					</div>
+
+					{#if confirming === rec.recordingId}
+						<div class="confirm">
+							<p class="small">
+								Delete Recording {i + 1} and all its footage? This is permanent and can't be undone. Phones still
+								uploading it will stop.
+							</p>
+							<div class="confirm-buttons">
+								<button class="btn btn-small" onclick={() => (confirming = null)} disabled={deleting !== null}>
+									Cancel
+								</button>
+								<button
+									class="btn btn-small btn-danger-solid"
+									onclick={() => deleteRecording(rec.recordingId)}
+									disabled={deleting !== null}
+								>
+									{deleting === rec.recordingId ? 'Deleting…' : 'Delete for good'}
+								</button>
+							</div>
+						</div>
+					{/if}
 
 					{#if !rec.hasManifest}
 						<p class="muted small note">
@@ -248,6 +309,25 @@
 				{/if}
 			{/if}
 		</section>
+
+		<section class="card danger">
+			<h2>Delete this game</h2>
+			{#if confirming === 'game'}
+				<p class="small">
+					Delete this game, its {plural(game.recordings.length, 'recording')} and all their footage? This is permanent
+					and can't be undone. Phones still uploading it will stop.
+				</p>
+				<div class="confirm-buttons">
+					<button class="btn btn-small" onclick={() => (confirming = null)} disabled={deleting !== null}>Cancel</button>
+					<button class="btn btn-small btn-danger-solid" onclick={deleteGame} disabled={deleting !== null}>
+						{deleting === 'game' ? 'Deleting…' : 'Delete game for good'}
+					</button>
+				</div>
+			{:else}
+				<p class="muted small">Removes every recording in it and their footage. You can't get them back.</p>
+				<button class="btn btn-danger" onclick={() => (confirming = 'game')}>Delete game</button>
+			{/if}
+		</section>
 	{/if}
 {/if}
 
@@ -281,6 +361,32 @@
 	}
 	.rec-head h2 {
 		margin: 0;
+	}
+	.rec-tools {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.confirm {
+		background: var(--danger-bg);
+		border-radius: 8px;
+		padding: 0.5rem 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+	.confirm p,
+	.danger p {
+		margin: 0 0 0.5rem;
+	}
+	.confirm-buttons {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+	}
+	.danger {
+		margin-top: 0.9rem;
+	}
+	.danger h2 {
+		margin: 0 0 0.4rem;
 	}
 	.note {
 		background: var(--warn-bg);

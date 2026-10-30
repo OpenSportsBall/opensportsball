@@ -19,6 +19,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as events from 'aws-cdk-lib/aws-events';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -222,6 +223,26 @@ export class OpenSportsBallStack extends cdk.Stack {
     table.grantReadWriteData(ingestFn);
     table.grantReadData(authFn);
     footage.grantReadWrite(deviceFn);
+    // Deleting a recording or game from the website: list, abort and delete
+    // what is under accounts/ (never the bucket itself).
+    webFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [footage.bucketArn],
+        conditions: { StringLike: { 's3:prefix': ['accounts/*'] } },
+      }),
+    );
+    webFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['s3:ListBucketMultipartUploads'], resources: [footage.bucketArn] }),
+    );
+    webFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:DeleteObject', 's3:AbortMultipartUpload'],
+        resources: [footage.arnForObjects('accounts/*')],
+      }),
+    );
+    // A segment that lands after its recording was deleted is removed.
+    footage.grantDelete(ingestFn, 'accounts/*');
     const defaultBus = events.EventBus.fromEventBusName(this, 'DefaultBus', 'default');
     defaultBus.grantPutEventsTo(deviceFn);
     defaultBus.grantPutEventsTo(ingestFn);
@@ -272,6 +293,8 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(DELETE, '/devices/{deviceId}', webIntegration, people);
     route(GET, '/games', webIntegration, people);
     route(GET, '/games/{gameId}', webIntegration, people);
+    route(DELETE, '/games/{gameId}', webIntegration, people);
+    route(DELETE, '/games/{gameId}/recordings/{recordingId}', webIntegration, people);
     route(POST, '/games/{gameId}/grant-tickets', webIntegration, people); // a link for a phone with no grant
     route(POST, '/devices/link', deviceIntegration); // the link code is the credential
     route(POST, '/devices/unlink', deviceIntegration, phones); // a phone leaves its account

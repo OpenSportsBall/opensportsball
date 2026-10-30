@@ -270,6 +270,19 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			if (!g) return fail(404, 'not_found', 'No such game on this account.');
 			return json(200, gameView(g));
 		}
+		if (method === 'DELETE' && (m = path.match(/^\/games\/([^/]+)$/))) {
+			const i = games.findIndex((x) => x.gameId === decodeURIComponent(m![1]));
+			if (i < 0) return fail(404, 'not_found', 'No such game.');
+			games.splice(i, 1);
+			return new Response(null, { status: 204 });
+		}
+		if (method === 'DELETE' && (m = path.match(/^\/games\/([^/]+)\/recordings\/([^/]+)$/))) {
+			const g = games.find((x) => x.gameId === decodeURIComponent(m![1]));
+			const i = g?.recordings.findIndex((r) => r.recordingId === decodeURIComponent(m![2])) ?? -1;
+			if (!g || i < 0) return fail(404, 'not_found', 'No such recording.');
+			g.recordings.splice(i, 1);
+			return new Response(null, { status: 204 });
+		}
 		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
 			const id = decodeURIComponent(m[1]);
 			if (!games.some((x) => x.gameId === id)) return fail(404, 'not_found', 'No such game.');

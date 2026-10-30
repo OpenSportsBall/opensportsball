@@ -30,6 +30,8 @@ describe('API', () => {
   it('has exactly the documented routes, each with the right kind of auth', () => {
     expect(routes().sort((a, b) => a.key.localeCompare(b.key))).toEqual([
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
+      { key: 'DELETE /games/{gameId}', auth: 'JWT' },
+      { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
@@ -113,6 +115,36 @@ describe('storage', () => {
         { Name: 'suffix', Value: '.mp4' },
       ]),
     );
+  });
+});
+
+describe('deleting footage', () => {
+  /** The statements of the policy attached to the role of [fnPrefix]'s Lambda. */
+  const statements = (fnPrefix: string) => {
+    const [role] = Object.keys(t.findResources('AWS::IAM::Role')).filter((id) => id.startsWith(`${fnPrefix}ServiceRole`));
+    return Object.values(t.findResources('AWS::IAM::Policy'))
+      .filter((p) => p.Properties.Roles.some((r: { Ref: string }) => r.Ref === role))
+      .flatMap((p) => p.Properties.PolicyDocument.Statement as Array<Record<string, any>>);
+  };
+  const actions = (s: Record<string, any>) => [s.Action].flat();
+  const footage = () => Object.keys(t.findResources('AWS::S3::Bucket')).find((id) => id.startsWith('Footage'))!;
+
+  it('the web Lambda may list, abort and delete under accounts/ only', () => {
+    const st = statements('WebApi');
+    const list = st.find((s) => actions(s).includes('s3:ListBucket'))!;
+    expect(list.Condition).toEqual({ StringLike: { 's3:prefix': ['accounts/*'] } });
+    expect(st.find((s) => actions(s).includes('s3:ListBucketMultipartUploads'))!.Resource).toEqual({
+      'Fn::GetAtt': [footage(), 'Arn'],
+    });
+    const del = st.find((s) => actions(s).includes('s3:DeleteObject'))!;
+    expect(actions(del).sort()).toEqual(['s3:AbortMultipartUpload', 's3:DeleteObject']);
+    expect(JSON.stringify(del.Resource)).toContain('/accounts/*');
+    expect(st.flatMap(actions).some((a) => a === 's3:DeleteBucket' || a === 's3:*')).toBe(false);
+  });
+
+  it('the ingest Lambda may delete a segment that lands after its recording was deleted', () => {
+    const del = statements('Ingest').find((s) => actions(s).some((a) => a.startsWith('s3:DeleteObject')))!;
+    expect(JSON.stringify(del.Resource)).toContain('/accounts/*');
   });
 });
 

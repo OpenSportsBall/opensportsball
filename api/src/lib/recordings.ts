@@ -9,6 +9,7 @@ import { PutEventsCommand } from '@aws-sdk/client-eventbridge';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { expectedDevices, mergeManifest, type ExpectedDevice, type Manifest, type ManifestDevice } from './manifest.js';
+import { refuseDeleted } from './deletion.js';
 import { config, ddb, events, keys, manifestKey, queryPrefix, recordingPrefix, s3 } from './store.js';
 
 export type RecordingStatus = 'waiting_for_manifest' | 'uploading' | 'ready';
@@ -58,8 +59,9 @@ async function putIfAbsent(item: Record<string, unknown>) {
 }
 
 /** Games and recordings come into existence with their first upload or
- *  manifest, whichever arrives first. */
+ *  manifest, whichever arrives first, unless deleted on the website (410). */
 export async function ensureRecording(acct: string, gameId: string, recordingId: string) {
+  await refuseDeleted(acct, gameId, recordingId);
   const now = new Date().toISOString();
   await putIfAbsent({ ...keys.game(acct, gameId), gameId, createdAt: now });
   await putIfAbsent({

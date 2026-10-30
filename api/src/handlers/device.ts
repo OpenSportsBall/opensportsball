@@ -40,6 +40,7 @@ import {
   str,
   type Result,
 } from '../lib/http.js';
+import { refuseDeleted } from '../lib/deletion.js';
 import { unlinkDevice } from '../lib/devices.js';
 import { createGrant, createTickets, getGrant, redeemTicket } from '../lib/grants.js';
 import { parseManifest, parseReport, type ManifestDevice } from '../lib/manifest.js';
@@ -514,6 +515,7 @@ async function startUpload(ctx: DeviceContext, b: Record<string, unknown>) {
 async function completeUpload(ctx: DeviceContext, b: Record<string, unknown>) {
   const t = uploadTarget(ctx, b);
   const uploadId = str(b, 'uploadId', undefined, 1024);
+  await refuseDeleted(ctx.accountId, t.gameId, t.recordingId);
   const item = (await ddb.send(new GetCommand({ TableName: config.table, Key: t.itemKey }))).Item as
     | UploadItem
     | undefined;
