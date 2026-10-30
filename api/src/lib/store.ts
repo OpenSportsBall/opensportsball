@@ -18,6 +18,8 @@
  * | ACCOUNT#<acct>      | REPORT#<gameId>#<recordingId>#<dev>     | a phone's own segments  |
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
  * | ACCOUNT#<acct>      | UPLOAD#<gameId>#<recordingId>#<file>    | multipart in progress   |
+ * | ACCOUNT#<acct>      | DELETED#<gameId>                        | deleted game            |
+ * | ACCOUNT#<acct>      | DELETED#<gameId>#<recordingId>          | deleted recording       |
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -83,6 +85,13 @@ export const keys = {
     pk: `ACCOUNT#${acct}`,
     sk: `UPLOAD#${gameId}#${recId}#${fileName}`,
   }),
+  /** Kept after a delete so phones still uploading are refused, not let
+   *  in to recreate it (lib/deletion.ts). */
+  deletedGame: (acct: string, gameId: string) => ({ pk: `ACCOUNT#${acct}`, sk: `DELETED#${gameId}` }),
+  deletedRecording: (acct: string, gameId: string, recId: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `DELETED#${gameId}#${recId}`,
+  }),
 };
 
 /** All items in one account whose sort key starts with [prefix]. */
@@ -106,8 +115,10 @@ export async function queryPrefix<T>(acct: string, prefix: string): Promise<T[]>
 
 // --- S3 layout --------------------------------------------------------------
 
+export const gamePrefix = (acct: string, gameId: string) => `accounts/${acct}/games/${gameId}/`;
+
 export const recordingPrefix = (acct: string, gameId: string, recId: string) =>
-  `accounts/${acct}/games/${gameId}/recordings/${recId}/`;
+  `${gamePrefix(acct, gameId)}recordings/${recId}/`;
 
 export const segmentKey = (acct: string, gameId: string, recId: string, deviceId: string, fileName: string) =>
   `${recordingPrefix(acct, gameId, recId)}${deviceId}/${fileName}`;

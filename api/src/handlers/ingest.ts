@@ -3,11 +3,14 @@
 
 /** S3 ObjectCreated: notes each segment file that lands in the bucket.
  *  Usually `POST /uploads/complete` has already done this; the event covers
- *  a phone that finished the upload but never got the response. */
+ *  a phone that finished the upload but never got the response. A file that
+ *  lands after its recording was deleted is deleted too. */
 
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import type { S3Event } from 'aws-lambda';
+import { ApiError } from '../lib/http.js';
 import { recordObject } from '../lib/recordings.js';
-import { parseSegmentKey } from '../lib/store.js';
+import { config, parseSegmentKey, s3 } from '../lib/store.js';
 
 export async function handler(event: S3Event): Promise<void> {
   for (const record of event.Records) {
@@ -18,6 +21,12 @@ export async function handler(event: S3Event): Promise<void> {
       console.log('ignoring object', key);
       continue;
     }
-    await recordObject({ ...parsed, bytes: record.s3.object.size });
+    try {
+      await recordObject({ ...parsed, bytes: record.s3.object.size });
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 410)) throw e;
+      console.log('deleting object of a deleted recording', key);
+      await s3.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+    }
   }
 }

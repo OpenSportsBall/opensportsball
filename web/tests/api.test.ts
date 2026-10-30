@@ -55,6 +55,16 @@ describe('api client', () => {
 		expect(calls[0].url).toBe('https://api.example.com/devices/dev-1');
 	});
 
+	it('DELETEs a game and a recording', async () => {
+		const { client, calls } = setup(() => new Response(null, { status: 204 }));
+		await expect(client.deleteGame('g/1')).resolves.toBeUndefined();
+		await expect(client.deleteRecording('g1', 'r1')).resolves.toBeUndefined();
+		expect(calls.map((c) => [c.init.method, c.url])).toEqual([
+			['DELETE', 'https://api.example.com/games/g%2F1'],
+			['DELETE', 'https://api.example.com/games/g1/recordings/r1']
+		]);
+	});
+
 	it('turns {"error","message"} bodies into ApiError', async () => {
 		const { client } = setup(() => json(404, { error: 'not_found', message: 'No such game.' }));
 		const err = await client.getGame('nope').catch((e) => e);

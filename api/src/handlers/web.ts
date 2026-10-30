@@ -22,6 +22,7 @@ import { config, ddb, keys, queryPrefix } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 import { createGameTicket } from '../lib/grants.js';
+import { deleteGame, deleteRecording } from '../lib/deletion.js';
 
 interface GameItem {
   gameId: string;
@@ -46,6 +47,12 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         return listGames(acct);
       case 'GET /games/{gameId}':
         return getGame(acct, pathParam(event, 'gameId'));
+      case 'DELETE /games/{gameId}':
+        await deleteGame(acct, pathParam(event, 'gameId'));
+        return json(204);
+      case 'DELETE /games/{gameId}/recordings/{recordingId}':
+        await deleteRecording(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'));
+        return json(204);
       case 'POST /games/{gameId}/grant-tickets':
         return postGameTicket(acct, pathParam(event, 'gameId'), event.requestContext.domainName);
       default:

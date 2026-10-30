@@ -156,7 +156,39 @@ uploaded something, with `role`, `model`, `expectedSegments` and
 `expectedBytes` null. After it arrives, a phone that has not reported its
 segments yet has `expectedSegments` and `expectedBytes` null.
 
+### `DELETE /games/{gameId}/recordings/{recordingId}`
+Deletes one recording for good. → `204`
+
+- Removes everything under
+  `accounts/<accountId>/games/<gameId>/recordings/<recordingId>/` in the
+  bucket (manifest, segments, any processing output), aborting multipart
+  uploads still open there, and the recording's items: the recording and
+  its manifest, each phone's report, uploaded-file and upload-in-progress
+  records. The game and its other recordings stay.
+- Phones are refused from then on (`410 gone`, below).
+- Calling it again for a deleted recording is `204` (it finishes a delete
+  that failed partway). `404 not_found`: no such recording on the account,
+  including another account's.
+
+### `DELETE /games/{gameId}`
+Deletes a game and all its recordings for good. → `204`
+
+- Removes everything under `accounts/<accountId>/games/<gameId>/`
+  (aborting open multipart uploads), every recording's items as above, the
+  game's grant records, and website tickets for it not yet redeemed.
+- Grant tokens already on a Secondary are left to expire (14 days), so
+  that phone is told the game was deleted (`410`) rather than that it was
+  signed out (`401`).
+- Again for a deleted game is `204`; `404 not_found` as above.
+
 ## Routes for phones
+
+A recording or game deleted on the website stays deleted: the manifest,
+report and upload routes answer `410 gone` ("This recording was deleted
+on the website." / "This game was deleted on the website.") for it, and
+never create it again. Phones should treat it as final and drop it from
+their upload queue. A segment that still lands in the bucket (an upload
+finishing as it was deleted) is deleted when its S3 event arrives.
 
 ### `POST /devices/link` (no token: the code is the credential)
 Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "model": "..."}`
@@ -301,3 +333,8 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
 
   Phase 3 (processing) subscribes to this event.
 - Incomplete multipart uploads are aborted after 7 days.
+- Deleting a recording or game (website routes above) removes its prefix.
+  The table keeps a small `DELETED#` marker for it so late uploads are
+  refused. A recording deleted while processing runs may get outputs
+  written back afterwards; processing should stop when the manifest is
+  gone.

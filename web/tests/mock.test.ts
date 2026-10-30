@@ -68,6 +68,25 @@ describe('mock API', () => {
 		await expect(api.getGame('nope')).rejects.toMatchObject({ status: 404, code: 'not_found' });
 	});
 
+	it('deletes recordings and games and 404s unknown ones', async () => {
+		const { api } = setup();
+		const games = await api.listGames();
+		const multi = games.find((g) => g.recordingCount > 1)!;
+		const [first, ...rest] = (await api.getGame(multi.gameId)).recordings;
+		await api.deleteRecording(multi.gameId, first.recordingId);
+		expect((await api.getGame(multi.gameId)).recordings.map((r) => r.recordingId)).toEqual(
+			rest.map((r) => r.recordingId)
+		);
+		await expect(api.deleteRecording(multi.gameId, first.recordingId)).rejects.toMatchObject({ status: 404 });
+
+		await api.deleteGame(multi.gameId);
+		expect((await api.listGames()).map((g) => g.gameId)).toEqual(
+			games.filter((g) => g.gameId !== multi.gameId).map((g) => g.gameId)
+		);
+		await expect(api.getGame(multi.gameId)).rejects.toMatchObject({ status: 404 });
+		await expect(api.deleteGame(multi.gameId)).rejects.toMatchObject({ status: 404, code: 'not_found' });
+	});
+
 	it('requires a bearer token', async () => {
 		const { fetch } = setup();
 		const res = await fetch(`${MOCK_BASE_URL}/games`);
