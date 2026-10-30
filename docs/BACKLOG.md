@@ -435,6 +435,32 @@ Footage and logs from these tests decide several items below.
       closed (70 vs 66 base), but it still does not move the play
       boxes; the remaining misses are mostly moments with no candidate
       at all (50-100+ m) and fast balls seen every few frames.
+      Far balls and scan rate (2026-10-28/29, `ballwin.py`, scored on
+      seg 3 + seg 9's 90 labels). On the labelled frames themselves a
+      native full scan finds 38 of the 77 balls under 8 px (49%), a 2x
+      pass over the far band 43, and any method, a 2x window right on the
+      ball included, 44: close to this detector's single-frame limit.
+      2x far band (OSB_FAR_ZOOM=lost|full, off by default: the 320 px
+      crops covering the on-pitch pixels where the ball would be under
+      ZOOM_BELOW_PX): found 66 -> 67/90 either way, ball stage ~30%
+      slower. Scanning more often while lost (OSB_LOST_SCAN_S, found /
+      wrong): 0.5 s 66/5, 0.3 s 66/5, 0.2 s 70/3, 0.2 s + far band 70/4.
+      0.2 s costs 13-29% more time per clip (rec3's three 10-minute bench
+      clips 164.5 -> 192.4 min, +17%). Play boxes on rec3 with fresh
+      candidates (the old `.win` files give 20/26): 0.5 s 18/26, 0.2 s
+      19/26. The two boxes lost (6:30, 7:22) were tracked densely in
+      the fresh candidates and then removed by ball.static_spots: span
+      and hit count ignored gaps, so the match ball crossing the same
+      spot twice 30 s apart was a "static" ball (190 spots in rec3 0-10
+      min at 0.5 s, 73 in the old files). Fixed: a spot is static only
+      when a run of sightings with no break over STATIC_GAP_S (10 s)
+      meets the span and hit minimums (spots 190 -> 24, 73 -> 22).
+      Found / wrong with the fix: old `.win` 66 -> 68/90, 3; 0.5 s
+      66 -> 68, 3; 0.2 s 70 -> 71, 3 -> 5. Play boxes: old `.win` 29/41
+      unchanged; rec3 0.5 s 18 -> 20/26, 0.2 s 19 -> 20/26 (coverage
+      88% -> 90%); rec4cal with fresh candidates pending. 0.5 s stays
+      the default: after the fix 0.2 s buys a label or two for ~17%
+      more time, and the far band nothing.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
