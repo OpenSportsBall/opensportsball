@@ -30,6 +30,9 @@ import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import type { Construct } from 'constructs';
 import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js';
 
+/** Where managed login sends the phone app back to (docs/API.md). */
+export const APP_LOGIN_CALLBACK = 'opensportsball://auth';
+
 export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Repository root (contains api/, web/, shared/). */
   repoRoot: string;
@@ -182,12 +185,32 @@ export class OpenSportsBallStack extends cdk.Stack {
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
     });
-    new cognito.CfnManagedLoginBranding(this, 'LoginBranding', {
-      userPoolId: users.userPoolId,
-      clientId: webClient.userPoolClientId,
-      settings: loginBrandingSettings(),
-      assets: loginBrandingAssets(),
+    // The phone app signs in (or signs up) on the same managed login pages,
+    // only to get a link code for itself; it keeps the device token, not
+    // these tokens, so they can be short-lived.
+    const appClient = users.addClient('App', {
+      generateSecret: false,
+      preventUserExistenceErrors: true,
+      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.COGNITO],
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+        callbackUrls: [APP_LOGIN_CALLBACK],
+        logoutUrls: [APP_LOGIN_CALLBACK],
+      },
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.hours(1),
     });
+    // Managed login shows an error page to a client without a style.
+    for (const [id, client] of [['LoginBranding', webClient], ['AppLoginBranding', appClient]] as const) {
+      new cognito.CfnManagedLoginBranding(this, id, {
+        userPoolId: users.userPoolId,
+        clientId: client.userPoolClientId,
+        settings: loginBrandingSettings(),
+        assets: loginBrandingAssets(),
+      });
+    }
 
     // --- API ----------------------------------------------------------------
 
@@ -272,7 +295,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 50, throttlingRateLimit: 20 };
 
-    const people = new HttpUserPoolAuthorizer('People', users, { userPoolClients: [webClient] });
+    const people = new HttpUserPoolAuthorizer('People', users, { userPoolClients: [webClient, appClient] });
     const phones = new HttpLambdaAuthorizer('Phones', authFn, {
       responseTypes: [HttpLambdaResponseType.SIMPLE],
       identitySource: ['$request.header.Authorization'],
@@ -304,6 +327,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(POST, '/games/{gameId}/grants', deviceIntegration, phones); // Main lets its Secondary upload
     route(POST, '/grant-tickets', deviceIntegration, phones); // Main stocks grants for pairings without signal
     route(POST, '/grants/redeem', deviceIntegration); // the ticket is the credential
+    route(POST, '/grants/lookup', deviceIntegration); // the website's /grant page, with the ticket
     route(PUT, '/games/{gameId}/recordings/{recordingId}/manifest', deviceIntegration, phones);
     route(PUT, '/games/{gameId}/recordings/{recordingId}/report', deviceIntegration, phones);
     route(POST, '/uploads', deviceIntegration, phones);
@@ -327,7 +351,6 @@ export class OpenSportsBallStack extends cdk.Stack {
 
     // --- Website files ------------------------------------------------------
 
-    route(POST, '/grants/lookup', deviceIntegration); // the website's /grant page, with the ticket
     const webBuild = join(props.repoRoot, 'web', 'build');
     if (existsSync(join(webBuild, 'index.html'))) {
       new s3deploy.BucketDeployment(this, 'SiteFiles', {
@@ -351,6 +374,7 @@ export class OpenSportsBallStack extends cdk.Stack {
           region: this.region,
           userPoolId: users.userPoolId,
           userPoolClientId: webClient.userPoolClientId,
+          appClientId: appClient.userPoolClientId,
           cognitoDomain: loginUrl,
         }),
       ],
@@ -369,6 +393,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'UserPoolId', { value: users.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: webClient.userPoolClientId });
+    new cdk.CfnOutput(this, 'AppClientId', { value: appClient.userPoolClientId });
     new cdk.CfnOutput(this, 'LoginDomain', { value: loginUrl });
     if (customLogin) new cdk.CfnOutput(this, 'LoginCdnDomain', { value: customLogin.cloudFrontEndpoint });
     new cdk.CfnOutput(this, 'FootageBucket', { value: footage.bucketName });

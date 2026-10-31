@@ -3,5 +3,6 @@
   "region": "us-east-1",
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
+  "appClientId": "yyyyyyyy",
   "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }

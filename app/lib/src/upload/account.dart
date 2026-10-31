@@ -211,7 +211,8 @@ class AccountManager extends ChangeNotifier {
   }
 
   /// POST /devices/link. Throws [LinkException] with a message for people.
-  Future<AccountLink> linkWith(LinkRequest r) async {
+  /// [email] is shown when the server sends none (signing in in the app).
+  Future<AccountLink> linkWith(LinkRequest r, {String? email}) async {
     if (!isAcceptableApiUrl(r.apiUrl)) {
       throw const LinkException('That link code points to an address that is not HTTPS.');
     }
@@ -260,12 +261,12 @@ class AccountManager extends ChangeNotifier {
     if (token is! String || account is! String) {
       throw const LinkException('The server sent an unexpected answer.');
     }
-    final email = body['email'];
+    final sent = body['email'];
     final link = AccountLink(
         apiUrl: r.apiUrl,
         deviceToken: token,
         accountId: account,
-        email: email is String ? email : null);
+        email: sent is String ? sent : email);
     await secrets.write(_key, jsonEncode(link.toJson()));
     await store.saveUploadSettings(store.uploadSettings.copyWith(lastApiUrl: r.apiUrl));
     if (_tickets.any((x) => x.accountId != link.accountId)) {

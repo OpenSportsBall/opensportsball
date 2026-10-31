@@ -5,14 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../upload/account.dart';
+import '../upload/sign_in.dart';
 import 'common.dart';
 
-/// Link this phone to a website account by scanning the link QR code (or
-/// typing the code, once the phone knows the API from an earlier link),
-/// and show / forget the current link.
+/// Link this phone to a website account by signing in (or creating an
+/// account), by scanning the link QR code, or by typing the code once the
+/// phone knows the API from an earlier link; and show / forget the current
+/// link.
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key, required this.account});
+  const AccountScreen({super.key, required this.account, this.signIn});
   final AccountManager account;
+
+  /// For tests; the browser sheet otherwise.
+  final AppSignIn? signIn;
   @override
   State<AccountScreen> createState() => _AccountScreenState();
 }
@@ -58,6 +63,7 @@ class _AccountScreenState extends State<AccountScreen> {
           body: SafeArea(child: showForm
               ? _LinkForm(
                   account: a,
+                  signIn: widget.signIn ?? AppSignIn(client: a.client),
                   message: a.revoked ? 'This phone was unlinked; link it again.' : null,
                   onLinked: () => setState(() => _relinking = false),
                 )
@@ -100,8 +106,9 @@ class _AccountScreenState extends State<AccountScreen> {
 }
 
 class _LinkForm extends StatefulWidget {
-  const _LinkForm({required this.account, required this.onLinked, this.message});
+  const _LinkForm({required this.account, required this.signIn, required this.onLinked, this.message});
   final AccountManager account;
+  final AppSignIn signIn;
   final VoidCallback onLinked;
   final String? message;
   @override
@@ -114,6 +121,7 @@ class _LinkFormState extends State<_LinkForm> {
   bool _busy = false;
   String? _error;
   String? _lastScanned;
+  String _site = defaultSiteUrl;
 
   @override
   void dispose() {
@@ -122,23 +130,67 @@ class _LinkFormState extends State<_LinkForm> {
     super.dispose();
   }
 
-  Future<void> _link(LinkRequest r) async {
+  Future<void> _link(LinkRequest r) => _run(() => widget.account.linkWith(r));
+
+  Future<void> _signIn({required bool signUp}) =>
+      _run(() => widget.signIn.signInAndLink(widget.account, siteUrl: _site, signUp: signUp));
+
+  Future<void> _run(Future<AccountLink> Function() linking) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await widget.account.linkWith(r);
+      await linking();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Linked. Recordings will upload.')));
       widget.onLinked();
+    } on SignInCanceled {
+      // Closed the sign-in sheet: nothing to say.
     } on LinkException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _changeSite() async {
+    final field = TextEditingController(text: _site);
+    final typed = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Server'),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          autocorrect: false,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            helperText: 'The website address of your OpenSportsBall server.',
+          ),
+          onSubmitted: (v) => Navigator.of(context).pop(v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(defaultSiteUrl), child: const Text('Default')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(field.text), child: const Text('Use')),
+        ],
+      ),
+    );
+    field.dispose();
+    if (typed == null || !mounted) return;
+    final site = normalizeSiteUrl(typed);
+    setState(() {
+      if (site == null) {
+        _error = 'Type the website address, like opensportsball.com.';
+      } else {
+        _site = site;
+        _error = null;
+      }
+    });
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -193,7 +245,29 @@ class _LinkFormState extends State<_LinkForm> {
             padding: const EdgeInsets.all(16),
             children: [
               if (widget.message != null) ErrorText(widget.message),
-              Text('Link to account', style: Theme.of(context).textTheme.titleMedium),
+              Text('Sign in', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              const Text('Sign in to your account, or create one, to link this phone.'),
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: _busy ? null : () => _signIn(signUp: false),
+                child: const Text('Sign in'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _busy ? null : () => _signIn(signUp: true),
+                child: const Text('Create account'),
+              ),
+              Row(children: [
+                Expanded(
+                  child: Text('Server: ${Uri.parse(_site).host}',
+                      style: Theme.of(context).textTheme.bodySmall, overflow: TextOverflow.ellipsis),
+                ),
+                TextButton(onPressed: _busy ? null : _changeSite, child: const Text('Change')),
+              ]),
+              ErrorText(_error),
+              const SizedBox(height: 16),
+              Text('Or scan a link code', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               const Text('On the website, sign in and choose "Link a phone". '
                   'Point this phone at the QR code shown there.'),
@@ -221,8 +295,6 @@ class _LinkFormState extends State<_LinkForm> {
               ] else
                 Text('Typing the code works after this phone has been linked once.',
                     style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: 12),
-              ErrorText(_error),
             ],
           ),
         ),

@@ -49,7 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? a.link!.email ?? Uri.parse(a.link!.apiUrl).host
                     : a.revoked
                         ? 'This phone was unlinked; link it again to upload.'
-                        : 'Link this phone to a website account to upload recordings.'),
+                        : 'Sign in, or link this phone to a website account, to upload recordings.'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                     builder: (_) => AccountScreen(account: a))),

@@ -221,7 +221,7 @@ class AccountBanner extends StatelessWidget {
               Expanded(
                 child: Text(account.revoked
                     ? 'This phone was unlinked; link it again to upload.'
-                    : 'Link this phone to your account to upload recordings.'),
+                    : 'Sign in to your account to upload recordings.'),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(

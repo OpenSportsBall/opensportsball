@@ -66,6 +66,20 @@
                 <data android:scheme="opensportsball" android:host="grant" />
             </intent-filter>
         </activity>
+        <!-- Signing in from the app (docs/API.md): catches managed login's
+             redirect for flutter_web_auth_2. MainActivity only takes
+             opensportsball://grant, so the two don't compete. -->
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter android:label="flutter_web_auth_2">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opensportsball" android:host="auth" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".UploadKeepAliveService"
             android:exported="false"

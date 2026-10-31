@@ -22,7 +22,8 @@ There are two kinds of caller, on separate routes.
 access token>`. The account id is the token's `sub`.
 
 **Phones.** A phone is linked to an account once, by scanning a QR code
-shown on the website. Linking returns a long-lived device token
+shown on the website, or by signing in (or signing up) in the app
+("Signing in from the app" below). Linking returns a long-lived device token
 (`osbd_` + 43 base64url characters). Calls carry
 `Authorization: Bearer <device token>`. The server stores only a SHA-256
 hash of the token. Unlinking the device, on the website or from the phone
@@ -53,9 +54,13 @@ The deployed site serves `/config.json`:
   "region": "us-east-1",
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
+  "appClientId": "yyyyyyyy",
   "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }
 ```
+
+`appClientId` is the phone app's Cognito client ("Signing in from the
+app"); the website ignores it.
 
 ## Linking a phone
 
@@ -73,6 +78,18 @@ Only a phone that records as Main needs linking. A Secondary uploads with
 a recording grant that Main creates (`POST /games/{gameId}/grants`) and
 sends over Bluetooth (`app/lib/src/protocol/messages.dart`, `GrantMsg`),
 whatever account the Secondary is linked to, if any.
+
+## Signing in from the app
+
+A phone can link itself without a QR code. The app knows a website
+(`https://opensportsball.com` unless changed in the app), reads its
+`/config.json`, and opens Cognito managed login in a browser sheet
+(authorization code + PKCE, client `appClientId`, redirect
+`opensportsball://auth`). The same pages let people create an account.
+With the Cognito access token the app calls `POST /link-codes` for
+itself, then `POST /devices/link` with that code, exactly as if it had
+scanned it. It keeps only the device token; the Cognito tokens are
+dropped.
 
 ## Upload permission link
 
@@ -250,6 +267,17 @@ Body: `{"ticket": "osbg_...", "gameId", "deviceId"}`
   `404 not_found`: no such ticket. `410 gone`: lapsed unredeemed.
   `400 bad_request`: binding it to the phone that fetched it.
 
+### `POST /grants/lookup`
+No token: the ticket is the credential. For the website's /grant page.
+Body: `{"ticket": "osbg_..."}`
+→ `200`, the same shape as `POST /games/{gameId}/grant-tickets`, plus
+`"used": true | false`.
+
+- Only website tickets (`POST /games/{gameId}/grant-tickets`); Main's are
+  `404 not_found`, as are unknown ones.
+- `used`: a phone has redeemed it; `expiresAt` is then that grant's.
+- `410 gone`: lapsed unredeemed.
+
 ### `PUT /games/{gameId}/recordings/{recordingId}/manifest`
 Body: the manifest (`shared/schemas/manifest.schema.json`). Main must list
 its own segments; it may leave out other devices' `segments`.
@@ -267,17 +295,6 @@ its own segments; it may leave out other devices' `segments`.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/report`
 Body: the caller's own device entry (the schema's `$defs/device`), with
-### `POST /grants/lookup`
-No token: the ticket is the credential. For the website's /grant page.
-Body: `{"ticket": "osbg_..."}`
-→ `200`, the same shape as `POST /games/{gameId}/grant-tickets`, plus
-`"used": true | false`.
-
-- Only website tickets (`POST /games/{gameId}/grant-tickets`); Main's are
-  `404 not_found`, as are unknown ones.
-- `used`: a phone has redeemed it; `expiresAt` is then that grant's.
-- `410 gone`: lapsed unredeemed.
-
 its `segments`. → same response as the manifest.
 
 - `deviceId` must be the caller (`403 forbidden`); segments must be named

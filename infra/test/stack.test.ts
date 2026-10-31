@@ -170,6 +170,18 @@ describe('accounts and website', () => {
     });
   });
 
+  it('the phone app signs in on managed login too, returning to the app', () => {
+    t.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      AllowedOAuthFlows: ['code'],
+      GenerateSecret: false,
+      CallbackURLs: ['opensportsball://auth'],
+    });
+    // One style per client, or managed login shows the app an error page.
+    t.resourceCountIs('AWS::Cognito::ManagedLoginBranding', 2);
+    const [authorizer] = Object.values(t.findResources('AWS::ApiGatewayV2::Authorizer', { Properties: { AuthorizerType: 'JWT' } }));
+    expect(authorizer!.Properties.JwtConfiguration.Audience).toHaveLength(2);
+  });
+
   it('serves the site through CloudFront only', () => {
     t.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
     t.hasResourceProperties('AWS::CloudFront::Distribution', {
@@ -210,21 +222,23 @@ describe('custom domain', () => {
       }),
     });
     d.resourceCountIs('AWS::CloudFront::Function', 1);
+    const fn = Object.values(d.findResources('AWS::CloudFront::Function'))[0];
+    expect(fn.Properties.FunctionCode).toContain("if (r.headers.host.value === 'example.com') return r;");
+    expect(fn.Properties.FunctionCode).toContain("'https://example.com' + r.uri");
   });
 
   it('login accepts the custom domain and the CloudFront address', () => {
     d.hasResourceProperties('AWS::Cognito::UserPoolClient', {
       CallbackURLs: Match.arrayWith(['https://example.com/callback']),
     });
-    const client = Object.values(d.findResources('AWS::Cognito::UserPoolClient'))[0];
-    expect(client.Properties.CallbackURLs).toHaveLength(2);
+    const web = Object.values(d.findResources('AWS::Cognito::UserPoolClient')).find((c) =>
+      c.Properties.CallbackURLs.includes('https://example.com/callback'),
+    );
+    expect(web!.Properties.CallbackURLs).toHaveLength(2);
   });
 
   it('signs in at the custom login domain, keeping the prefix domain', () => {
     d.resourceCountIs('AWS::Cognito::UserPoolDomain', 2);
-    const fn = Object.values(d.findResources('AWS::CloudFront::Function'))[0];
-    expect(fn.Properties.FunctionCode).toContain("if (r.headers.host.value === 'example.com') return r;");
-    expect(fn.Properties.FunctionCode).toContain("'https://example.com' + r.uri");
     d.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
       Domain: 'auth.example.com',
       CustomDomainConfig: { CertificateArn: 'arn:aws:acm:us-east-1:111111111111:certificate/auth' },
