@@ -87,6 +87,22 @@ describe('mock API', () => {
 		await expect(api.deleteGame(multi.gameId)).rejects.toMatchObject({ status: 404, code: 'not_found' });
 	});
 
+	it('looks up a website ticket without signing in', async () => {
+		const { api, fetch } = setup();
+		const [game] = await api.listGames();
+		const t = await api.createGameTicket(game!.gameId);
+		const anonymous = createApiClient({
+			baseUrl: MOCK_BASE_URL,
+			getToken: async () => null,
+			onUnauthorized: () => {
+				throw new Error('must not ask to sign in');
+			},
+			fetch
+		});
+		expect(await anonymous.lookupGrantTicket(t.ticket)).toEqual({ ...t, used: false });
+		await expect(anonymous.lookupGrantTicket('osbg_' + 'z'.repeat(43))).rejects.toMatchObject({ status: 404 });
+	});
+
 	it('requires a bearer token', async () => {
 		const { fetch } = setup();
 		const res = await fetch(`${MOCK_BASE_URL}/games`);

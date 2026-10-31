@@ -106,6 +106,29 @@ describe('a Secondary that never got a grant', () => {
     expect(await authorize(r.body.ticket)).toEqual(ANONYMOUS);
   });
 
+  it('the /grant page looks a website ticket up, so the link can hold only the ticket', async () => {
+    await mainAlone();
+    const made = (await gameTicket()).body;
+    const lookup = (ticket: string) => callDevice(null, 'POST /grants/lookup', { body: { ticket } });
+
+    const r = await lookup(made.ticket);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ...made, used: false });
+
+    // Once a phone has it, the same answer says so (that phone may open it again).
+    await redeem(made.ticket);
+    const after = await lookup(made.ticket);
+    expect(after.status).toBe(200);
+    expect(after.body).toMatchObject({ ticket: made.ticket, gameId, accountId: alice, used: true });
+    expect(after.body.appUri).toMatch(/^opensportsball:\/\/grant\?/);
+
+    // Main's own tickets, unknown ones and malformed ones are not looked up.
+    const mains = await callDevice(main.token, 'POST /grant-tickets', { body: { count: 1 } });
+    expect((await lookup(mains.body.tickets[0].ticket)).status).toBe(404);
+    expect((await lookup('osbg_' + 'x'.repeat(43))).status).toBe(404);
+    expect((await lookup('nope')).status).toBe(400);
+  });
+
   it('only for games on the account', async () => {
     expect((await gameTicket(randomUUID())).status).toBe(404);
     await mainAlone();

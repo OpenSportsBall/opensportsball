@@ -38,6 +38,12 @@ export interface GameTicket {
 	appUri: string;
 }
 
+/** POST /grants/lookup: a website ticket's details for the /grant page;
+ *  `used` once a phone has redeemed it. */
+export interface GrantLookup extends GameTicket {
+	used: boolean;
+}
+
 export interface Device {
 	deviceId: string;
 	platform: Platform | string;

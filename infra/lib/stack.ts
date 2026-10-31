@@ -102,7 +102,10 @@ export class OpenSportsBallStack extends cdk.Stack {
                   runtime: cloudfront.FunctionRuntime.JS_2_0,
                   code: cloudfront.FunctionCode.fromInline(`function handler(event) {
   var r = event.request;
-  if (r.headers.host.value !== 'www.${siteDomain}') return r;
+  // www and the CloudFront address both go to the one site address, so
+  // links the site builds from its own address (upload permission links)
+  // and sign-ins all use it.
+  if (r.headers.host.value === '${siteDomain}') return r;
   var qs = Object.keys(r.querystring).map(function (k) {
     var v = r.querystring[k];
     return v.multiValue ? v.multiValue.map(function (m) { return k + '=' + m.value; }).join('&') : k + '=' + v.value;
@@ -324,6 +327,7 @@ export class OpenSportsBallStack extends cdk.Stack {
 
     // --- Website files ------------------------------------------------------
 
+    route(POST, '/grants/lookup', deviceIntegration); // the website's /grant page, with the ticket
     const webBuild = join(props.repoRoot, 'web', 'build');
     if (existsSync(join(webBuild, 'index.html'))) {
       new s3deploy.BucketDeployment(this, 'SiteFiles', {

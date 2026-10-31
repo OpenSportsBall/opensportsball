@@ -15,31 +15,35 @@ const params = new URLSearchParams({
 const appUri = `opensportsball://grant?${params}`;
 
 describe('grant links', () => {
-	it('puts the parameters in the /grant page fragment', () => {
-		const url = grantPageUrl('https://site.example/', appUri);
-		expect(url).toBe(`https://site.example/grant#${params}`);
+	it('hold only the ticket, in the fragment', () => {
+		const url = grantPageUrl('https://site.example/', ticket);
+		expect(url).toBe(`https://site.example/grant#${ticket}`);
 		expect(new URL(url).search).toBe('');
+		expect(parseGrantFragment(new URL(url).hash)).toEqual({ ticket });
 	});
 
-	it('reads them back as the app link', () => {
-		const url = new URL(grantPageUrl('https://site.example', appUri));
-		expect(parseGrantFragment(url.hash)).toEqual({
-			apiUrl: 'https://abc.execute-api.us-east-1.amazonaws.com',
-			accountId: 'acct-1',
-			gameId: 'game-1',
-			ticket,
-			expiresAt: '2026-11-04T05:00:00.000Z',
-			appUri
+	it('still read links that carried every parameter', () => {
+		expect(parseGrantFragment(`#${params}`)).toEqual({
+			link: {
+				apiUrl: 'https://abc.execute-api.us-east-1.amazonaws.com',
+				accountId: 'acct-1',
+				gameId: 'game-1',
+				ticket,
+				expiresAt: '2026-11-04T05:00:00.000Z',
+				appUri
+			}
 		});
 	});
 
-	it('refuses partial or odd links', () => {
+	it('refuse partial or odd links', () => {
 		const without = (k: string) => {
 			const p = new URLSearchParams(params);
 			p.delete(k);
 			return `#${p}`;
 		};
 		expect(parseGrantFragment('')).toBeNull();
+		expect(parseGrantFragment('#osbg_short')).toBeNull();
+		expect(parseGrantFragment('#osbd_' + 'a'.repeat(43))).toBeNull();
 		for (const k of ['v', 'api', 'account', 'game', 'ticket', 'exp']) expect(parseGrantFragment(without(k))).toBeNull();
 		const set = (k: string, v: string) => {
 			const p = new URLSearchParams(params);
@@ -52,7 +56,8 @@ describe('grant links', () => {
 		expect(parseGrantFragment(set('exp', 'soon'))).toBeNull();
 	});
 
-	it('drops extra parameters from the app link', () => {
-		expect(parseGrantFragment(`#${params}&evil=1`)?.appUri).toBe(appUri);
+	it('drop extra parameters from the app link', () => {
+		const f = parseGrantFragment(`#${params}&evil=1`);
+		expect(f && 'link' in f ? f.link.appUri : null).toBe(appUri);
 	});
 });

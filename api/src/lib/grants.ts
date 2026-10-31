@@ -206,10 +206,35 @@ export async function createGameTicket(o: { accountId: string; gameId: string; a
       ],
     }),
   );
-  const apiUrl = `https://${o.apiDomain}`;
+  return gameTicketAnswer(token, o.accountId, o.gameId, expiresAtMs, o.apiDomain);
+}
+
+function gameTicketAnswer(ticket: string, accountId: string, gameId: string, expiresAtMs: number, apiDomain: string) {
+  const apiUrl = `https://${apiDomain}`;
   const expiresAt = new Date(expiresAtMs).toISOString();
-  const q = new URLSearchParams({ v: '1', api: apiUrl, account: o.accountId, game: o.gameId, ticket: token, exp: expiresAt });
-  return { ticket: token, apiUrl, accountId: o.accountId, gameId: o.gameId, expiresAt, appUri: `opensportsball://grant?${q}` };
+  const q = new URLSearchParams({ v: '1', api: apiUrl, account: accountId, game: gameId, ticket, exp: expiresAt });
+  return { ticket, apiUrl, accountId, gameId, expiresAt, appUri: `opensportsball://grant?${q}` };
+}
+
+/** What the website's /grant page needs to open the app: the link holds
+ *  only the ticket. Only for website tickets (createGameTicket); `used`
+ *  once a phone has redeemed it (that phone may open it again). */
+export async function lookupGameTicket(ticket: string, apiDomain: string) {
+  const r = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.token(hashToken(ticket)) }));
+  const item = r.Item as GrantTokenItem | undefined;
+  if (!item || item.kind !== 'grant' || item.issuedBy !== 'web') {
+    throw notFound('That upload permission does not exist.');
+  }
+  if (item.deviceId && item.gameId) {
+    return { ...gameTicketAnswer(ticket, item.accountId, item.gameId, item.expiresAtMs, apiDomain), used: true };
+  }
+  if (!item.ticketGameId || !(Number(item.ticketExpiresAtMs) > Date.now())) {
+    throw gone('That upload permission has expired.');
+  }
+  return {
+    ...gameTicketAnswer(ticket, item.accountId, item.ticketGameId, Number(item.ticketExpiresAtMs), apiDomain),
+    used: false,
+  };
 }
 
 /** Binds a ticket to [gameId] and [deviceId], making it that phone's grant

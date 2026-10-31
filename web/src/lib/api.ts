@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
-import type { Device, Game, GameSummary, GameTicket, LinkCode, Me } from './types';
+import type { Device, Game, GameSummary, GameTicket, GrantLookup, LinkCode, Me } from './types';
 
 /** An API failure: HTTP status plus the `{"error","message"}` body (docs/API.md). */
 export class ApiError extends Error {
@@ -29,13 +29,17 @@ export function createApiClient(opts: ApiClientOptions) {
 	const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
 	const base = opts.baseUrl.replace(/\/+$/, '');
 
-	async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-		const token = await opts.getToken();
-		if (!token) {
-			opts.onUnauthorized();
-			throw new ApiError(401, 'unauthorized', 'Your session has expired. Please sign in again.');
+	/** [anonymous]: a route that needs no sign-in (the /grant page). */
+	async function request<T>(method: string, path: string, body?: unknown, anonymous = false): Promise<T> {
+		const headers: Record<string, string> = {};
+		if (!anonymous) {
+			const token = await opts.getToken();
+			if (!token) {
+				opts.onUnauthorized();
+				throw new ApiError(401, 'unauthorized', 'Your session has expired. Please sign in again.');
+			}
+			headers.Authorization = `Bearer ${token}`;
 		}
-		const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
 
 		let res: Response;
@@ -49,7 +53,7 @@ export function createApiClient(opts: ApiClientOptions) {
 			throw new ApiError(0, 'network', 'Could not reach the server. Check your connection and try again.');
 		}
 
-		if (res.status === 401) {
+		if (res.status === 401 && !anonymous) {
 			opts.onUnauthorized();
 			throw new ApiError(401, 'unauthorized', 'Your session has expired. Please sign in again.');
 		}
@@ -92,7 +96,8 @@ export function createApiClient(opts: ApiClientOptions) {
 		/** Deletes one recording and its footage, for good. */
 		deleteRecording: (gameId: string, recordingId: string) =>
 			request<void>('DELETE', `/games/${enc(gameId)}/recordings/${enc(recordingId)}`),
-		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`)
+		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`),
+		lookupGrantTicket: (ticket: string) => request<GrantLookup>('POST', '/grants/lookup', { ticket }, true)
 	};
 }
 

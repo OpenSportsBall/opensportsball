@@ -43,7 +43,7 @@
 		copied = false;
 		try {
 			const t = await session.api.createGameTicket(gameId);
-			const url = grantPageUrl(window.location.origin, t.appUri);
+			const url = grantPageUrl(window.location.origin, t.ticket);
 			grantQr = await qrToSvg(url, {
 				type: 'svg',
 				margin: 2,

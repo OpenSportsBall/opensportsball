@@ -80,14 +80,17 @@ The website's game page shows a link and its QR code for a phone that
 recorded the game without a grant:
 
 ```
-https://<site>/grant#v=1&api=<url-encoded apiUrl>&account=<accountId>&game=<gameId>&ticket=<osbg_...>&exp=<expiresAt>
+https://<site>/grant#<osbg_... ticket>
 ```
 
 The ticket is in the fragment, so it never reaches the web server's logs.
-That page needs no sign-in: its button opens the app with the same
-parameters as `opensportsball://grant?v=1&api=...` (the `appUri` from
-`POST /games/{gameId}/grant-tickets`). The app checks it has a recording
-of that game, then redeems the ticket (`POST /grants/redeem`) for itself.
+That page needs no sign-in: it looks the ticket up (`POST /grants/lookup`)
+and its button opens the app with
+`opensportsball://grant?v=1&api=<url-encoded apiUrl>&account=<accountId>&game=<gameId>&ticket=<osbg_...>&exp=<expiresAt>`
+(the lookup's `appUri`). The app checks it has a recording of that game,
+then redeems the ticket (`POST /grants/redeem`) for itself. Links made
+before 2026-10-29 carry those parameters in the fragment instead of only
+the ticket; the page still accepts them.
 
 ## Routes for people (Cognito token)
 
@@ -264,6 +267,17 @@ its own segments; it may leave out other devices' `segments`.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/report`
 Body: the caller's own device entry (the schema's `$defs/device`), with
+### `POST /grants/lookup`
+No token: the ticket is the credential. For the website's /grant page.
+Body: `{"ticket": "osbg_..."}`
+→ `200`, the same shape as `POST /games/{gameId}/grant-tickets`, plus
+`"used": true | false`.
+
+- Only website tickets (`POST /games/{gameId}/grant-tickets`); Main's are
+  `404 not_found`, as are unknown ones.
+- `used`: a phone has redeemed it; `expiresAt` is then that grant's.
+- `410 gone`: lapsed unredeemed.
+
 its `segments`. → same response as the manifest.
 
 - `deviceId` must be the caller (`403 forbidden`); segments must be named

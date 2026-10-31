@@ -17,6 +17,7 @@ import type {
 	Game,
 	GameSummary,
 	GameTicket,
+	GrantLookup,
 	LinkCode,
 	Recording,
 	RecordingDevice,
@@ -298,14 +299,26 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				expiresAt,
 				appUri: `opensportsball://grant?${q}`
 			};
+			gameTickets.set(ticket, body);
 			return json(201, body);
 		}
 		return fail(404, 'not_found', `No route for ${method} ${path} in the mock API.`);
 	}
 
+	/** Website tickets made so far, for POST /grants/lookup. */
+	const gameTickets = new Map<string, GameTicket>();
+
 	return async (input, init) => {
 		const req = new Request(input, init);
 		if (latency > 0) await new Promise((r) => setTimeout(r, latency));
+		if (req.method === 'POST' && new URL(req.url).pathname === '/grants/lookup') {
+			// No sign-in: the /grant page is opened on someone else's phone.
+			const { ticket } = (await req.json()) as { ticket?: string };
+			const t = ticket ? gameTickets.get(ticket) : undefined;
+			if (!t) return fail(404, 'not_found', 'That upload permission does not exist.');
+			const body: GrantLookup = { ...t, used: false };
+			return json(200, body);
+		}
 		const auth = req.headers.get('Authorization');
 		if (!auth?.startsWith('Bearer ')) return fail(401, 'unauthorized', 'Missing bearer token.');
 		const url = new URL(req.url);

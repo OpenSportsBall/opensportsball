@@ -42,7 +42,7 @@ import {
 } from '../lib/http.js';
 import { refuseDeleted } from '../lib/deletion.js';
 import { unlinkDevice } from '../lib/devices.js';
-import { createGrant, createTickets, getGrant, redeemTicket } from '../lib/grants.js';
+import { createGrant, createTickets, getGrant, lookupGameTicket, redeemTicket } from '../lib/grants.js';
 import { parseManifest, parseReport, type ManifestDevice } from '../lib/manifest.js';
 import {
   checkReady,
@@ -84,6 +84,11 @@ export const handler = (event: APIGatewayProxyEventV2 | DeviceEvent): Promise<Re
     if (event.routeKey === 'POST /devices/link') return link(body(event));
     // The ticket is the credential, as the code is for linking.
     if (event.routeKey === 'POST /grants/redeem') return redeem(body(event), event);
+    if (event.routeKey === 'POST /grants/lookup') {
+      // From the website's /grant page; the ticket is in the body, not the
+      // path, so it stays out of access logs.
+      return json(200, await lookupGameTicket(str(body(event), 'ticket', GRANT_TOKEN), event.requestContext.domainName));
+    }
 
     const ctx = (event as DeviceEvent).requestContext.authorizer?.lambda;
     if (!ctx?.accountId || !ctx.deviceId) throw new ApiError(401, 'unauthorized', 'Device token required.');

@@ -41,6 +41,7 @@ describe('API', () => {
       { key: 'POST /games/{gameId}/grant-tickets', auth: 'JWT' },
       { key: 'POST /games/{gameId}/grants', auth: 'CUSTOM' },
       { key: 'POST /grant-tickets', auth: 'CUSTOM' },
+      { key: 'POST /grants/lookup', auth: 'NONE' },
       { key: 'POST /grants/redeem', auth: 'NONE' },
       { key: 'POST /link-codes', auth: 'JWT' },
       { key: 'POST /uploads', auth: 'CUSTOM' },
@@ -201,7 +202,7 @@ describe('custom domain', () => {
     d = Template.fromStack(stack);
   }, 120_000);
 
-  it('serves the apex and www with the certificate, redirecting www', () => {
+  it('serves the apex and www with the certificate, redirecting every other address to the apex', () => {
     d.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: Match.objectLike({
         Aliases: ['example.com', 'www.example.com'],
@@ -221,6 +222,9 @@ describe('custom domain', () => {
 
   it('signs in at the custom login domain, keeping the prefix domain', () => {
     d.resourceCountIs('AWS::Cognito::UserPoolDomain', 2);
+    const fn = Object.values(d.findResources('AWS::CloudFront::Function'))[0];
+    expect(fn.Properties.FunctionCode).toContain("if (r.headers.host.value === 'example.com') return r;");
+    expect(fn.Properties.FunctionCode).toContain("'https://example.com' + r.uri");
     d.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
       Domain: 'auth.example.com',
       CustomDomainConfig: { CertificateArn: 'arn:aws:acm:us-east-1:111111111111:certificate/auth' },

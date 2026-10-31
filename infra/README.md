@@ -44,7 +44,7 @@ Options (pass with `-c key=value`):
 | `stackName` | `OpenSportsBall` | CloudFormation stack name |
 | `authDomainPrefix` | `opensportsball-<account id>` | Cognito login domain; globally unique |
 | `devOrigins` | `http://localhost:5173` | Extra origins allowed for login callbacks and CORS (comma-separated) |
-| `siteDomain` | none | Serve the website at this domain; `www.<domain>` redirects to it |
+| `siteDomain` | none | Serve the website at this domain; `www.<domain>` and the CloudFront address redirect to it |
 | `siteCertArn` | none | ACM certificate **in us-east-1** for `siteDomain` and `www.<siteDomain>` (required with `siteDomain`) |
 | `authDomain` | none | Serve the sign-in pages at this domain, e.g. `auth.example.com`, instead of the Cognito prefix domain |
 | `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
