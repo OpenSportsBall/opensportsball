@@ -479,6 +479,18 @@ Footage and logs from these tests decide several items below.
       21/26 but seg9 23 -> 19). The pair is the standard for every game
       since 2026-10-30 (footage/models/). Next: a second orange-ball
       game, and more varied labels so one model gains on both.
+      Daylight (2026-10-31/11-01): rec6, the first daylight game, gave
+      100 random moments labelled on both phones (196 frames, 83 ball
+      boxes). Detector and judge retrained on rec3 + rec5 x3 + rec6 x2
+      (balltrain_v3, judge_v3; effective mAP 0.351, judge valid AP
+      0.910). Against the rec5 pair: rec6 0-10 min path 30% -> 52%
+      (30-31/32 sampled path frames on the real ball; some labelled
+      moments fall in those 10 minutes), rec5 39% -> 39%, rec4cal play
+      boxes 9 -> 10/15 (aim 37/22% -> 36/19%), rec3 boxes 20 -> 20/26,
+      balleval 67 -> 63/90 found, wrong 6 -> 3. The new detector with
+      the old judge was worse (rec6 29%, rec3 58/90), so they go
+      together. Standard since 2026-11-01 (footage/models/). rec3 seg3
+      lost 4 found (46 -> 42/53): watch white-ball games.
       Offline path tracker (2026-10-19, `ballpath.py`; the default
       in balleval.py and follow.py, OSB_BALL_CHAIN=1 for the chain): the clip is on disk
       before tracking runs, so instead of ball.py's greedy online chain
