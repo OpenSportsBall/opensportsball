@@ -1,7 +1,7 @@
 name: opensportsball
 description: Two-phone game recorder. One app, Main or Secondary role.
 publish_to: none
-version: 0.1.0+6
+version: 0.1.0+7
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
