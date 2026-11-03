@@ -252,9 +252,13 @@ Body: `{"count": 1-5}`
 - An unredeemed ticket lapses after 90 days.
 
 ### `POST /grants/redeem`
-No token: the ticket is the credential, as the code is for linking. Binds
-a ticket to one game and phone; from then on the ticket is that phone's
-grant for that game (14 days, as `POST /games/{gameId}/grants`).
+The ticket is the credential, as the code is for linking. Binds a ticket
+to one game and phone; from then on the ticket is that phone's grant for
+that game (14 days, as `POST /games/{gameId}/grants`). A grant uploads
+under the same keys as that phone's own uploads, so binding it to a phone
+linked to the ticket's account also takes a device token of that account
+(`Authorization: Bearer osbd_...`); without one, anyone holding the
+ticket could name Main's phone and overwrite its footage.
 Body: `{"ticket": "osbg_...", "gameId", "deviceId"}`
 → `200`, the same shape as `POST /games/{gameId}/grants`, with
 `grantToken` equal to the ticket.
@@ -266,6 +270,8 @@ Body: `{"ticket": "osbg_...", "gameId", "deviceId"}`
   ticket for another game.
   `404 not_found`: no such ticket. `410 gone`: lapsed unredeemed.
   `400 bad_request`: binding it to the phone that fetched it.
+  `403 forbidden`: binding it to a phone linked to the ticket's account
+  without a device token of that account.
 
 ### `POST /grants/lookup`
 No token: the ticket is the credential. For the website's /grant page.

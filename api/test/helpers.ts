@@ -122,6 +122,7 @@ export async function callDevice(
   }
   const event = {
     routeKey,
+    headers: token ? { authorization: `Bearer ${token}` } : {},
     pathParameters: opts.path,
     body: opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
     isBase64Encoded: false,

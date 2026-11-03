@@ -11,7 +11,7 @@
 
 import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { badRequest, conflict, gone, notFound } from './http.js';
+import { badRequest, conflict, forbidden, gone, notFound } from './http.js';
 import { config, ddb, keys, queryPrefix } from './store.js';
 import {
   GAME_TICKET_TTL_MS,
@@ -48,6 +48,11 @@ export interface GrantItem {
   issuedBy: string;
   createdAt: string;
   expiresAt: string;
+}
+
+async function isLinked(acct: string, deviceId: string) {
+  const r = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.device(acct, deviceId) }));
+  return r.Item !== undefined;
 }
 
 export async function getGrant(acct: string, gameId: string, deviceId: string) {
@@ -239,8 +244,20 @@ export async function lookupGameTicket(ticket: string, apiDomain: string) {
 
 /** Binds a ticket to [gameId] and [deviceId], making it that phone's grant
  *  for that game. Either phone may call it, in any order: the same binding
- *  again returns the same grant; a different one is refused. */
-export async function redeemTicket(o: { ticket: string; gameId: string; deviceId: string; apiDomain: string }) {
+ *  again returns the same grant; a different one is refused.
+ *
+ *  A grant uploads under its deviceId, the same keys that phone's own
+ *  uploads use. So binding a ticket to a phone linked to the ticket's
+ *  account takes a device token of that account ([callerAccountId]):
+ *  otherwise whoever holds the ticket could name Main's deviceId and
+ *  overwrite Main's footage. */
+export async function redeemTicket(o: {
+  ticket: string;
+  gameId: string;
+  deviceId: string;
+  apiDomain: string;
+  callerAccountId?: string;
+}) {
   const tokenHash = hashToken(o.ticket);
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.token(tokenHash) }));
@@ -264,6 +281,9 @@ export async function redeemTicket(o: { ticket: string; gameId: string; deviceId
     }
     if (!(Number(item.ticketExpiresAtMs) > Date.now())) throw gone('That upload permission has expired.');
     if (item.issuedBy === o.deviceId) throw badRequest('A phone does not need a grant for itself.');
+    if (o.callerAccountId !== item.accountId && (await isLinked(item.accountId, o.deviceId))) {
+      throw forbidden('That phone is linked to this account; redeem the permission from a phone linked to it.');
+    }
 
     const now = Date.now();
     const expiresAtMs = now + GRANT_TTL_MS;

@@ -5,7 +5,7 @@
 	import { ApiError } from '#lib/api.ts';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import { formatDateTime } from '#lib/format.ts';
-	import { parseGrantFragment, type GrantLink } from '#lib/grant.ts';
+	import { parseGrantFragment, sameApi, type GrantLink } from '#lib/grant.ts';
 	import { session } from '#lib/session.svelte.ts';
 
 	// Opened on the phone itself, often by someone not signed in: no sign-in
@@ -25,14 +25,18 @@
 			view = { kind: 'broken' };
 			return;
 		}
-		if ('link' in f) {
-			// A long link from before 2026-10-29 carries everything itself.
-			view = Date.parse(f.link.expiresAt) < Date.now() ? { kind: 'expired' } : { kind: 'ready', link: f.link, used: false };
-			return;
-		}
 		view = { kind: 'loading' };
 		try {
 			await session.init();
+			if ('link' in f) {
+				// A long link from before 2026-10-29 carries everything itself,
+				// including the API address: vouch only for this site's own, or
+				// anyone could send footage to their server under this page.
+				if (!sameApi(f.link.apiUrl, session.config?.apiUrl)) view = { kind: 'broken' };
+				else if (Date.parse(f.link.expiresAt) < Date.now()) view = { kind: 'expired' };
+				else view = { kind: 'ready', link: f.link, used: false };
+				return;
+			}
 			const t = await session.api.lookupGrantTicket(f.ticket);
 			view = { kind: 'ready', link: t, used: t.used };
 		} catch (e) {

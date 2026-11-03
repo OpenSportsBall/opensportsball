@@ -2,22 +2,37 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-/// Pairing QR payload: `opensportsball://pair?v=1&game=<uuid>`.
-String pairingUri(String gameId) => 'opensportsball://pair?v=1&game=$gameId';
+import '../protocol/peer_auth.dart';
+
+/// Pairing QR payload: `opensportsball://pair?v=2&game=<uuid>&k=<key>`,
+/// where `k` is the base64url pairing key that signs every message
+/// between the phones (protocol/peer_auth.dart).
+String pairingUri(String gameId, Uint8List key) =>
+    'opensportsball://pair?v=2&game=$gameId&k=${base64Url.encode(key).replaceAll('=', '')}';
 
 final _uuidPattern =
     RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 
-/// Returns the game id from a scanned pairing code, or null if it isn't one.
-String? parsePairingUri(String raw) {
+/// The game id and pairing key from a scanned pairing code, or null if it
+/// isn't one.
+({String gameId, Uint8List key})? parsePairingUri(String raw) {
   final uri = Uri.tryParse(raw.trim());
   if (uri == null || uri.scheme != 'opensportsball' || uri.host != 'pair') return null;
-  if (uri.queryParameters['v'] != '1') return null;
+  if (uri.queryParameters['v'] != '2') return null;
   final game = uri.queryParameters['game']?.toLowerCase();
-  return game != null && _uuidPattern.hasMatch(game) ? game : null;
+  if (game == null || !_uuidPattern.hasMatch(game)) return null;
+  final Uint8List key;
+  try {
+    key = base64Url.decode(base64Url.normalize(uri.queryParameters['k'] ?? ''));
+  } on FormatException {
+    return null;
+  }
+  return key.length == kPeerKeyBytes ? (gameId: game, key: key) : null;
 }
 
 String formatBytes(int bytes) {

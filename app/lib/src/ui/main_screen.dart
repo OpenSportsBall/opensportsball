@@ -7,6 +7,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../link/ble_link.dart';
 import '../link/peer_link.dart';
+import '../protocol/peer_auth.dart';
 import '../session/main_controller.dart';
 import '../storage/store.dart';
 import '../upload/account.dart';
@@ -23,10 +24,12 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   final _camera = DualCamera();
+  final _pairingKey = newPeerKey();
   late final MainController c = MainController(
     store: widget.store,
     camera: _camera,
-    linkFactory: (gameId) => MainBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
+    linkFactory: (gameId) =>
+        MainBleLink(gameId: gameId, key: _pairingKey, ensurePermission: _camera.requestBluetoothPermission),
     account: widget.account,
   );
 
@@ -128,7 +131,7 @@ class _MainScreenState extends State<MainScreen> {
           child: Container(
             color: Colors.white,
             padding: const EdgeInsets.all(8),
-            child: QrImageView(data: pairingUri(c.gameId), size: 168),
+            child: QrImageView(data: pairingUri(c.gameId, _pairingKey), size: 168),
           ),
         ),
         const SizedBox(height: 8),

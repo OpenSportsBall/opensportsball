@@ -8,6 +8,11 @@
 /// scans for that service, connects, and subscribes. Two characteristics
 /// carry framed messages: `toSecondary` (notify) and `toMain` (write with
 /// response).
+///
+/// Anyone nearby can see the game id, so every message is signed with the
+/// pairing key from the QR code (protocol/peer_auth.dart). Main takes a
+/// central as its Secondary only once a signed message arrives from it;
+/// Secondary drops a peripheral that sends nothing signed.
 library;
 
 import 'dart:async';
@@ -18,6 +23,7 @@ import 'package:flutter/foundation.dart';
 
 import '../protocol/framing.dart';
 import '../protocol/messages.dart';
+import '../protocol/peer_auth.dart';
 import 'peer_link.dart';
 
 final kToSecondaryUuid = UUID.fromString('5b0e0001-7a2c-4f3e-9d61-2c8a5e4b9f10');
@@ -25,11 +31,13 @@ final kToMainUuid = UUID.fromString('5b0e0002-7a2c-4f3e-9d61-2c8a5e4b9f10');
 
 /// Shared plumbing: state, framing, inbound decoding, serialized sends.
 abstract class _BleLinkBase implements PeerLink {
+  _BleLinkBase(Uint8List key) : _auth = PeerAuth(key);
+
+  final PeerAuth _auth;
   final _state = ValueNotifier(LinkState.idle);
   final _problem = ValueNotifier<String?>(null);
   final _messages = StreamController<Msg>.broadcast();
   final _encoder = FrameEncoder();
-  final _decoder = FrameDecoder();
   final _subs = <StreamSubscription<Object?>>[];
   Future<void> _sendChain = Future.value();
   bool _disposed = false;
@@ -43,14 +51,25 @@ abstract class _BleLinkBase implements PeerLink {
   @override
   Stream<Msg> get messages => _messages.stream;
 
-  void _onFrame(Uint8List frame) {
-    final payload = _decoder.add(frame);
-    if (payload == null) return;
+  PeerDirection get _inbound;
+  PeerDirection get _outbound => _inbound == PeerDirection.toMain ? PeerDirection.toSecondary : PeerDirection.toMain;
+
+  /// Adds [frame] to [decoder]. True once it completes a message signed by
+  /// the paired phone.
+  bool _onFrame(FrameDecoder decoder, Uint8List frame) {
+    final sealed = decoder.add(frame);
+    if (sealed == null) return false;
+    final payload = _auth.open(sealed, _inbound);
+    if (payload == null) {
+      debugPrint('ble: dropping a message not signed with the pairing key');
+      return false;
+    }
     try {
       _messages.add(Msg.decode(payload));
     } on Object catch (e) {
       debugPrint('ble: dropping undecodable message: $e');
     }
+    return true;
   }
 
   /// Waits until the adapter is on, asking for permission first.
@@ -95,7 +114,7 @@ abstract class _BleLinkBase implements PeerLink {
     final done = Completer<bool>();
     _sendChain = _sendChain.then((_) async {
       try {
-        done.complete(await _sendNow(msg.encode()));
+        done.complete(await _sendNow(_auth.seal(msg.encode(), _outbound)));
       } on Object catch (e) {
         debugPrint('ble: send ${msg.type} failed: $e');
         done.complete(false);
@@ -119,11 +138,16 @@ abstract class _BleLinkBase implements PeerLink {
 class MainBleLink extends _BleLinkBase {
   MainBleLink({
     required String gameId,
+    required Uint8List key,
     required Future<bool> Function() ensurePermission,
     PeripheralManager Function()? manager,
   })  : _serviceUuid = UUID.fromString(gameId),
         _ensurePermission = ensurePermission,
-        _createManager = manager ?? PeripheralManager.new;
+        _createManager = manager ?? PeripheralManager.new,
+        super(key);
+
+  @override
+  PeerDirection get _inbound => PeerDirection.toMain;
 
   final UUID _serviceUuid;
   @override
@@ -132,6 +156,9 @@ class MainBleLink extends _BleLinkBase {
   PeripheralManager? _mgr;
   PeripheralManager get _manager => _mgr!;
   Central? _central;
+
+  /// One per central, so frames from a stranger can't corrupt Secondary's.
+  final _decoders = <UUID, FrameDecoder>{};
 
   late final _toSecondary = GATTCharacteristic.mutable(
     uuid: kToSecondaryUuid,
@@ -159,27 +186,28 @@ class MainBleLink extends _BleLinkBase {
           return;
         }
         await _manager.respondWriteRequest(e.request);
-        _onFrame(e.request.value);
-      }))
-      ..add(_manager.characteristicNotifyStateChanged.listen((e) async {
-        if (e.characteristic.uuid != kToSecondaryUuid) return;
-        if (e.state) {
+        final decoder = _decoders.putIfAbsent(e.central.uuid, FrameDecoder.new);
+        // Secondary always writes Hello right after subscribing, so the
+        // first signed message is what makes a central the peer.
+        if (_onFrame(decoder, e.request.value) && _central?.uuid != e.central.uuid) {
           _central = e.central;
           _state.value = LinkState.connected;
           await _manager.stopAdvertising();
-        } else if (_central?.uuid == e.central.uuid) {
-          await _lost();
         }
+      }))
+      ..add(_manager.characteristicNotifyStateChanged.listen((e) async {
+        if (e.characteristic.uuid != kToSecondaryUuid || e.state) return;
+        _decoders.remove(e.central.uuid);
+        if (_central?.uuid == e.central.uuid) await _lost();
       }));
     if (Platform.isAndroid) {
       // Darwin's peripheral manager throws on connectionStateChanged;
       // CoreBluetooth reports a central's disconnect as an unsubscribe,
       // which the listener above already handles.
       _subs.add(_manager.connectionStateChanged.listen((e) async {
-        if (e.state == ConnectionState.disconnected &&
-            _central?.uuid == e.central.uuid) {
-          await _lost();
-        }
+        if (e.state != ConnectionState.disconnected) return;
+        _decoders.remove(e.central.uuid);
+        if (_central?.uuid == e.central.uuid) await _lost();
       }));
     }
 
@@ -225,6 +253,7 @@ class MainBleLink extends _BleLinkBase {
 
   Future<void> _lost() async {
     _central = null;
+    _state.value = LinkState.advertising;
     if (_disposed) return;
     await _advertise();
   }
@@ -256,11 +285,23 @@ class MainBleLink extends _BleLinkBase {
 class SecondaryBleLink extends _BleLinkBase {
   SecondaryBleLink({
     required String gameId,
+    required Uint8List key,
     required Future<bool> Function() ensurePermission,
     CentralManager Function()? manager,
   })  : _serviceUuid = UUID.fromString(gameId),
         _ensurePermission = ensurePermission,
-        _createManager = manager ?? CentralManager.new;
+        _createManager = manager ?? CentralManager.new,
+        super(key);
+
+  /// How long a connected peripheral has to send a signed message (Main
+  /// answers Hello with Welcome) before Secondary drops it, and how long it
+  /// then ignores it, so a device copying Main's advertisement can't hold
+  /// Secondary.
+  static const authTimeout = Duration(seconds: 10);
+  static const ignoreFor = Duration(seconds: 30);
+
+  @override
+  PeerDirection get _inbound => PeerDirection.toSecondary;
 
   final UUID _serviceUuid;
   @override
@@ -271,6 +312,9 @@ class SecondaryBleLink extends _BleLinkBase {
   Peripheral? _peripheral;
   GATTCharacteristic? _toMain;
   bool _connecting = false;
+  final _decoder = FrameDecoder();
+  Timer? _authTimer;
+  final _ignored = <UUID, DateTime>{};
 
   @override
   Future<void> start() async {
@@ -281,18 +325,22 @@ class SecondaryBleLink extends _BleLinkBase {
       ..add(_manager.discovered.listen((e) {
         if (_connecting || _peripheral != null) return;
         if (!e.advertisement.serviceUUIDs.contains(_serviceUuid)) return;
+        final until = _ignored[e.peripheral.uuid];
+        if (until != null && DateTime.now().isBefore(until)) return;
         unawaited(_connect(e.peripheral));
       }))
       ..add(_manager.connectionStateChanged.listen((e) {
         if (e.state == ConnectionState.disconnected &&
             _peripheral?.uuid == e.peripheral.uuid) {
+          _authTimer?.cancel();
           _peripheral = null;
           _toMain = null;
           unawaited(_search());
         }
       }))
       ..add(_manager.characteristicNotified.listen((e) {
-        if (e.characteristic.uuid == kToSecondaryUuid) _onFrame(e.value);
+        if (e.characteristic.uuid != kToSecondaryUuid || e.peripheral.uuid != _peripheral?.uuid) return;
+        if (_onFrame(_decoder, e.value)) _authTimer?.cancel();
       }))
       ..add(_manager.stateChanged.listen((e) {
         if (e.state == BluetoothLowEnergyState.poweredOn) {
@@ -336,6 +384,8 @@ class SecondaryBleLink extends _BleLinkBase {
       _toMain = find(kToMainUuid);
       await _manager.setCharacteristicNotifyState(p, toSecondary, state: true);
       _peripheral = p;
+      _authTimer?.cancel();
+      _authTimer = Timer(authTimeout, () => unawaited(_dropUnsigned(p)));
       _state.value = LinkState.connected;
     } on Object catch (e) {
       debugPrint('ble: connect failed: $e');
@@ -347,6 +397,17 @@ class SecondaryBleLink extends _BleLinkBase {
       await _search();
     } finally {
       _connecting = false;
+    }
+  }
+
+  Future<void> _dropUnsigned(Peripheral p) async {
+    if (_disposed || _peripheral?.uuid != p.uuid) return;
+    debugPrint('ble: ${p.uuid} sent nothing signed; trying another');
+    _ignored[p.uuid] = DateTime.now().add(ignoreFor);
+    try {
+      await _manager.disconnect(p); // connectionStateChanged searches again
+    } on Object catch (e) {
+      debugPrint('ble: disconnect failed: $e');
     }
   }
 
@@ -365,6 +426,7 @@ class SecondaryBleLink extends _BleLinkBase {
 
   @override
   Future<void> dispose() async {
+    _authTimer?.cancel();
     await super.dispose();
     if (_mgr == null) return;
     try {

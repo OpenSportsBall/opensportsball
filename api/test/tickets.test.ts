@@ -120,6 +120,32 @@ describe('grant tickets', () => {
     expect((await upload(secondary)).body.status).toBe('ready');
   });
 
+  it('a ticket holder cannot bind it to a phone linked to the account', async () => {
+    const ticket = await oneTicket();
+    const other = await linkPhone(alice, 'Pixel 10');
+    // Main's own id is refused as the issuer; another of the account's
+    // phones needs a device token of the account.
+    expect((await redeem(ticket, gameId, main.deviceId)).status).toBe(400);
+    expect((await redeem(ticket, gameId, other.deviceId)).status).toBe(403);
+    const stranger = await linkPhone(randomUUID(), 'Pixel 8');
+    const asStranger = await callDevice(stranger.token, 'POST /grants/redeem', {
+      body: { ticket, gameId, deviceId: other.deviceId },
+    });
+    expect(asStranger.status).toBe(403);
+    // The account's own phone may: it is a Secondary on the same account.
+    const asOther = await callDevice(other.token, 'POST /grants/redeem', {
+      body: { ticket, gameId, deviceId: other.deviceId },
+    });
+    expect(asOther.status).toBe(200);
+  });
+
+  it('Main redeems for its Secondary on the same account', async () => {
+    const ticket = await oneTicket();
+    const other = await linkPhone(alice, 'Pixel 10');
+    const r = await callDevice(main.token, 'POST /grants/redeem', { body: { ticket, gameId, deviceId: other.deviceId } });
+    expect(r.status).toBe(200);
+  });
+
   it('Main\'s manifest waits for the ticket to be redeemed', async () => {
     const ticket = await oneTicket();
     const secondary: Phone = { deviceId: secondaryId, token: ticket, model: 'Galaxy S25' };

@@ -25,6 +25,12 @@ export interface GrantLink {
  *  2026-10-29) every parameter the app needs. */
 export type GrantFragment = { ticket: string } | { link: GrantLink };
 
+/** Whether a long link's API address is this site's [own]. */
+export function sameApi(api: string, own: string | null | undefined): boolean {
+	const norm = (u: string) => u.replace(/\/+$/, '');
+	return own != null && norm(api) === norm(own);
+}
+
 /** The /grant link for [ticket] on [origin]. */
 export function grantPageUrl(origin: string, ticket: string): string {
 	return `${origin.replace(/\/+$/, '')}/grant#${ticket}`;

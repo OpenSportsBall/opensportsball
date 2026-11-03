@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import 'package:opensportsball/src/model.dart';
 import 'package:opensportsball/src/protocol/clock_sync.dart';
 import 'package:opensportsball/src/protocol/framing.dart';
 import 'package:opensportsball/src/protocol/messages.dart';
+import 'package:opensportsball/src/protocol/peer_auth.dart';
 import 'package:opensportsball/src/ui/common.dart';
 
 void main() {
@@ -135,11 +137,53 @@ void main() {
 
   group('pairing code', () {
     const game = '0f8fad5b-d9cb-469f-a165-70867728950e';
-    test('round-trips', () => expect(parsePairingUri(pairingUri(game)), game));
+    final key = newPeerKey(Random(1));
+    test('round-trips', () {
+      final p = parsePairingUri(pairingUri(game, key))!;
+      expect(p.gameId, game);
+      expect(p.key, key);
+    });
     test('rejects other codes', () {
+      final k = pairingUri(game, key).split('&k=').last;
       expect(parsePairingUri('https://example.com'), isNull);
+      expect(parsePairingUri('opensportsball://pair?v=1&game=$game'), isNull, reason: 'no key');
       expect(parsePairingUri('opensportsball://pair?v=2&game=$game'), isNull);
-      expect(parsePairingUri('opensportsball://pair?v=1&game=not-a-uuid'), isNull);
+      expect(parsePairingUri('opensportsball://pair?v=2&game=$game&k=AAAA'), isNull, reason: 'short key');
+      expect(parsePairingUri('opensportsball://pair?v=2&game=not-a-uuid&k=$k'), isNull);
+    });
+  });
+
+  group('peer auth', () {
+    final key = newPeerKey(Random(2));
+    final msg = Uint8List.fromList(utf8.encode('{"type":"hello"}'));
+    var now = DateTime.utc(2026, 11, 2, 12);
+    DateTime clock() => now;
+
+    test('opens what the other phone sealed', () {
+      final sealed = PeerAuth(key, now: clock).seal(msg, PeerDirection.toMain);
+      expect(PeerAuth(key, now: clock).open(sealed, PeerDirection.toMain), msg);
+    });
+
+    test('rejects another key, the other direction, and tampering', () {
+      final sealed = PeerAuth(key, now: clock).seal(msg, PeerDirection.toMain);
+      expect(PeerAuth(newPeerKey(Random(3)), now: clock).open(sealed, PeerDirection.toMain), isNull);
+      expect(PeerAuth(key, now: clock).open(sealed, PeerDirection.toSecondary), isNull);
+      final bad = Uint8List.fromList(sealed)..[sealed.length - 1] ^= 1;
+      expect(PeerAuth(key, now: clock).open(bad, PeerDirection.toMain), isNull);
+      expect(PeerAuth(key, now: clock).open(Uint8List(10), PeerDirection.toMain), isNull);
+    });
+
+    test('rejects replays and stale messages', () {
+      final sender = PeerAuth(key, now: clock), receiver = PeerAuth(key, now: clock);
+      final first = sender.seal(msg, PeerDirection.toMain);
+      final second = sender.seal(msg, PeerDirection.toMain);
+      expect(receiver.open(second, PeerDirection.toMain), msg);
+      expect(receiver.open(second, PeerDirection.toMain), isNull, reason: 'replayed');
+      expect(receiver.open(first, PeerDirection.toMain), isNull, reason: 'older than the last');
+
+      final old = sender.seal(msg, PeerDirection.toMain);
+      now = now.add(kPeerAuthWindow + const Duration(seconds: 1));
+      expect(PeerAuth(key, now: clock).open(old, PeerDirection.toMain), isNull, reason: 'too old');
     });
   });
 }

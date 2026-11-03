@@ -53,7 +53,7 @@ import {
   type ReportItem,
 } from '../lib/recordings.js';
 import { config, ddb, keys, s3, segmentFileName, segmentKey } from '../lib/store.js';
-import { GRANT_TOKEN, LINK_CODE, MAX_OPEN_TICKETS, hashToken, newDeviceToken } from '../lib/tokens.js';
+import { DEVICE_TOKEN, GRANT_TOKEN, LINK_CODE, MAX_OPEN_TICKETS, hashToken, newDeviceToken } from '../lib/tokens.js';
 
 /** Who is calling. With a grant token, [accountId] is the account that
  *  issued it (Main's), not the phone's own. */
@@ -262,7 +262,9 @@ async function postTickets(ctx: DeviceContext, event: APIGatewayProxyEventV2) {
   );
 }
 
-/** Binds a ticket to one game and phone (either phone may ask). */
+/** Binds a ticket to one game and phone (either phone may ask). A phone
+ *  linked to the ticket's account also sends its device token: the route
+ *  has no authorizer, so it is looked up here. */
 async function redeem(b: Record<string, unknown>, event: APIGatewayProxyEventV2) {
   return json(
     200,
@@ -271,8 +273,18 @@ async function redeem(b: Record<string, unknown>, event: APIGatewayProxyEventV2)
       gameId: str(b, 'gameId', UUID),
       deviceId: str(b, 'deviceId', UUID),
       apiDomain: event.requestContext.domainName,
+      callerAccountId: await deviceTokenAccount(event),
     }),
   );
+}
+
+async function deviceTokenAccount(event: APIGatewayProxyEventV2) {
+  const header = event.headers?.authorization ?? event.headers?.Authorization ?? '';
+  const token = /^Bearer (\S+)$/.exec(header)?.[1];
+  if (!token || !DEVICE_TOKEN.test(token)) return undefined;
+  const r = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.token(hashToken(token)) }));
+  const item = r.Item as { kind?: string; accountId?: string } | undefined;
+  return item && item.kind !== 'grant' ? item.accountId : undefined;
 }
 
 // --- Manifest ---------------------------------------------------------------

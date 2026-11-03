@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { grantPageUrl, parseGrantFragment } from '../src/lib/grant.ts';
+import { grantPageUrl, parseGrantFragment, sameApi } from '../src/lib/grant.ts';
 
 const ticket = 'osbg_' + 'a'.repeat(43);
 const params = new URLSearchParams({
@@ -59,5 +59,11 @@ describe('grant links', () => {
 	it('drop extra parameters from the app link', () => {
 		const f = parseGrantFragment(`#${params}&evil=1`);
 		expect(f && 'link' in f ? f.link.appUri : null).toBe(appUri);
+	});
+
+	it('trust only this site\'s own API address', () => {
+		expect(sameApi('https://api.example/', 'https://api.example')).toBe(true);
+		expect(sameApi('https://evil.example', 'https://api.example')).toBe(false);
+		expect(sameApi('https://api.example', null)).toBe(false);
 	});
 });

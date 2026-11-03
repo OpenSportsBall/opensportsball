@@ -434,7 +434,8 @@ class AccountManager extends ChangeNotifier {
   Future<void> redeemPending() async {
     for (final p in List.of(_pending)) {
       try {
-        await _post(p.apiUrl, '/grants/redeem', {'ticket': p.ticket, 'gameId': p.gameId, 'deviceId': p.deviceId});
+        await _post(p.apiUrl, '/grants/redeem', {'ticket': p.ticket, 'gameId': p.gameId, 'deviceId': p.deviceId},
+            token: _deviceTokenFor(p.apiUrl));
         _pending.remove(p);
       } on LinkException catch (e) {
         if (e.offline) return;
@@ -449,7 +450,8 @@ class AccountManager extends ChangeNotifier {
   /// For Secondary: binds Main's ticket [g] to this phone ([deviceId]) and
   /// keeps the result as an ordinary grant. Throws [LinkException].
   Future<RecordingGrant> redeemGrant(RecordingGrant g, {required String deviceId}) async {
-    final b = await _post(g.apiUrl, '/grants/redeem', {'ticket': g.token, 'gameId': g.gameId, 'deviceId': deviceId});
+    final b = await _post(g.apiUrl, '/grants/redeem', {'ticket': g.token, 'gameId': g.gameId, 'deviceId': deviceId},
+        token: _deviceTokenFor(g.apiUrl));
     final DateTime expiresAt;
     try {
       expiresAt = DateTime.parse(b['expiresAt'] as String);
@@ -474,6 +476,16 @@ class AccountManager extends ChangeNotifier {
       await saveGrant(ticket);
       return false;
     }
+  }
+
+  /// This phone's device token, for redeeming a ticket on its own server:
+  /// binding a ticket to a phone linked to the ticket's account takes a
+  /// token of that account (docs/API.md). Never sent to another server.
+  String? _deviceTokenFor(String apiUrl) {
+    final link = _link;
+    if (link == null || _revoked) return null;
+    String norm(String u) => u.replaceAll(RegExp(r'/+$'), '');
+    return norm(link.apiUrl) == norm(apiUrl) ? link.deviceToken : null;
   }
 
   /// POSTs JSON and returns the decoded answer. Throws [LinkException]

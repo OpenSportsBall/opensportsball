@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:typed_data';
+
 import 'package:dual_camera/dual_camera.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -25,18 +27,21 @@ class SecondaryScreen extends StatefulWidget {
 class _SecondaryScreenState extends State<SecondaryScreen> {
   final _scanner = MobileScannerController(formats: const [BarcodeFormat.qrCode]);
   bool _scannerReleased = false;
-  String? _gameId;
+  ({String gameId, Uint8List key})? _pairing;
   String? _scanError;
 
   Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_gameId != null) return;
+    if (_pairing != null) return;
     for (final code in capture.barcodes) {
-      final game = code.rawValue == null ? null : parsePairingUri(code.rawValue!);
-      if (game == null) {
-        setState(() => _scanError = 'That is not a OpenSportsBall pairing code.');
+      final raw = code.rawValue;
+      final pairing = raw == null ? null : parsePairingUri(raw);
+      if (pairing == null) {
+        setState(() => _scanError = raw != null && raw.contains('opensportsball://pair?v=1&')
+            ? 'The Main phone has an older version of the app. Update it, then scan again.'
+            : 'That is not a OpenSportsBall pairing code.');
         continue;
       }
-      _gameId = game;
+      _pairing = pairing;
       // The scanner holds the camera; release it before recording opens it.
       await _scanner.stop();
       await _scanner.dispose();
@@ -54,13 +59,14 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final game = _gameId;
-    if (game != null && _scannerReleased) {
-      return _SecondarySession(store: widget.store, account: widget.account, gameId: game);
+    final pairing = _pairing;
+    if (pairing != null && _scannerReleased) {
+      return _SecondarySession(
+          store: widget.store, account: widget.account, gameId: pairing.gameId, pairingKey: pairing.key);
     }
     return Scaffold(
       body: PreviewLayout(
-        preview: game == null
+        preview: pairing == null
             ? MobileScanner(controller: _scanner, onDetect: _onDetect)
             : const CircularProgressIndicator(),
         panel: [
@@ -76,10 +82,12 @@ class _SecondaryScreenState extends State<SecondaryScreen> {
 }
 
 class _SecondarySession extends StatefulWidget {
-  const _SecondarySession({required this.store, required this.account, required this.gameId});
+  const _SecondarySession(
+      {required this.store, required this.account, required this.gameId, required this.pairingKey});
   final AppStore store;
   final AccountManager account;
   final String gameId;
+  final Uint8List pairingKey;
   @override
   State<_SecondarySession> createState() => _SecondarySessionState();
 }
@@ -90,7 +98,8 @@ class _SecondarySessionState extends State<_SecondarySession> {
     store: widget.store,
     camera: _camera,
     gameId: widget.gameId,
-    linkFactory: (gameId) => SecondaryBleLink(gameId: gameId, ensurePermission: _camera.requestBluetoothPermission),
+    linkFactory: (gameId) => SecondaryBleLink(
+        gameId: gameId, key: widget.pairingKey, ensurePermission: _camera.requestBluetoothPermission),
     account: widget.account,
   );
 
