@@ -74,6 +74,7 @@ Map<String, Object?>? buildManifest(LocalRecording main, {DateTime? now}) {
     'gameId': main.gameId,
     'sessionId': main.recordingId,
     'createdAt': (now ?? DateTime.now()).toUtc().toIso8601String(),
+    if (main.sport != null) 'sport': main.sport!.name,
     'devices': [
       _device(main.device, 'main', mainVideo, orientation: main.orientation, locks: main.locks, segments: main.segments),
     ],

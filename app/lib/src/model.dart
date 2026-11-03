@@ -50,6 +50,7 @@ class RecordingSettings {
     this.lockExposure = false,
     this.segmentMinutes = 5,
     this.darkenScreen = true,
+    this.sport = Sport.soccer,
   });
 
   factory RecordingSettings.fromJson(Map<String, Object?> j) =>
@@ -59,6 +60,7 @@ class RecordingSettings {
         segmentMinutes: j['segmentMinutes'] as int,
         // Absent in settings saved (or sent over BLE) by older versions.
         darkenScreen: j['darkenScreen'] as bool? ?? true,
+        sport: Sport.fromName(j['sport'] as String?) ?? Sport.soccer,
       );
 
   final Resolution resolution;
@@ -68,6 +70,10 @@ class RecordingSettings {
   /// Black out the screen at minimum brightness 15 s into a recording, to
   /// save battery and heat. Tap to wake. Main sends this to Secondary.
   final bool darkenScreen;
+
+  /// What is being recorded. Goes in the manifest so processing can pick
+  /// its models; only soccer has them for now.
+  final Sport sport;
 
   CaptureConfig toCaptureConfig() => CaptureConfig(
         width: resolution.width,
@@ -85,12 +91,14 @@ class RecordingSettings {
     bool? lockExposure,
     int? segmentMinutes,
     bool? darkenScreen,
+    Sport? sport,
   }) =>
       RecordingSettings(
         resolution: resolution ?? this.resolution,
         lockExposure: lockExposure ?? this.lockExposure,
         segmentMinutes: segmentMinutes ?? this.segmentMinutes,
         darkenScreen: darkenScreen ?? this.darkenScreen,
+        sport: sport ?? this.sport,
       );
 
   Map<String, Object?> toJson() => {
@@ -98,17 +106,23 @@ class RecordingSettings {
         'lockExposure': lockExposure,
         'segmentMinutes': segmentMinutes,
         'darkenScreen': darkenScreen,
+        'sport': sport.name,
       };
 }
 
 /// This phone's upload preferences. Not sent over BLE.
 class UploadSettings {
-  const UploadSettings({this.wifiOnly = true, this.lastApiUrl});
+  const UploadSettings({this.enabled = true, this.wifiOnly = true, this.lastApiUrl});
 
   factory UploadSettings.fromJson(Map<String, Object?> j) => UploadSettings(
+        enabled: j['enabled'] as bool? ?? true,
         wifiOnly: j['wifiOnly'] as bool? ?? true,
         lastApiUrl: j['lastApiUrl'] as String?,
       );
+
+  /// Upload recordings to the cloud at all. Off: they stay on this phone
+  /// and nothing is sent until it is turned back on.
+  final bool enabled;
 
   /// Upload only on Wi-Fi (or Ethernet), never on mobile data.
   final bool wifiOnly;
@@ -117,15 +131,31 @@ class UploadSettings {
   /// typed instead of scanned next time.
   final String? lastApiUrl;
 
-  UploadSettings copyWith({bool? wifiOnly, String? lastApiUrl}) => UploadSettings(
+  UploadSettings copyWith({bool? enabled, bool? wifiOnly, String? lastApiUrl}) => UploadSettings(
+        enabled: enabled ?? this.enabled,
         wifiOnly: wifiOnly ?? this.wifiOnly,
         lastApiUrl: lastApiUrl ?? this.lastApiUrl,
       );
 
   Map<String, Object?> toJson() => {
+        'enabled': enabled,
         'wifiOnly': wifiOnly,
         if (lastApiUrl != null) 'lastApiUrl': lastApiUrl,
       };
+}
+
+/// The manifest's `sport`. `other` is anything without its own models yet.
+enum Sport {
+  soccer('Soccer'),
+  other('Other');
+
+  const Sport(this.label);
+
+  final String label;
+
+  /// Null for a name this version doesn't know (or none at all).
+  static Sport? fromName(String? name) =>
+      Sport.values.where((s) => s.name == name).firstOrNull;
 }
 
 enum Resolution {

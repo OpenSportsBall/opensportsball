@@ -32,6 +32,7 @@ enum UploadPhase {
   unlinked('This phone was unlinked; link it again'),
   waitingForGrant('Waiting for upload permission from the Main phone'),
   grantExpired('Upload permission from the Main phone expired; pair with it again'),
+  off('Uploading to the cloud is off'),
   paused('Paused'),
   recording('Paused while recording'),
   offline('No internet connection'),
@@ -216,6 +217,7 @@ class UploadService extends ChangeNotifier {
   List<RecordingUpload> get recordings => _recordings;
   NetworkKind get networkKind => _net;
   bool get paused => _paused;
+  bool get enabled => store.uploadSettings.enabled;
   bool get wifiOnly => store.uploadSettings.wifiOnly;
   bool get mobileOverride => _mobileOverride;
 
@@ -229,7 +231,7 @@ class UploadService extends ChangeNotifier {
 
   /// Waiting only because the phone is on mobile data.
   bool get blockedByMobileData =>
-      _net == NetworkKind.metered && wifiOnly && !_mobileOverride && pending.isNotEmpty;
+      enabled && _net == NetworkKind.metered && wifiOnly && !_mobileOverride && pending.isNotEmpty;
 
   // ---- Controls ----
 
@@ -254,6 +256,14 @@ class UploadService extends ChangeNotifier {
 
   void setPaused(bool paused) {
     _paused = paused;
+    _stopIfBlocked();
+    _notify();
+    kick();
+  }
+
+  /// Off stops the upload in progress; nothing is sent until it is on again.
+  Future<void> setEnabled(bool on) async {
+    await store.saveUploadSettings(store.uploadSettings.copyWith(enabled: on));
     _stopIfBlocked();
     _notify();
     kick();
@@ -344,6 +354,7 @@ class UploadService extends ChangeNotifier {
   /// ([_target]).
   UploadPhase? _blockedBy() {
     if (_disposed) return UploadPhase.paused;
+    if (!enabled) return UploadPhase.off;
     if (_paused) return UploadPhase.paused;
     if (activity.recording) return UploadPhase.recording;
     if (_net == NetworkKind.offline) return UploadPhase.offline;
@@ -381,7 +392,7 @@ class UploadService extends ChangeNotifier {
         debugPrint('connectivity check failed: $e');
       }
       await _scan();
-      if (_net != NetworkKind.offline) {
+      if (_net != NetworkKind.offline && enabled) {
         // A tiny request, so mobile data is fine: Main binds the tickets it
         // handed over, before uploading the manifest that names that
         // Secondary. Nothing to send if it handed none over.

@@ -288,6 +288,7 @@ class LocalRecording {
     required this.role,
     required this.device,
     required this.createdAtMs,
+    this.sport,
     this.video,
     this.orientation,
     this.startedAtDeviceMs,
@@ -305,6 +306,7 @@ class LocalRecording {
         role: DeviceRole.values.byName(j['role'] as String),
         device: DeviceIdentity.fromJson((j['device'] as Map).cast()),
         createdAtMs: j['createdAtMs'] as int,
+        sport: Sport.fromName(j['sport'] as String?),
         video: j['video'] == null ? null : VideoInfo.fromJson((j['video'] as Map).cast()),
         orientation: j['orientation'] == null
             ? null
@@ -326,6 +328,10 @@ class LocalRecording {
   final DeviceRole role;
   final DeviceIdentity device;
   final int createdAtMs;
+
+  /// The sport setting when recording started; null in recordings from
+  /// before it existed.
+  final Sport? sport;
   VideoInfo? video;
 
   /// Measured when recording starts, then again at each settings lock
@@ -350,6 +356,7 @@ class LocalRecording {
         'role': role.name,
         'device': device.toJson(),
         'createdAtMs': createdAtMs,
+        'sport': sport?.name,
         'video': video?.toJson(),
         'orientation': orientation?.toJson(),
         'startedAtDeviceMs': startedAtDeviceMs,

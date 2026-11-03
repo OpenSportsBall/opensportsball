@@ -42,6 +42,7 @@ export interface Manifest {
   gameId: string;
   sessionId: string;
   createdAt: string;
+  sport?: 'soccer' | 'other';
   devices: ManifestDevice[];
 }
 

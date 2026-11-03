@@ -51,10 +51,16 @@ void main() {
   testWidgets('settings screen has an account section', (tester) async {
     final services = (await tester.runAsync(() async => fakeServices(await tempStore('eeeeeeee'))))!;
     await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(store: services.store, account: services.account)));
+        home: SettingsScreen(
+            store: services.store, account: services.account, uploads: services.uploads)));
     await tester.pumpAndSettle();
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Link to account'), findsOneWidget);
+    expect(services.uploads.enabled, isTrue, reason: 'upload to cloud defaults on');
+    await tester.tap(find.text('Upload to cloud'));
+    await tester.runAsync(() => pumpEventQueue());
+    await tester.pump();
+    expect(services.store.uploadSettings.enabled, isFalse);
   });
 
   testWidgets('uploads screen prompts to link and offers the Wi-Fi switch', (tester) async {

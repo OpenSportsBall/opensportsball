@@ -143,7 +143,8 @@ class RolePickerScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Settings',
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => _push(context, SettingsScreen(store: store, account: services.account)),
+            onPressed: () => _push(context, SettingsScreen(
+                store: store, account: services.account, uploads: services.uploads)),
           ),
         ],
       ),

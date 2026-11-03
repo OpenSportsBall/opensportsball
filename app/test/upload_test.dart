@@ -452,6 +452,42 @@ void main() {
       expect(s.phase, UploadPhase.offline);
     });
 
+    test('upload to cloud off: nothing is sent until it is on again', () async {
+      final h = await Harness.create();
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [100]);
+      final s = h.service();
+      expect(s.enabled, isTrue, reason: 'default on');
+
+      await s.setEnabled(false);
+      expect(h.store.uploadSettings.enabled, isFalse);
+      expect(await s.runPass(), PassResult.blocked);
+      expect(s.phase, UploadPhase.off);
+      expect(h.backend.log, isEmpty, reason: 'no request at all');
+
+      h.network.kind = NetworkKind.metered;
+      expect(s.blockedByMobileData, isFalse, reason: 'no mobile data prompt while off');
+
+      h.network.kind = NetworkKind.unmetered;
+      await s.setEnabled(true);
+      expect(await s.runPass(), PassResult.done);
+      expect(h.backend.files.length, 1);
+    });
+
+    test('turning upload to cloud off cuts off the part being sent', () async {
+      final h = await Harness.create();
+      await writeRecording(h.store, recordingId: 'rec-1', sizes: [500]);
+      final client = StallingClient(h.backend.client)..stall = true;
+      final s = h.service(client: client)..start();
+      await eventually(() => client.stalled == 1);
+
+      await s.setEnabled(false);
+      await eventually(() => s.phase == UploadPhase.off);
+      await pumpEventQueue();
+      expect(s.phase, UploadPhase.off, reason: 'the next pass agrees');
+      expect(client.stalled, 1, reason: 'no new part while off');
+      s.dispose();
+    });
+
     test('losing Wi-Fi cuts off a stalled part at once', () async {
       final h = await Harness.create();
       await writeRecording(h.store, recordingId: 'rec-1', sizes: [500]);

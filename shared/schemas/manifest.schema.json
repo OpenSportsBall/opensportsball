@@ -11,6 +11,7 @@
     "gameId": { "type": "string", "description": "Game this recording belongs to. A game can have several sessions (e.g. one per half)." },
     "sessionId": { "type": "string", "description": "One continuous start-to-stop recording on both phones." },
     "createdAt": { "type": "string", "format": "date-time" },
+    "sport": { "enum": ["soccer", "other"], "description": "Sport chosen in the Main phone's settings when recording started. other: anything without its own processing models yet. Missing in recordings from before this was added; treat those as soccer." },
     "devices": {
       "type": "array",
       "minItems": 1,

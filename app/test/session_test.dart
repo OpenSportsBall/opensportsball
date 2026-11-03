@@ -140,6 +140,7 @@ void main() {
 
     expect(manifest['gameId'], main.gameId);
     expect(manifest['sessionId'], id);
+    expect(manifest['sport'], 'soccer');
     final devices = manifest['devices'] as List;
     expect(devices.map((d) => d['role']), ['main', 'secondary']);
     expect(devices[1]['platform'], 'android');

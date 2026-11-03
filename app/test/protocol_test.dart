@@ -186,4 +186,12 @@ void main() {
       expect(PeerAuth(key, now: clock).open(old, PeerDirection.toMain), isNull, reason: 'too old');
     });
   });
+
+  test('sport round-trips, and older or unknown settings mean soccer', () {
+    const other = RecordingSettings(sport: Sport.other);
+    expect(RecordingSettings.fromJson(other.toJson()).sport, Sport.other);
+    final old = const RecordingSettings().toJson()..remove('sport');
+    expect(RecordingSettings.fromJson(old).sport, Sport.soccer);
+    expect(RecordingSettings.fromJson({...old, 'sport': 'curling'}).sport, Sport.soccer);
+  });
 }

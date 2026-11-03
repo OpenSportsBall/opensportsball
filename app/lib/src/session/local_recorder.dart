@@ -152,6 +152,7 @@ class LocalRecorder {
       role: role,
       device: store.identity,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      sport: store.settings.sport,
       video: VideoInfo.fromOpen(o, c),
     );
     final dir = store.recordingDir(gameId, recordingId);

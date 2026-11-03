@@ -6,14 +6,17 @@ import 'package:flutter/material.dart';
 import '../model.dart';
 import '../storage/store.dart';
 import '../upload/account.dart';
+import '../upload/upload_service.dart';
 import 'account_screen.dart';
 
 /// Recording settings and the account link. Only the Main phone's recording
 /// settings matter: it sends them to the Secondary when they pair.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.store, required this.account});
+  const SettingsScreen(
+      {super.key, required this.store, required this.account, required this.uploads});
   final AppStore store;
   final AccountManager account;
+  final UploadService uploads;
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
@@ -56,6 +59,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               );
             },
           ),
+          ListenableBuilder(
+            listenable: widget.uploads,
+            builder: (context, _) => SwitchListTile(
+              title: const Text('Upload to cloud'),
+              subtitle: const Text(
+                  'Off: recordings stay on this phone and nothing is uploaded until '
+                  'this is turned back on.'),
+              value: widget.uploads.enabled,
+              onChanged: widget.uploads.setEnabled,
+            ),
+          ),
           const SizedBox(height: 16),
           const _SectionHeader('Recording'),
           const Padding(
@@ -64,6 +78,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Set these on the Main phone; the Secondary uses the Main phone\'s settings.'),
           ),
           const SizedBox(height: 16),
+          ListTile(
+            title: const Text('Sport'),
+            subtitle: const Text(
+                'Processing is tuned for soccer. Choose Other for anything else.'),
+            trailing: SegmentedButton<Sport>(
+              segments: [
+                for (final s in Sport.values)
+                  ButtonSegment(value: s, label: Text(s.label)),
+              ],
+              selected: {_s.sport},
+              onSelectionChanged: (v) => _set(_s.copyWith(sport: v.first)),
+            ),
+          ),
           ListTile(
             title: const Text('Resolution'),
             subtitle: Text(_s.resolution == Resolution.uhd4k
