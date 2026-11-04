@@ -28,6 +28,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import type { Construct } from 'constructs';
+import { siteContentSecurityPolicy } from './csp.js';
 import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js';
 
 /** Where managed login sends the phone app back to (docs/API.md). */
@@ -101,10 +102,33 @@ export class OpenSportsBallStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
+    // Security headers for every response (lib/csp.ts). The sign-in address
+    // is built from the domain settings, as Cognito names it: referring to
+    // the API or the login domain resources would make a dependency cycle
+    // (the API's CORS and the sign-in callbacks name this distribution).
+    const siteHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SiteHeaders', {
+      comment: 'OpenSportsBall website security headers',
+      securityHeadersBehavior: {
+        contentSecurityPolicy: {
+          contentSecurityPolicy: siteContentSecurityPolicy({
+            loginUrl: authDomain
+              ? `https://${authDomain}`
+              : `https://${props.authDomainPrefix}.auth.${this.region}.amazoncognito.com`,
+            region: this.region,
+          }),
+          override: true,
+        },
+        contentTypeOptions: { override: true },
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        referrerPolicy: { referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN, override: true },
+        strictTransportSecurity: { accessControlMaxAge: cdk.Duration.days(365), includeSubdomains: false, override: true },
+      },
+    });
     const cdn = new cloudfront.Distribution(this, 'SiteCdn', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(site),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        responseHeadersPolicy: siteHeaders,
         functionAssociations: siteDomain
           ? [
               {

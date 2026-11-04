@@ -197,6 +197,26 @@ describe('accounts and website', () => {
     });
   });
 
+  it('sends security headers with every page, and no site may frame it', () => {
+    const policies = Object.entries(t.findResources('AWS::CloudFront::ResponseHeadersPolicy'));
+    expect(policies).toHaveLength(1);
+    const [id, policy] = policies[0]!;
+    t.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({ ResponseHeadersPolicyId: { Ref: id } }),
+      }),
+    });
+    const sec = policy.Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig;
+    expect(sec.FrameOptions).toEqual({ FrameOption: 'DENY', Override: true });
+    expect(sec.ContentTypeOptions).toEqual({ Override: true });
+    expect(sec.StrictTransportSecurity.AccessControlMaxAgeSec).toBe(365 * 24 * 3600);
+    const csp = JSON.stringify(sec.ContentSecurityPolicy.ContentSecurityPolicy);
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain('https://osb-test.auth.');
+    expect(csp).toContain('https://*.execute-api.');
+  });
+
   it('RecordingReady events are captured until processing exists', () => {
     t.hasResourceProperties('AWS::Events::Rule', {
       EventPattern: { source: ['opensportsball'], 'detail-type': ['RecordingReady'] },
@@ -251,5 +271,12 @@ describe('custom domain', () => {
     });
     d.hasOutput('LoginDomain', { Value: 'https://auth.example.com' });
     d.hasOutput('LoginCdnDomain', {});
+  });
+
+  it('lets the site reach the custom login domain', () => {
+    const policy = Object.values(d.findResources('AWS::CloudFront::ResponseHeadersPolicy'))[0]!;
+    const csp = JSON.stringify(policy.Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig.ContentSecurityPolicy);
+    expect(csp).toContain('https://auth.example.com');
+    expect(csp).not.toContain('osb-test.auth.');
   });
 });
