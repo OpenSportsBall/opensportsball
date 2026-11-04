@@ -97,6 +97,18 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('linking', () {
+    test('tells whether a scanned code names the same server', () {
+      const api = 'https://abc123.execute-api.us-east-1.amazonaws.com';
+      expect(sameApiUrl(api, '$api/'), isTrue);
+      expect(sameApiUrl(api, 'https://ABC123.execute-api.us-east-1.amazonaws.com'), isTrue);
+      expect(sameApiUrl('https://x.example.com/prod', 'https://x.example.com/prod/'), isTrue);
+      expect(sameApiUrl(api, 'https://evil.example.com'), isFalse);
+      expect(sameApiUrl(api, 'https://abc123.execute-api.us-east-1.amazonaws.com.evil.example'), isFalse);
+      expect(sameApiUrl(api, 'https://abc123.execute-api.us-east-1.amazonaws.com:8443'), isFalse);
+      expect(sameApiUrl('https://x.example.com/prod', 'https://x.example.com/dev'), isFalse);
+      expect(sameApiUrl('', api), isFalse);
+    });
+
     test('parses the link QR code and typed codes', () {
       final r = parseLinkUri('opensportsball://link?v=1&api=${Uri.encodeComponent('https://x.example.com/prod')}&code=ABCDEFGH');
       expect(r!.apiUrl, 'https://x.example.com/prod');

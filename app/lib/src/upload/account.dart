@@ -68,6 +68,15 @@ bool isAcceptableApiUrl(String url) {
   return u != null && u.scheme == 'https' && u.host.isNotEmpty;
 }
 
+/// Whether two API URLs name the same server: scheme, host and port
+/// (host case and trailing slashes don't matter).
+bool sameApiUrl(String a, String b) {
+  final x = Uri.tryParse(a.trim()), y = Uri.tryParse(b.trim());
+  if (x == null || y == null || x.host.isEmpty) return false;
+  String path(Uri u) => u.path.replaceAll(RegExp(r'/+$'), '');
+  return x.scheme == y.scheme && x.host.toLowerCase() == y.host.toLowerCase() && x.port == y.port && path(x) == path(y);
+}
+
 class LinkRequest {
   const LinkRequest({required this.apiUrl, required this.code});
   final String apiUrl;

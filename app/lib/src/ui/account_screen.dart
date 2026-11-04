@@ -171,6 +171,50 @@ class _LinkFormState extends State<_LinkForm> {
 
   Future<void> _link(LinkRequest r) => _run(() => widget.account.linkWith(r));
 
+  /// A scanned code names its own server, and everything this phone records
+  /// will upload there. So a code for any server but this phone's own, or
+  /// the website's in the Server setting, is confirmed first: a stranger's
+  /// QR code must not quietly send a family's footage elsewhere.
+  Future<void> _linkScanned(LinkRequest r) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final trusted = await _isOwnServer(r.apiUrl);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!trusted && !await _confirmServer(r.apiUrl)) return;
+    await _link(r);
+  }
+
+  Future<bool> _isOwnServer(String apiUrl) async {
+    final known = widget.account.knownApiUrl;
+    if (known != null && sameApiUrl(known, apiUrl)) return true;
+    try {
+      return sameApiUrl((await widget.signIn.loadConfig(_site)).apiUrl, apiUrl);
+    } on LinkException {
+      return false; // can't tell (offline?): ask
+    }
+  }
+
+  Future<bool> _confirmServer(String apiUrl) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('A different server'),
+        content: Text('This code links the phone to a server at ${Uri.parse(apiUrl).host}, '
+            'not to ${Uri.parse(_site).host}. Everything this phone records will upload there.\n\n'
+            'Only continue if you trust whoever runs that server.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Link anyway')),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
   Future<void> _signIn({required bool signUp}) =>
       _run(() => widget.signIn.signInAndLink(widget.account, siteUrl: _site, signUp: signUp));
 
@@ -245,7 +289,7 @@ class _LinkFormState extends State<_LinkForm> {
             'Scan the code under "Link a phone" on the website.');
         continue;
       }
-      _link(r);
+      _linkScanned(r);
       return;
     }
   }
