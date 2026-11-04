@@ -36,8 +36,8 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
   (battery and heat).
 - Self-host only, or also a hosted service. Drives how much the YouTube
   quota and audit matter.
-- CLA text (base it on the Apache Individual CLA) before the repo goes
-  public.
+- CLA: a draft is in `CLA.md`; it needs a lawyer's review before the repos
+  go public.
 
 ## Capture
 

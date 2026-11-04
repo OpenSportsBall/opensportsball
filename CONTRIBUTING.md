@@ -2,13 +2,14 @@
 
 Thanks for helping. Before you open a pull request:
 
-1. **Sign the contributor license agreement (CLA).** Pull requests can't be
-   merged until it is signed. The CLA lets the maintainers relicense
-   contributions, which is required to offer the processing pipeline
-   (opensportsball-processing) under a commercial license alongside the
-   AGPL. (TODO before the repo goes public:
-   adopt a CLA text, based on the Apache Individual CLA, and connect CLA
-   Assistant.)
+1. **Sign the [contributor license agreement](CLA.md) (CLA).** CLA
+   Assistant asks you to sign when you open your first pull request, and
+   pull requests can't be merged until you do. One signature covers every
+   repository in the OpenSportsBall organization. You keep the copyright
+   to your work; the CLA gives the project a license broad enough to offer
+   the processing pipeline (opensportsball-processing) under a commercial
+   license alongside the AGPL. (TODO before the repo goes public: have the
+   CLA text reviewed and connect CLA Assistant.)
 2. **Read [docs/LICENSING.md](docs/LICENSING.md).** Everything here is
    Apache-2.0. Never import, vendor or link the AGPL processing code, and
    add no AGPL or GPL dependencies.
