@@ -127,8 +127,11 @@ through `"imports"` in `package.json`.
 
 ## Licensing
 
+<!-- REUSE-IgnoreStart -->
 Every source file starts with an SPDX header
 (`SPDX-License-Identifier: Apache-2.0`; an HTML comment in `.svelte`
 files). Dependencies must not be GPL or AGPL; see
 [`docs/LICENSING.md`](../docs/LICENSING.md). Runtime dependencies:
 `oidc-client-ts` (Apache-2.0) and `qrcode` (MIT).
+
+<!-- REUSE-IgnoreEnd -->

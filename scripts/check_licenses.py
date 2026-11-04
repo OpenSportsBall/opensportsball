@@ -22,7 +22,9 @@ SOURCE_SUFFIXES = {
     ".dart", ".py", ".ts", ".tsx", ".js", ".mjs", ".svelte",
     ".kt", ".java", ".swift", ".m", ".h", ".sh",
 }
+# REUSE-IgnoreStart
 SPDX = re.compile(r"SPDX-License-Identifier:\s*(\S+)")
+# REUSE-IgnoreEnd
 # Apache code must not import the AGPL processing package.
 BOUNDARY = re.compile(
     r"osb_processing|(?:^|[\s'\"(/.])(?:processing|ml)/(?:src|data|runs)\b"
