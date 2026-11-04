@@ -11,9 +11,11 @@ import 'package:opensportsball/src/app_services.dart';
 import 'package:opensportsball/src/role.dart';
 import 'package:opensportsball/src/session/activity.dart';
 import 'package:opensportsball/src/storage/store.dart';
+import 'package:opensportsball/src/ui/account_screen.dart';
 import 'package:opensportsball/src/ui/settings_screen.dart';
 import 'package:opensportsball/src/ui/uploads_screen.dart';
 import 'package:opensportsball/src/upload/account.dart';
+import 'package:opensportsball/src/upload/sign_in.dart';
 import 'package:opensportsball/src/upload/upload_service.dart';
 
 import 'fakes.dart';
@@ -61,6 +63,35 @@ void main() {
     await tester.runAsync(() => pumpEventQueue());
     await tester.pump();
     expect(services.store.uploadSettings.enabled, isFalse);
+  });
+
+  testWidgets('a linked phone offers deleting the account on the website', (tester) async {
+    tester.view.physicalSize = const Size(2400, 1080);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final client = MockClient((_) async => http.Response('{}', 404));
+    final account = (await tester.runAsync(() async => fakeAccount(await tempStore('ffffffff'), client, accountId: 'acc-1')))!;
+    final opened = <Uri>[];
+    await tester.pumpWidget(MaterialApp(
+        home: AccountScreen(account: account, openUrl: (u) async {
+      opened.add(u);
+      return true;
+    })));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete account…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete your account?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(opened, isEmpty);
+
+    await tester.tap(find.text('Delete account…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(opened, [Uri.parse('$defaultSiteUrl/account')]);
+    expect(account.linked, isTrue, reason: 'the phone stays linked until the website deletes the account');
   });
 
   testWidgets('uploads screen prompts to link and offers the Wi-Fi switch', (tester) async {

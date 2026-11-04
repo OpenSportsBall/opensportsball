@@ -1,30 +1,48 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
-/** Deleting a recording or a whole game from the website, for good.
+/** Deleting a recording, a whole game, or the whole account from the
+ *  website, for good.
  *
  *  A delete first leaves a `DELETED#` marker, then removes the footage in
  *  S3 (aborting unfinished multipart uploads) and the table items. The
  *  marker stays: a phone that still has the recording queued gets 410 Gone
  *  instead of quietly creating it again (ensureRecording). If a delete
- *  fails partway, calling it again finishes it. */
+ *  fails partway, calling it again finishes it.
+ *
+ *  Deleting the account leaves only a `CLOSED` marker holding the account
+ *  id and when it was deleted. */
 
 import { AbortMultipartUploadCommand, DeleteObjectsCommand, ListMultipartUploadsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { AdminDeleteUserCommand, UserNotFoundException } from '@aws-sdk/client-cognito-identity-provider';
 import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { gone, notFound } from './http.js';
-import { config, ddb, gamePrefix, keys, queryPrefix, recordingPrefix, s3 } from './store.js';
+import {
+  accountPrefix,
+  cognito,
+  config,
+  ddb,
+  gamePrefix,
+  keys,
+  queryPrefix,
+  recordingPrefix,
+  s3,
+} from './store.js';
 
 type Key = { pk: string; sk: string };
 
 const exists = async (key: Key) =>
   Boolean((await ddb.send(new GetCommand({ TableName: config.table, Key: key }))).Item);
 
-/** Refuses anything for a recording, or a game, deleted on the website. */
+/** Refuses anything for a recording, a game, or an account deleted on the
+ *  website. */
 export async function refuseDeleted(acct: string, gameId: string, recordingId: string) {
-  const [game, rec] = await Promise.all([
+  const [closed, game, rec] = await Promise.all([
+    exists(keys.closedAccount(acct)),
     exists(keys.deletedGame(acct, gameId)),
     exists(keys.deletedRecording(acct, gameId, recordingId)),
   ]);
+  if (closed) throw gone('This account was deleted.');
   if (game) throw gone('This game was deleted on the website.');
   if (rec) throw gone('This recording was deleted on the website.');
 }
@@ -63,6 +81,38 @@ export async function deleteGame(acct: string, gameId: string) {
   // DELETED#<gameId># is each recording's marker; the game's covers them.
   await deleteItems(acct, [`GRANT#${g}`, `REPORT#${g}`, `OBJ#${g}`, `UPLOAD#${g}`, `REC#${g}`, `DELETED#${g}`]);
   await deleteKeys([keys.game(acct, gameId)]);
+}
+
+export const isClosed = (acct: string) => exists(keys.closedAccount(acct));
+
+/** Deletes the account: its phones (unlinked, their tokens revoked), the
+ *  grant tokens and tickets it handed out, all footage, every table item
+ *  but the CLOSED marker, and the sign-in itself in Cognito. The marker
+ *  goes first, so a link code still open or an upload already under way
+ *  is refused (410) rather than starting the account again. */
+export async function deleteAccount(acct: string) {
+  await putMarker(keys.closedAccount(acct));
+
+  const devices = await queryPrefix<{ deviceId: string; tokenHash: string }>(acct, 'DEVICE#');
+  const grants = await queryPrefix<{ tokenHash: string }>(acct, 'GRANT#');
+  const tickets = await queryPrefix<{ tokenHash: string }>(acct, 'TICKET#');
+  await deleteKeys([
+    ...devices.flatMap((d) => [keys.token(d.tokenHash), keys.owner(d.deviceId)]),
+    ...[...grants, ...tickets].map((g) => keys.token(g.tokenHash)),
+  ]);
+
+  await deleteFootage(accountPrefix(acct));
+
+  const items = await queryPrefix<Key>(acct, '');
+  await deleteKeys(items.filter((i) => i.sk !== 'CLOSED').map(({ pk, sk }) => ({ pk, sk })));
+
+  try {
+    // The account id is the user's sub, which is also its username
+    // (sign-in is by email alias).
+    await cognito.send(new AdminDeleteUserCommand({ UserPoolId: config.userPoolId, Username: acct }));
+  } catch (e) {
+    if (!(e instanceof UserNotFoundException)) throw e;
+  }
 }
 
 const putMarker = (key: Key) =>

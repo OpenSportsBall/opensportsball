@@ -55,6 +55,12 @@ describe('api client', () => {
 		expect(calls[0].url).toBe('https://api.example.com/devices/dev-1');
 	});
 
+	it('DELETEs the account', async () => {
+		const { client, calls } = setup(() => new Response(null, { status: 204 }));
+		await expect(client.deleteAccount()).resolves.toBeUndefined();
+		expect(calls.map((c) => [c.init.method, c.url])).toEqual([['DELETE', 'https://api.example.com/me']]);
+	});
+
 	it('DELETEs a game and a recording', async () => {
 		const { client, calls } = setup(() => new Response(null, { status: 204 }));
 		await expect(client.deleteGame('g/1')).resolves.toBeUndefined();

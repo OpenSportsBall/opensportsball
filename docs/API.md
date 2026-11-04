@@ -114,6 +114,19 @@ the ticket; the page still accepts them.
 ### `GET /me`
 → `200 {"accountId": "...", "email": "..."}`
 
+### `DELETE /me`
+Deletes the account and everything in it for good. → `204`
+
+- Unlinks every phone (their tokens stop working: `401`), revokes the
+  grant tokens and tickets the account handed out, removes everything
+  under `accounts/<accountId>/` (aborting open multipart uploads), deletes
+  every table item of the account, then the Cognito user.
+- Leaves one `ACCOUNT#<accountId> / CLOSED` item (the id and when), so a
+  link code made before the delete answers `410 gone` and a segment that
+  lands afterwards is deleted, instead of either starting the account
+  again.
+- Again after a partial failure finishes it: `204`.
+
 ### `POST /link-codes`
 → `201 {"code": "ABCDEFGH", "expiresAt": "...", "linkUri": "opensportsball://link?..."}`
 
@@ -213,7 +226,8 @@ finishing as it was deleted) is deleted when its S3 event arrives.
 ### `POST /devices/link` (no token: the code is the credential)
 Body: `{"code": "ABCDEFGH", "deviceId": "<uuid>", "platform": "ios|android", "model": "..."}`
 → `200 {"deviceToken": "osbd_...", "accountId": "..."}`
-- `404 not_found`: no such code. `410 gone`: expired or already used.
+- `404 not_found`: no such code. `410 gone`: expired or already used, or
+  the account was deleted.
 - `409 conflict`: this deviceId is linked to a different account (unlink
   it there first).
 - Re-linking a deviceId to the same account replaces its old token.

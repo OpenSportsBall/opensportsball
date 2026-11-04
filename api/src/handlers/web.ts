@@ -22,7 +22,7 @@ import { config, ddb, keys, queryPrefix } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 import { createGameTicket } from '../lib/grants.js';
-import { deleteGame, deleteRecording } from '../lib/deletion.js';
+import { deleteAccount, deleteGame, deleteRecording } from '../lib/deletion.js';
 
 interface GameItem {
   gameId: string;
@@ -36,6 +36,9 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
     switch (event.routeKey) {
       case 'GET /me':
         return json(200, { accountId: acct, email: claims.email ?? null });
+      case 'DELETE /me':
+        await deleteAccount(acct);
+        return json(204);
       case 'POST /link-codes':
         return json(201, await createLinkCode(acct, claims.email ? String(claims.email) : null, event.requestContext.domainName));
       case 'GET /devices':

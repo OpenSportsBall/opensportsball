@@ -40,7 +40,7 @@ import {
   str,
   type Result,
 } from '../lib/http.js';
-import { refuseDeleted } from '../lib/deletion.js';
+import { isClosed, refuseDeleted } from '../lib/deletion.js';
 import { unlinkDevice } from '../lib/devices.js';
 import { createGrant, createTickets, getGrant, lookupGameTicket, redeemTicket } from '../lib/grants.js';
 import { parseManifest, parseReport, type ManifestDevice } from '../lib/manifest.js';
@@ -161,6 +161,7 @@ async function link(b: Record<string, unknown>) {
   if (!c) throw notFound('That link code does not exist. Create a new one on the website.');
   if (c.usedAt || c.expiresAtMs < now) throw gone('That link code has expired or was already used.');
   const acct = c.accountId;
+  if (await isClosed(acct)) throw gone('That account was deleted.');
 
   const owner = (await ddb.send(new GetCommand({ TableName: config.table, Key: keys.owner(deviceId) }))).Item as
     | { accountId: string }

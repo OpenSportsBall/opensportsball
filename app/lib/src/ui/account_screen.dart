@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../upload/account.dart';
 import '../upload/sign_in.dart';
@@ -11,13 +12,16 @@ import 'common.dart';
 /// Link this phone to a website account by signing in (or creating an
 /// account), by scanning the link QR code, or by typing the code once the
 /// phone knows the API from an earlier link; and show / forget the current
-/// link.
+/// link, or go to the website to delete the account.
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key, required this.account, this.signIn});
+  const AccountScreen({super.key, required this.account, this.signIn, this.openUrl});
   final AccountManager account;
 
   /// For tests; the browser sheet otherwise.
   final AppSignIn? signIn;
+
+  /// For tests; the phone's browser otherwise.
+  final Future<bool> Function(Uri url)? openUrl;
   @override
   State<AccountScreen> createState() => _AccountScreenState();
 }
@@ -48,6 +52,30 @@ class _AccountScreenState extends State<AccountScreen> {
           'Forget anyway')) {
         await a.unlink(force: true);
       }
+    }
+  }
+
+  /// Deleting the account takes signing in again, so it happens on the
+  /// website's Account page (docs/API.md, `DELETE /me`). The app keeps
+  /// only a device token, which can't delete an account. Phones linked to
+  /// another deployment by QR code still go to [defaultSiteUrl]: the app
+  /// doesn't know that deployment's website.
+  Future<void> _deleteAccount() async {
+    final url = Uri.parse('$defaultSiteUrl/account');
+    if (!await confirm(
+        context,
+        'Delete your account?',
+        'You will sign in on ${url.host} and confirm there. Deleting the account removes all its '
+            'games and footage, unlinks its phones, and deletes the sign-in, for good. '
+            'Recordings on this phone stay until you delete them here.',
+        'Continue')) {
+      return;
+    }
+    final open = widget.openUrl ?? (u) => launchUrl(u, mode: LaunchMode.externalApplication);
+    final opened = await open(url);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open a browser. Go to $url to delete your account.')));
     }
   }
 
@@ -96,6 +124,17 @@ class _AccountScreenState extends State<AccountScreen> {
                           label: const Text('Link again'),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 32),
+                    const Divider(),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _deleteAccount,
+                        style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                        icon: const Icon(Icons.delete_forever_outlined),
+                        label: const Text('Delete account…'),
+                      ),
                     ),
                   ],
                 )),

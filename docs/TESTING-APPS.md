@@ -1,7 +1,8 @@
 # Testing the capture app on phones
 
-The app is not in any store yet. Install it from the Mac over USB, or
-send iPhone builds to testers through TestFlight (below).
+The app is not in any store yet. Install it from the Mac over USB, send
+iPhone builds to testers through TestFlight, or Android builds through a
+Google Play test track (below).
 
 ## Install
 
@@ -91,6 +92,51 @@ One-time setup:
 - A team with no iPhone registered fails the archive with "no devices".
   In Xcode, pick the **My Mac (Designed for iPad)** run destination once,
   which registers the Mac as a device, then build again.
+
+### Google Play (Android, no cable)
+
+Play only takes app bundles signed with the **upload key**. Release
+builds without it fall back to the debug key (fine for `flutter run
+--release`), but `flutter build appbundle` stops with an error.
+
+1. Bump the build number in `app/pubspec.yaml`, as for TestFlight; Play
+   rejects a version code it has already seen.
+2. Build:
+
+   ```
+   cd app
+   flutter build appbundle --release
+   ```
+
+   The output is `app/build/app/outputs/bundle/release/app-release.aab`.
+3. Play Console → the app → **Test and release** → a track (internal,
+   closed, or production) → **Create new release** → upload the `.aab`.
+
+One-time setup:
+
+- Create the upload keystore, outside the repository, and back it up
+  (losing it means asking Google to reset the upload key). `keytool` comes
+  with Android Studio:
+
+  ```
+  "/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool" -genkeypair -v \
+    -keystore ~/private_keys/opensportsball-upload.jks -keyalg RSA -keysize 2048 \
+    -validity 10000 -alias upload
+  ```
+
+- Create `app/android/key.properties` (git ignores it):
+
+  ```
+  storeFile=/Users/<you>/private_keys/opensportsball-upload.jks
+  storePassword=<password>
+  keyAlias=upload
+  keyPassword=<password>
+  ```
+
+- Leave **Play App Signing** on when creating the app: Google holds the
+  real signing key, and the key above only proves uploads are yours.
+- A personal developer account must run a closed test with at least 12
+  testers for 14 days before it can publish to production.
 
 ## Getting recordings off the phones
 

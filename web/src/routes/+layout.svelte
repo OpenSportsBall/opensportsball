@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { session } from '#lib/session.svelte.ts';
+	import { REPO_URL } from '#lib/site.ts';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -14,6 +15,8 @@
 	});
 
 	const path = $derived(page.url.pathname);
+	// Linked from the app stores: shown even when the site config can't load.
+	const isInfoPage = $derived(path === '/privacy' || path === '/support');
 </script>
 
 <header class="site-header">
@@ -37,6 +40,7 @@
 		<nav aria-label="Main">
 			<a href={resolve('/games')} aria-current={path === '/games' || path === '/game' ? 'page' : undefined}>Games</a>
 			<a href={resolve('/devices')} aria-current={path === '/devices' ? 'page' : undefined}>Devices</a>
+			<a href={resolve('/account')} aria-current={path === '/account' ? 'page' : undefined}>Account</a>
 		</nav>
 	{/if}
 </header>
@@ -46,7 +50,9 @@
 {/if}
 
 <main class="container">
-	{#if session.status === 'loading'}
+	{#if isInfoPage}
+		{@render children()}
+	{:else if session.status === 'loading'}
 		<p class="muted">Loading…</p>
 	{:else if session.status === 'error'}
 		<div class="card stack">
@@ -60,6 +66,12 @@
 		{@render children()}
 	{/if}
 </main>
+
+<footer class="site-footer">
+	<a href={resolve('/privacy')}>Privacy</a>
+	<a href={resolve('/support')}>Support</a>
+	<a href={REPO_URL}>Source code</a>
+</footer>
 
 <style>
 	.site-header {
@@ -128,6 +140,19 @@
 		text-align: center;
 		font-size: 0.85rem;
 		padding: 0.35rem 16px;
+	}
+	.site-footer {
+		max-width: 880px;
+		margin: 0 auto;
+		padding: 1rem 16px 2rem;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1.25rem;
+		font-size: 0.875rem;
+		border-top: 1px solid var(--border);
+	}
+	.site-footer a {
+		color: var(--text-muted);
 	}
 	@media (max-width: 420px) {
 		.email {

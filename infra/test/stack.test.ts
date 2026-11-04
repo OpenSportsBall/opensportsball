@@ -32,6 +32,7 @@ describe('API', () => {
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
+      { key: 'DELETE /me', auth: 'JWT' },
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },

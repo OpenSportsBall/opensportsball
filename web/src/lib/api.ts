@@ -86,6 +86,8 @@ export function createApiClient(opts: ApiClientOptions) {
 	const enc = encodeURIComponent;
 	return {
 		me: () => request<Me>('GET', '/me'),
+		/** Deletes the account, its phones, games and footage, and its sign-in, for good. */
+		deleteAccount: () => request<void>('DELETE', '/me'),
 		createLinkCode: () => request<LinkCode>('POST', '/link-codes'),
 		listDevices: async () => (await request<{ devices: Device[] }>('GET', '/devices')).devices,
 		unlinkDevice: (deviceId: string) => request<void>('DELETE', `/devices/${enc(deviceId)}`),

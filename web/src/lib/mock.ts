@@ -239,6 +239,12 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		if (method === 'GET' && path === '/me') {
 			return json(200, { accountId: 'mock-account-0001', email: 'parent@example.com' });
 		}
+		if (method === 'DELETE' && path === '/me') {
+			devices.splice(0);
+			games.splice(0);
+			codes.splice(0);
+			return new Response(null, { status: 204 });
+		}
 		if (method === 'POST' && path === '/link-codes') {
 			const code = Array.from({ length: 8 }, () => CODE_ALPHABET[Math.floor(random() * CODE_ALPHABET.length)]).join('');
 			const t = now();

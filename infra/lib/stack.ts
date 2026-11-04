@@ -267,6 +267,11 @@ export class OpenSportsBallStack extends cdk.Stack {
         resources: [footage.arnForObjects('accounts/*')],
       }),
     );
+    // Deleting the account (DELETE /me) also deletes its sign-in.
+    webFn.addEnvironment('USER_POOL_ID', users.userPoolId);
+    webFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['cognito-idp:AdminDeleteUser'], resources: [users.userPoolArn] }),
+    );
     // A segment that lands after its recording was deleted is removed.
     footage.grantDelete(ingestFn, 'accounts/*');
     const defaultBus = events.EventBus.fromEventBusName(this, 'DefaultBus', 'default');
@@ -314,6 +319,7 @@ export class OpenSportsBallStack extends cdk.Stack {
 
     const { GET, POST, PUT, DELETE } = apigw.HttpMethod;
     route(GET, '/me', webIntegration, people);
+    route(DELETE, '/me', webIntegration, people); // deletes the account and everything in it
     route(POST, '/link-codes', webIntegration, people);
     route(GET, '/devices', webIntegration, people);
     route(DELETE, '/devices/{deviceId}', webIntegration, people);

@@ -87,6 +87,14 @@ describe('mock API', () => {
 		await expect(api.deleteGame(multi.gameId)).rejects.toMatchObject({ status: 404, code: 'not_found' });
 	});
 
+	it('deletes the account: no devices or games left', async () => {
+		const { api } = setup();
+		expect((await api.listGames()).length).toBeGreaterThan(0);
+		await api.deleteAccount();
+		expect(await api.listDevices()).toEqual([]);
+		expect(await api.listGames()).toEqual([]);
+	});
+
 	it('looks up a website ticket without signing in', async () => {
 		const { api, fetch } = setup();
 		const [game] = await api.listGames();
