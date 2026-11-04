@@ -129,9 +129,6 @@ Footage and logs from these tests decide several items below.
 - [ ] Before the repos go public: lawyer review of the draft `CLA.md`,
       then CLA Assistant (cla-assistant.io) on both repos, signing from a
       gist of the CLA text. The repos stay private on GitHub until then.
-- [ ] `infra/cdk.json` holds the opensportsball.com deployment's AWS
-      account ID and certificate ARNs. Move deployment-specific context
-      out of the committed file so self-hosters don't inherit it.
 - [ ] `CLAUDE.md` for the repo: licensing split, API contract, how to run
       each part's tests, deployed stack.
 - [ ] Cognito sends verification email from its built-in sender (low daily

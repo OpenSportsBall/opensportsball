@@ -49,10 +49,28 @@ Options (pass with `-c key=value`):
 | `authDomain` | none | Serve the sign-in pages at this domain, e.g. `auth.example.com`, instead of the Cognito prefix domain |
 | `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
 
-The opensportsball.com deployment sets `siteDomain` and `siteCertArn` in
-`cdk.json`; to deploy your own copy, change or remove them there. Settings
-you'd rather keep out of git can go in `infra/cdk.context.json`
-(git-ignored).
+### Deployment settings
+
+A deployment's own settings (`siteDomain`, `siteCertArn`, `authDomain`,
+`authCertArn`, and any others above) go in `infra/cdk.context.json`, which
+is git-ignored, or on the command line with `-c`. `cdk.json` holds only
+defaults shared by every deployment, so a fresh checkout deploys a stack
+with no custom domains. For example:
+
+```json
+{
+  "siteDomain": "example.com",
+  "siteCertArn": "arn:aws:acm:us-east-1:<account>:certificate/<id>",
+  "authDomain": "auth.example.com",
+  "authCertArn": "arn:aws:acm:us-east-1:<account>:certificate/<id>"
+}
+```
+
+Keep a copy of this file somewhere safe: deploying an existing stack
+without it removes the stack's custom domains (synth prints a warning when
+none are set). The certificate ARNs can be found again with
+`aws acm list-certificates --region us-east-1`. Avoid `cdk context
+--clear`, which empties the file.
 
 ### Custom domain
 

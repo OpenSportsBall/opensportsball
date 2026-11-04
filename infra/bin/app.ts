@@ -9,6 +9,16 @@ import { OpenSportsBallStack } from '../lib/stack.js';
 const app = new cdk.App();
 const ctx = (key: string) => app.node.tryGetContext(key) as string | undefined;
 
+// A deployment's domains and certificates live in the git-ignored
+// cdk.context.json, so a checkout without that file deploys with none.
+// Deploying a stack that had them would then remove them.
+if (!ctx('siteDomain') && !ctx('authDomain')) {
+  console.warn(
+    'No siteDomain or authDomain set (see infra/README.md, "Deployment settings"). ' +
+      'If this stack was deployed with custom domains, this deploy removes them.',
+  );
+}
+
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 // Cognito login domains are global; default to one derived from the account.
 const authDomainPrefix = ctx('authDomainPrefix') ?? (account ? `opensportsball-${account}` : 'opensportsball-dev');
