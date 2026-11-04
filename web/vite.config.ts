@@ -32,7 +32,12 @@ export default defineConfig(({ mode }) => ({
 		sveltekit({
 			// Pure SPA: nothing is prerendered; S3 + CloudFront serve index.html
 			// for every route (see README).
-			adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html' })
+			adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html' }),
+			// Scripts: only this site's files and the start-up script SvelteKit
+			// inlines, by hash. As a <meta> tag the hash ships with the page it
+			// matches; the rest of the policy (where the page may connect, that
+			// no other site may frame it) is a CloudFront header (infra/lib/csp.ts).
+			csp: { mode: 'hash', directives: { 'script-src': ['self'], 'object-src': ['none'], 'base-uri': ['self'] } }
 		})
 	],
 	test: {
