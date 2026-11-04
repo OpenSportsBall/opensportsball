@@ -33,6 +33,10 @@ import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js'
 /** Where managed login sends the phone app back to (docs/API.md). */
 export const APP_LOGIN_CALLBACK = 'opensportsball://auth';
 
+/** How long the phones' uploads stay in the footage bucket. The privacy
+ *  policy (web/src/routes/privacy) states this number. */
+export const FOOTAGE_RETENTION_DAYS = 180;
+
 export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Repository root (contains api/, web/, shared/). */
   repoRoot: string;
@@ -77,9 +81,13 @@ export class OpenSportsBallStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
-      // Raw footage is deleted after rendering in Phase 3; here only
-      // abandoned multipart uploads are cleaned up.
-      lifecycleRules: [{ abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) }],
+      // The phones' uploads (accounts/) expire after 180 days, as the
+      // privacy policy says (web/src/routes/privacy). bench/ and data/,
+      // the processing repo's bench store and backups, are kept.
+      lifecycleRules: [
+        { abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) },
+        { id: 'ExpireUploads', prefix: 'accounts/', expiration: cdk.Duration.days(FOOTAGE_RETENTION_DAYS) },
+      ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 

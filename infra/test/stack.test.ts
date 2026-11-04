@@ -79,7 +79,7 @@ describe('API', () => {
 });
 
 describe('storage', () => {
-  it('footage bucket is private, encrypted, kept on stack delete, and cleans up abandoned uploads', () => {
+  it('footage bucket is private, encrypted, kept on stack delete, and cleans up abandoned and old uploads', () => {
     t.hasResource('AWS::S3::Bucket', {
       DeletionPolicy: 'Retain',
       Properties: Match.objectLike({
@@ -90,7 +90,11 @@ describe('storage', () => {
           RestrictPublicBuckets: true,
         },
         LifecycleConfiguration: {
-          Rules: [Match.objectLike({ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } })],
+          Rules: [
+            Match.objectLike({ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } }),
+            // Only the phones' uploads: bench/ and data/ are never expired.
+            { Id: 'ExpireUploads', Prefix: 'accounts/', ExpirationInDays: 180, Status: 'Enabled' },
+          ],
         },
       }),
     });

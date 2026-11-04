@@ -71,7 +71,11 @@
 
 	<h2>How long we keep it</h2>
 	<ul>
-		<li>Uploaded footage and games: until you delete them, or you delete your account, or the retention settings in your account.</li>
+		<li>
+			Uploaded footage (video and audio): deleted automatically 180 days after it is uploaded, or sooner if you
+			delete it or your account.
+		</li>
+		<li>Games and recording details: until you delete them or your account.</li>
 		<li>Service logs: up to 3 months.</li>
 		<li>
 			Database backups: up to 35 days. After you delete something it can stay in these backups until they expire;
