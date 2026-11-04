@@ -27,7 +27,7 @@
 			We never see your password.
 		</li>
 		<li>
-			<strong>Game footage:</strong> the video and audio your phones record, once they upload it. Footage often shows
+			<strong>Game footage:</strong> the video and audio your phones record, if you choose to upload it. Footage often shows
 			players, many of them children, along with coaches and spectators. Audio is used to line up the two phones'
 			videos.
 		</li>
@@ -54,13 +54,12 @@
 	<ul>
 		<li>No ads, no advertising IDs, no analytics or tracking SDKs.</li>
 		<li>We don't sell or share your data with anyone for their own use.</li>
-		<li>We don't use your footage to train machine-learning models without your separate permission.</li>
 	</ul>
 
 	<h2>How we use it</h2>
 	<p>
 		Only to run the service: to sign you in, to receive uploads from your phones, to turn your footage into a game
-		video, to show you your games, and to fix problems.
+		video, to show you your games, to improve our offering, and to fix problems.
 	</p>
 
 	<h2>Where it is stored, and who processes it</h2>
@@ -72,7 +71,7 @@
 
 	<h2>How long we keep it</h2>
 	<ul>
-		<li>Footage and games: until you delete them, or your account.</li>
+		<li>Uploaded footage and games: until you delete them, or you delete your account, or the retention settings in your account.</li>
 		<li>Service logs: up to 3 months.</li>
 		<li>
 			Database backups: up to 35 days. After you delete something it can stay in these backups until they expire;
@@ -93,7 +92,7 @@
 	<p>
 		Accounts are for parents, coaches and other adults who record games. The service is not meant for children to
 		use, and we don't knowingly create accounts for children under 13. Only record players when you are allowed to,
-		following your league's and families' rules. If a child has an account, or you want footage of your child
+		following your league's and team's rules. If a child has an account, or you want footage of your child
 		removed, contact us and we'll delete it.
 	</p>
 
