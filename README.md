@@ -43,7 +43,8 @@ This repository is **Apache-2.0**. Each top-level directory carries its own
 header.
 
 The processing pipeline (sync, stitch, track, render) and the ML tooling
-live in a separate repository, **opensportsball-processing**, under
+live in a separate repository,
+**[opensportsball-processing](https://github.com/OpenSportsBall/opensportsball-processing)**, under
 **AGPL-3.0-only**. The two share no code, only data: the upload manifest
 (`shared/schemas/`), S3 objects and the `RecordingReady` event. Read
 [docs/LICENSING.md](docs/LICENSING.md) before adding a dependency. Contributions require
