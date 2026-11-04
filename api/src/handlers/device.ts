@@ -13,6 +13,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  DeleteObjectCommand,
   HeadObjectCommand,
   ListPartsCommand,
   NoSuchUpload,
@@ -422,6 +423,13 @@ function uploadTarget(ctx: DeviceContext, b: Record<string, unknown>) {
   };
 }
 
+const SIGNED_LENGTH = new Set(['content-length']);
+
+/** Part [partNumber]'s exact size when [bytes] are cut into [partSize]
+ *  parts: all full except the last. */
+export const partBytes = (bytes: number, partSize: number, partNumber: number) =>
+  Math.min(partSize, bytes - (partNumber - 1) * partSize);
+
 async function headSize(key: string): Promise<number | null> {
   try {
     const h = await s3.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }));
@@ -514,8 +522,16 @@ async function startUpload(ctx: DeviceContext, b: Record<string, unknown>) {
         partNumber,
         url: await getSignedUrl(
           s3,
-          new UploadPartCommand({ Bucket: config.bucket, Key: t.key, UploadId: uploadId, PartNumber: partNumber }),
-          { expiresIn },
+          new UploadPartCommand({
+            Bucket: config.bucket,
+            Key: t.key,
+            UploadId: uploadId,
+            PartNumber: partNumber,
+            ContentLength: partBytes(bytes, partSize, partNumber),
+          }),
+          // Signs Content-Length as a header, so S3 refuses a part of any
+          // other size: a file can't grow past the size it was started with.
+          { expiresIn, signableHeaders: SIGNED_LENGTH, unhoistableHeaders: SIGNED_LENGTH },
         ),
       })),
   );
@@ -568,6 +584,13 @@ async function completeUpload(ctx: DeviceContext, b: Record<string, unknown>) {
     throw e;
   }
   await ddb.send(new DeleteCommand({ TableName: config.table, Key: t.itemKey }));
-  await recordObject({ ...ctx, gameId: t.gameId, recordingId: t.recordingId, fileName: t.fileName, bytes: item.bytes });
+  // Counts the file only at the size it really is, not the size it was
+  // started with: a file that isn't what was announced is removed.
+  const size = await headSize(t.key);
+  if (size !== item.bytes) {
+    await s3.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: t.key }));
+    throw badRequest(`The uploaded file is ${size ?? 0} bytes, not the ${item.bytes} it was started with. Upload it again.`);
+  }
+  await recordObject({ ...ctx, gameId: t.gameId, recordingId: t.recordingId, fileName: t.fileName, bytes: size });
   return json(200, { ok: true });
 }
