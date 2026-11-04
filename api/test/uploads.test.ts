@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { partBytes } from '../src/handlers/device.js';
 import { handler as ingest } from '../src/handlers/ingest.js';
 import { config, manifestKey, segmentKey } from '../src/lib/store.js';
 import {
@@ -219,6 +220,46 @@ describe('recording upload', () => {
 
     expect((await putManifest(solo)).body).toEqual({ status: 'ready', missing: [], awaitingReports: [] });
     expect(await readyEvents()).toHaveLength(1);
+  });
+
+  it('signs each part URL for exactly that part\'s size', async () => {
+    const r = await callDevice(main.token, 'POST /uploads', {
+      body: { gameId, recordingId, fileName: fileName(main, 0), bytes: 250, sha256: sha(randomBytes(1)) },
+    });
+    expect(r.status).toBe(200);
+    for (const p of r.body.parts) {
+      const q = new URL(p.url).searchParams;
+      expect(q.get('X-Amz-SignedHeaders')!.split(';')).toContain('content-length');
+      // The header S3 checks, not a query parameter the phone could leave out.
+      expect(q.has('Content-Length')).toBe(false);
+    }
+    expect(partBytes(250, 100, 1)).toBe(100);
+    expect(partBytes(250, 100, 3)).toBe(50);
+    expect(partBytes(100, 100, 1)).toBe(100);
+  });
+
+  it('refuses and removes a file bigger than it was started with', async () => {
+    const start = await callDevice(main.token, 'POST /uploads', {
+      body: { gameId, recordingId, fileName: fileName(main, 0), bytes: 100, sha256: sha(randomBytes(1)) },
+    });
+    // The emulator doesn't check signed headers, as S3 does, so a larger
+    // part gets in here: the size check at the end must catch it.
+    const put = await fetch(start.body.parts[0].url, { method: 'PUT', body: new Uint8Array(randomBytes(150)) });
+    expect(put.ok).toBe(true);
+    const r = await callDevice(main.token, 'POST /uploads/complete', {
+      body: {
+        gameId,
+        recordingId,
+        fileName: fileName(main, 0),
+        uploadId: start.body.uploadId,
+        parts: [{ partNumber: 1, etag: put.headers.get('etag') }],
+      },
+    });
+    expect(r.status).toBe(400);
+    const key = segmentKey(acct, gameId, recordingId, main.deviceId, fileName(main, 0));
+    await expect(s3.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }))).rejects.toThrow();
+    const game = await callWeb(acct, 'GET /games/{gameId}', { path: { gameId } });
+    expect(game.body.recordings[0].devices).toEqual([]);
   });
 
   it('a file of the wrong size does not count toward ready', async () => {
