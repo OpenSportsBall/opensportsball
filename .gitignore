@@ -10,6 +10,8 @@
 *.wav
 *.aac
 footage/
+# Link to ../opensportsball-processing/footage (old absolute paths in run records)
+/footage
 datasets/
 ml/data/
 ml/runs/

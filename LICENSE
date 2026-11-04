@@ -1,18 +1,14 @@
-OpenSportsBall is split-licensed. There is no single license for the whole
-repository.
+OpenSportsBall (this repository) is licensed under the Apache License,
+Version 2.0. See LICENSES/Apache-2.0.txt and each top-level directory's
+LICENSE file.
 
-  processing/  and  ml/      GNU Affero General Public License v3.0 only
-                             (see processing/LICENSE, ml/LICENSE)
-
-  everything else            Apache License, Version 2.0
-                             (see app/LICENSE, web/LICENSE, api/LICENSE,
-                              infra/LICENSE, shared/LICENSE, and
-                              LICENSES/Apache-2.0.txt for root files)
+Exceptions, declared in REUSE.toml: bundled fonts (SIL Open Font License
+1.1) and vendored third-party code under app/third_party/ (its upstream
+license).
 
 Each source file declares its license with an SPDX-License-Identifier
 header, and REUSE.toml covers files that cannot carry a header. Where a
 file's header and this summary disagree, the header governs.
 
-Full license texts are in the LICENSES/ directory.
-
-See docs/LICENSING.md for the rules that keep the two halves separate.
+The processing pipeline and ML tooling are a separate repository,
+opensportsball-processing, licensed AGPL-3.0-only. See docs/LICENSING.md.

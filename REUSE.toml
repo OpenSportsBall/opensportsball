@@ -9,11 +9,6 @@ path = "**"
 SPDX-FileCopyrightText = "2026 The OpenSportsBall Authors"
 SPDX-License-Identifier = "Apache-2.0"
 
-[[annotations]]
-path = ["processing/**", "ml/**"]
-SPDX-FileCopyrightText = "2026 The OpenSportsBall Authors"
-SPDX-License-Identifier = "AGPL-3.0-only"
-
 # Brand fonts (SIL Open Font License 1.1), bundled for the website and the app.
 [[annotations]]
 path = ["web/static/fonts/Rubik-*", "app/assets/fonts/Rubik-*"]

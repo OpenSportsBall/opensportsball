@@ -13,7 +13,8 @@ possible to keep costs low.
   and verified end to end (link, manifest, multipart upload, ready, hand-off
   event). See [API.md](API.md) and `infra/README.md`. Uploads run while the app is open;
   background upload is still to do.
-- Phase 0 (feasibility on real footage): waiting for a game.
+- Phase 0 (feasibility on real footage): see the opensportsball-processing
+  repository.
 
 Open work is tracked in [BACKLOG.md](BACKLOG.md).
 
@@ -26,7 +27,7 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
 | Phone-to-phone link | BLE | Works iPhone-to-Android with no Wi-Fi on the field; only small control messages |
 | Video sync | Audio cross-correlation in the cloud, seeded by a BLE clock estimate | BLE start commands jitter by tens of ms; audio from phones 10 cm apart gives sub-frame accuracy |
 | Backend | AWS: S3, Step Functions, Batch on Spot GPU (min 0), API Gateway + Lambda, DynamoDB, Cognito, CDK (TypeScript) | Scales to zero between games; one-command self-host |
-| License | Split: apps / web / api / infra / shared Apache-2.0; processing / ml AGPL-3.0-only, with a CLA | See [LICENSING.md](LICENSING.md) |
+| License | Two repos: this one (apps / web / api / infra / shared) Apache-2.0; opensportsball-processing (processing / ml) AGPL-3.0-only; one CLA | See [LICENSING.md](LICENSING.md) |
 | Public repo | Not yet; local only until there is something to show | |
 
 ## Open decisions
@@ -59,6 +60,9 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
   phone's segments have arrived.
 
 ## Processing (one AWS Batch GPU job, g5/g6.xlarge Spot)
+
+The code lives in the opensportsball-processing repository, with its
+findings, data layout, test methods and backlog.
 
 1. **Sync:** cross-correlate the audio tracks for the offset; resample both
    variable-frame-rate videos to constant fps on their timestamps.

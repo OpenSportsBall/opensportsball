@@ -5,7 +5,8 @@
 
 1. Every source file has an SPDX-License-Identifier header that matches its
    top-level directory.
-2. No Apache-2.0 source file references the AGPL code in processing/ or ml/.
+2. No source file imports the AGPL processing package, which now lives in
+   its own repository (opensportsball-processing).
 
 `reuse lint` checks that licenses are declared at all; this script checks
 they are the *right* ones and that the boundary holds.
@@ -17,13 +18,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-AGPL_DIRS = {"processing", "ml"}
 SOURCE_SUFFIXES = {
     ".dart", ".py", ".ts", ".tsx", ".js", ".mjs", ".svelte",
     ".kt", ".java", ".swift", ".m", ".h", ".sh",
 }
 SPDX = re.compile(r"SPDX-License-Identifier:\s*(\S+)")
-# Apache code must not import or path-reference the AGPL tree.
+# Apache code must not import the AGPL processing package.
 BOUNDARY = re.compile(
     r"osb_processing|(?:^|[\s'\"(/.])(?:processing|ml)/(?:src|data|runs)\b"
     r"|from\s+processing\b|import\s+processing\b"
@@ -43,7 +43,7 @@ def tracked_files():
 
 def expected_license(path):
     top = path.relative_to(ROOT).parts[0]
-    return "AGPL-3.0-only" if top in AGPL_DIRS else "Apache-2.0"
+    return "Apache-2.0"
 
 
 def main():
@@ -63,13 +63,13 @@ def main():
         if not match:
             errors.append(f"{rel}: missing SPDX-License-Identifier header (expected {want})")
         elif match.group(1) != want:
-            errors.append(f"{rel}: header says {match.group(1)}, directory requires {want}")
+            errors.append(f"{rel}: header says {match.group(1)}, this repository requires {want}")
 
-        if want == "Apache-2.0" and path != this_file:
+        if path != this_file:
             for lineno, line in enumerate(text.splitlines(), 1):
                 if BOUNDARY.search(line):
                     errors.append(
-                        f"{rel}:{lineno}: Apache-2.0 code references AGPL code "
+                        f"{rel}:{lineno}: references the AGPL processing code "
                         f"(docs/LICENSING.md rule 2): {line.strip()}"
                     )
 

@@ -34,15 +34,18 @@ Website (static, S3 + CloudFront) -- API Gateway + Lambda + DynamoDB + Cognito
 | `api/` | Lambda API handlers | Apache-2.0 |
 | `infra/` | AWS CDK stack | Apache-2.0 |
 | `shared/` | Data contracts shared by both sides (upload manifest schema) | Apache-2.0 |
-| `processing/` | GPU pipeline: sync, stitch, track, render | **AGPL-3.0-only** |
-| `ml/` | Labeling, training, evaluation | **AGPL-3.0-only** |
 | `docs/`, `scripts/`, root files | Docs and tooling | Apache-2.0 |
 
 ## Licensing
 
-This repository is **split-licensed**. Each top-level directory carries its
-own `LICENSE`, and every source file carries an `SPDX-License-Identifier`
-header. Read [docs/LICENSING.md](docs/LICENSING.md) before adding a
-dependency or moving code between directories. Contributions require
+This repository is **Apache-2.0**. Each top-level directory carries its own
+`LICENSE`, and every source file carries an `SPDX-License-Identifier`
+header.
+
+The processing pipeline (sync, stitch, track, render) and the ML tooling
+live in a separate repository, **opensportsball-processing**, under
+**AGPL-3.0-only**. The two share no code, only data: the upload manifest
+(`shared/schemas/`), S3 objects and the `RecordingReady` event. Read
+[docs/LICENSING.md](docs/LICENSING.md) before adding a dependency. Contributions require
 agreeing to the contributor license agreement; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
