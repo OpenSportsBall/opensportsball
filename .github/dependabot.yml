@@ -1,0 +1,31 @@
+# Weekly dependency updates, one grouped pull request per directory, so
+# security fixes arrive as reviewable PRs without a flood of them.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories: ["/api", "/infra", "/web"]
+    schedule: { interval: weekly }
+    groups:
+      npm:
+        patterns: ["*"]
+
+  - package-ecosystem: pub
+    directory: /app
+    schedule: { interval: weekly }
+    groups:
+      pub:
+        patterns: ["*"]
+
+  - package-ecosystem: gradle
+    directory: /app/android
+    schedule: { interval: weekly }
+    groups:
+      gradle:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions:
+        patterns: ["*"]
