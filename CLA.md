@@ -1,11 +1,9 @@
 # OpenSportsBall Contributor License Agreement
 
-Version 1.0 (draft, not yet in effect)
+Version 1.0, effective 2026-11-03
 
-> **Draft.** This text is adapted from the structure of the Apache Software
-> Foundation's Individual Contributor License Agreement v2.2. It has not
-> been reviewed by a lawyer. Have it reviewed before asking anyone to sign
-> it.
+This agreement is adapted from the structure of the Apache Software
+Foundation's Individual Contributor License Agreement v2.2.
 
 Thank you for contributing to OpenSportsBall. This agreement covers your
 contributions to every repository in the OpenSportsBall GitHub

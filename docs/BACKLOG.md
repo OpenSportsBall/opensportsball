@@ -126,9 +126,9 @@ Footage and logs from these tests decide several items below.
       policy, or clean them up when a stack is deleted (did this by hand for
       the old `SportsBallVideo` stack, 2026-10-11).
 
-- [ ] Before the repos go public: lawyer review of the draft `CLA.md`,
-      then CLA Assistant (cla-assistant.io) on both repos, signing from a
-      gist of the CLA text. The repos stay private on GitHub until then.
+- [ ] Before the repos go public: CLA Assistant (cla-assistant.io) on
+      both repos, signing from a gist of `CLA.md`. The repos stay private
+      on GitHub until then.
 - [ ] `CLAUDE.md` for the repo: licensing split, API contract, how to run
       each part's tests, deployed stack.
 - [ ] Cognito sends verification email from its built-in sender (low daily
