@@ -6,7 +6,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { session } from '#lib/session.svelte.ts';
-	import { REPO_URL } from '#lib/site.ts';
+	import { APP_STORE_URL, REPO_URL } from '#lib/site.ts';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -68,6 +68,7 @@
 </main>
 
 <footer class="site-footer">
+	<a href={APP_STORE_URL} target="_blank" rel="noopener">iPhone app</a>
 	<a href={resolve('/privacy')}>Privacy</a>
 	<a href={resolve('/support')}>Support</a>
 	<a href={REPO_URL}>Source code</a>

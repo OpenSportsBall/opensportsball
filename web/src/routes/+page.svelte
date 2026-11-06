@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import AppStoreLink from '#lib/components/AppStoreLink.svelte';
 	import { session } from '#lib/session.svelte.ts';
 
 	$effect(() => {
@@ -19,7 +20,10 @@
 			OpenSportsBall is a free, open-source way to record youth soccer. Two phones on tripods cover the
 			full field. When you get home, they upload the footage on Wi-Fi and it is turned into one game video.
 		</p>
-		<button class="btn btn-primary big" onclick={() => session.signIn('/games')}>Sign in</button>
+		<div class="actions">
+			<button class="btn btn-primary big" onclick={() => session.signIn('/games')}>Sign in</button>
+			<AppStoreLink />
+		</div>
 		<p class="muted small">New here? Choose "Sign up" on the next screen to create an account.</p>
 	</section>
 
@@ -51,10 +55,15 @@
 		font-size: 1.1rem;
 		margin-bottom: 1.25rem;
 	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
 	.big {
 		min-width: 10rem;
 		font-size: 1.05rem;
-		margin-bottom: 0.75rem;
 	}
 	.steps {
 		display: grid;

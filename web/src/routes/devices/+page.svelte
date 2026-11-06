@@ -5,7 +5,9 @@
 	import { toString as qrToSvg } from 'qrcode';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import AppStoreLink from '#lib/components/AppStoreLink.svelte';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
+	import { APP_STORE_URL } from '#lib/site.ts';
 	import {
 		formatCountdown,
 		formatDate,
@@ -178,6 +180,7 @@
 		{:else if link}
 			<p>
 				On the phone, open the OpenSportsBall app and scan this code. Or type the code in the app.
+				No app yet? <a href={APP_STORE_URL} target="_blank" rel="noopener">Get it on the App Store</a>.
 			</p>
 			<div class="qr" class:faded={expired}>
 				<!-- qrcode's SVG output; generated locally from the server's linkUri -->
@@ -206,7 +209,10 @@
 	<div class="card empty">
 		<h2>No phones linked</h2>
 		<p class="muted">Link each phone you record with. You need two: a main camera and a second camera.</p>
-		<button class="btn btn-primary" onclick={startLink}>Link a phone</button>
+		<div class="empty-actions">
+			<button class="btn btn-primary" onclick={startLink}>Link a phone</button>
+			<AppStoreLink />
+		</div>
 	</div>
 {:else if devices && devices.length > 0}
 	<ul class="devices">
@@ -248,9 +254,20 @@
 			</li>
 		{/each}
 	</ul>
+	<p class="muted small more-phones">
+		Adding another iPhone? <a href={APP_STORE_URL} target="_blank" rel="noopener">Get the app on the App Store</a>.
+	</p>
 {/if}
 
 <style>
+	.empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+	}
+	.more-phones {
+		margin-top: 1rem;
+	}
 	.link-panel {
 		margin-bottom: 1.25rem;
 		text-align: center;

@@ -8,6 +8,7 @@
 	import { formatDateTime, recordedTime } from '#lib/format.ts';
 	import { poll } from '#lib/poll.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import { APP_STORE_URL } from '#lib/site.ts';
 	import type { GameSummary } from '#lib/types.ts';
 
 	const REFRESH_MS = 15_000;
@@ -57,7 +58,7 @@
 		<h2>No games yet</h2>
 		<ol>
 			<li>Link your phones on the <a href={resolve('/devices')}>Devices</a> page.</li>
-			<li>Record a game with the OpenSportsBall app.</li>
+			<li>Record a game with the OpenSportsBall app (<a href={APP_STORE_URL} target="_blank" rel="noopener">iPhone</a>).</li>
 			<li>The phones upload the footage when they are on Wi-Fi. The game shows up here.</li>
 		</ol>
 		<div><a class="btn btn-primary" href="{resolve('/devices')}?link=1">Link a phone</a></div>
