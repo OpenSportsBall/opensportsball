@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: Rubik; src: url("../../../web/static/fonts/Rubik-Variable.woff2") format("woff2"); font-weight: 300 900; }
+  html, body { margin: 0; padding: 0; background: #1d3b2a; }
+  body { width: var(--w); height: var(--h); overflow: hidden; font-family: Rubik, sans-serif; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<script>
+// ?kind=header (3840x1646) or ?kind=search (3840x2560)
+const kind = new URLSearchParams(location.search).get('kind') || 'header';
+const feature = kind === 'feature';
+const W = feature ? 2048 : 3840, H = kind === 'header' ? 1646 : feature ? 1000 : 2560;
+document.body.style.setProperty('--w', W + 'px');
+document.body.style.setProperty('--h', H + 'px');
+
+// Field: overhead pitch, 105 x 68 proportions.
+const fieldH = kind === 'header' ? 1150 : feature ? 600 : 1300;
+const fieldW = fieldH * 105 / 68;
+const fx = feature ? W - fieldW - 90 : (W - fieldW) / 2;
+const fy = kind === 'header' ? 120 : feature ? 130 : 860;
+const cx = fx + fieldW / 2;
+const L = fieldW / 105; // metres to px
+const line = 'rgba(255,255,255,0.55)';
+const lw = feature ? 6 : 9;
+
+// The two phones sit together on the near sideline, at halfway.
+const px = cx, py = fy + fieldH + (kind === 'header' ? 175 : feature ? 110 : 150);
+
+function pitch() {
+  const g = [];
+  // grass stripes
+  for (let i = 0; i < 14; i++) {
+    g.push(`<rect x="${fx + i * fieldW / 14}" y="${fy}" width="${fieldW / 14}" height="${fieldH}" fill="${i % 2 ? '#2a7a46' : '#2f8450'}"/>`);
+  }
+  g.push(`<rect x="${fx}" y="${fy}" width="${fieldW}" height="${fieldH}" fill="none" stroke="${line}" stroke-width="${lw}"/>`);
+  g.push(`<line x1="${cx}" y1="${fy}" x2="${cx}" y2="${fy + fieldH}" stroke="${line}" stroke-width="${lw}"/>`);
+  g.push(`<circle cx="${cx}" cy="${fy + fieldH / 2}" r="${9.15 * L}" fill="none" stroke="${line}" stroke-width="${lw}"/>`);
+  g.push(`<circle cx="${cx}" cy="${fy + fieldH / 2}" r="${lw * 1.4}" fill="${line}"/>`);
+  for (const side of [0, 1]) {
+    const x0 = side ? fx + fieldW : fx, dir = side ? -1 : 1;
+    const pa = (w, d) => `<rect x="${side ? x0 - d * L : x0}" y="${fy + fieldH / 2 - w * L / 2}" width="${d * L}" height="${w * L}" fill="none" stroke="${line}" stroke-width="${lw}"/>`;
+    g.push(pa(40.3, 16.5));
+    g.push(pa(18.3, 5.5));
+    g.push(`<circle cx="${x0 + dir * 11 * L}" cy="${fy + fieldH / 2}" r="${lw * 1.2}" fill="${line}"/>`);
+    // goal
+    g.push(`<rect x="${side ? x0 : x0 - 2.2 * L}" y="${fy + fieldH / 2 - 3.66 * L}" width="${2.2 * L}" height="${7.32 * L}" fill="rgba(255,255,255,0.18)" stroke="${line}" stroke-width="${lw * 0.8}"/>`);
+  }
+  return g.join('');
+}
+
+// The two phones: landscape, side by side on one mount, each turned
+// toward its half of the field.
+const ps = feature ? 0.6 : 1;
+const gap = 125 * ps, tilt = 24;
+const phoneL = { x: px - gap, y: py, a: -tilt };
+const phoneR = { x: px + gap, y: py, a: tilt };
+// The lenses sit at the inner ends, close together at the mount.
+const lensL = { x: px - 28 * ps, y: py - 14 * ps }, lensR = { x: px + 28 * ps, y: py - 14 * ps };
+
+// Each phone's field of view: two lines from the phone to the edges of
+// its half: the near corner, and the far touchline a little past halfway.
+function cones() {
+  const st = `stroke="#f4b63a" stroke-width="${feature ? 12 : 10}" stroke-linecap="round"`;
+  const overlap = 12 * L;
+  const ln = (o, x, y) => `<line x1="${o.x}" y1="${o.y}" x2="${x}" y2="${y}" ${st}/>`;
+  return [
+    // The inner edges cross: each view reaches past halfway into the
+    // other's half, so the two videos overlap in the middle.
+    ln(lensL, fx, fy + fieldH), ln(lensL, cx + overlap, fy),
+    ln(lensR, fx + fieldW, fy + fieldH), ln(lensR, cx - overlap, fy),
+  ].join('');
+}
+
+function phone(o, side) {
+  const w = 230, h = 116, r = 26, b = 16;
+  return `<g transform="translate(${o.x} ${o.y}) rotate(${o.a}) scale(${ps})">
+    <rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="${r}" fill="#fbf6ee" stroke="#1d3b2a" stroke-width="8"/>
+    <rect x="${-w / 2 + b + (side > 0 ? 0 : 28)}" y="${-h / 2 + b}" width="${w - 2 * b - 28}" height="${h - 2 * b}" rx="10" fill="#2a7a46"/>
+    <circle cx="${side * (w / 2 - b)}" cy="0" r="6" fill="#1d3b2a"/>
+  </g>`;
+}
+
+function phones() {
+  return `
+    <rect x="${px - gap}" y="${py - 9 * ps}" width="${2 * gap}" height="${18 * ps}" rx="${9 * ps}" fill="#1d3b2a" stroke="#fbf6ee" stroke-opacity="0.5" stroke-width="4"/>
+    ${phone(phoneL, 1)}${phone(phoneR, -1)}
+    <circle cx="${px}" cy="${py}" r="${20 * ps}" fill="#f4b63a" stroke="#1d3b2a" stroke-width="${8 * ps}"/>`;
+}
+
+// Logo: the favicon's two half-discs and play triangle.
+function logo(x, y, s) {
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+    <path d="M30.50 4.04A28 28 0 0 0 30.50 59.96Z" fill="#2a7a46"/>
+    <path d="M33.50 4.04A28 28 0 0 1 33.50 59.96Z" fill="#2a7a46"/>
+    <path d="M25.50 21.50L43.50 32.00L25.50 42.50Z" fill="#f4b63a" stroke="#f4b63a" stroke-width="4" stroke-linejoin="round"/></g>`;
+}
+
+function text() {
+  if (feature) {
+    const s = 2.4, box = 64 * s + 14, tx = 110;
+    return `
+    <rect x="${tx}" y="150" width="${box}" height="${box}" rx="${box * 0.23}" fill="#fbf6ee"/>
+    ${logo(tx + 7, 157, s)}
+    <text x="${tx}" y="470" font-size="96" font-weight="700" fill="#fbf6ee">OpenSportsBall</text>
+    <text x="${tx + 2}" y="560" font-size="56" font-weight="400" fill="rgba(251,246,238,0.85)">Two-phone game recording</text>
+    <text x="${tx}" y="720" font-size="64" font-weight="700" fill="#fbf6ee">Record the <tspan fill="#f4b63a">whole field</tspan></text>
+    <text x="${tx}" y="800" font-size="64" font-weight="700" fill="#fbf6ee">from the sideline</text>`;
+  }
+  if (kind !== 'search') return '';
+  const s = 4.2, box = 64 * s + 24, gap = 70, nameW = 1180;
+  const bx = cx - (box + gap + nameW) / 2, by = 150;
+  return `
+    <rect x="${bx}" y="${by}" width="${box}" height="${box}" rx="${box * 0.23}" fill="#fbf6ee"/>
+    ${logo(bx + 12, by + 12, s)}
+    <text x="${bx + box + gap}" y="${by + 175}" font-size="150" font-weight="700" fill="#fbf6ee">OpenSportsBall</text>
+    <text x="${bx + box + gap + 4}" y="${by + 280}" font-size="84" font-weight="400" fill="rgba(251,246,238,0.8)">Two-phone game recording</text>
+    <text x="${cx}" y="700" text-anchor="middle" font-size="150" font-weight="700" fill="#fbf6ee">Record the <tspan fill="#f4b63a">whole field</tspan> from the sideline</text>`;
+}
+
+document.body.innerHTML = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="${kind === 'header' ? 45 : 60}%" r="75%">
+      <stop offset="0" stop-color="#24492f"/><stop offset="1" stop-color="#14291d"/>
+    </radialGradient>
+    <linearGradient id="coneL" x1="${px}" y1="${py}" x2="${fx}" y2="${fy}" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f4b63a" stop-opacity="0.42"/><stop offset="1" stop-color="#f4b63a" stop-opacity="0.10"/>
+    </linearGradient>
+    <linearGradient id="coneR" x1="${px}" y1="${py}" x2="${fx + fieldW}" y2="${fy}" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f4b63a" stop-opacity="0.42"/><stop offset="1" stop-color="#f4b63a" stop-opacity="0.10"/>
+    </linearGradient>
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#bg)"/>
+  ${pitch()}
+  ${cones()}
+  ${phones()}
+  ${text()}
+</svg>`;
+</script>
+</body>
+</html>

@@ -5,7 +5,7 @@ OpenSportsBall is two repositories with different licenses:
 - **This repository, Apache-2.0:** `app/`, `web/`, `api/`, `infra/`,
   `shared/`, `docs/`, `scripts/`, `.github/`, root files.
 - **opensportsball-processing, AGPL-3.0-only:** the processing pipeline
-  (`processing/`) and ML tooling (`ml/`).
+  (`processing/`), including its labelling and model-training tools.
 
 Why: the apps, website and infrastructure stay permissive so anyone can
 self-host and ship the mobile app through the app stores (GPL-family
