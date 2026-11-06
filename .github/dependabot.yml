@@ -8,6 +8,11 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    ignore:
+      # @sveltejs/kit 3 needs typescript ^6; a major bump fails web's npm ci
+      # and blocks the whole group. Bump it by hand when Kit supports 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: pub
     directory: /app

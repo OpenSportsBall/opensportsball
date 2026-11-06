@@ -5,16 +5,25 @@ mount record the field, the cloud stitches and follows the play, and the
 result goes to a configured YouTube account. The backend is as ephemeral as
 possible to keep costs low.
 
-## Status (2026-10-06)
+## Status (2026-11-05)
 
-- Phase 1 (capture app): built, not yet tested on phones. See
-  [TESTING-APPS.md](TESTING-APPS.md).
-- Phase 2 (cloud ingest + accounts): deployed to `us-west-2` (stack `OpenSportsBall`, 2026-10-11)
-  and verified end to end (link, manifest, multipart upload, ready, hand-off
-  event). See [API.md](API.md) and `infra/README.md`. Uploads run while the app is open;
-  background upload is still to do.
-- Phase 0 (feasibility on real footage): see the
-  [opensportsball-processing](https://github.com/OpenSportsBall/opensportsball-processing) repository.
+- Phase 0 (feasibility on real footage): done. Six games recorded with the
+  app (rec2-rec7: night and daylight, Pixel pairs and Pixel + iPhone) and
+  full followed games rendered on a Mac. What was tried and measured is in
+  the [opensportsball-processing](https://github.com/OpenSportsBall/opensportsball-processing)
+  repository (`docs/FINDINGS.md`).
+- Phase 1 (capture app): used on every game above; in TestFlight (iPhone)
+  and a Google Play test track. See [TESTING-APPS.md](TESTING-APPS.md).
+  Background upload on iPhone is still to test ([BACKLOG.md](BACKLOG.md)).
+- Phase 2 (cloud ingest + accounts): deployed to `us-west-2` (stack
+  `OpenSportsBall`) and in use for every game's upload. See [API.md](API.md)
+  and `infra/README.md`.
+- Phase 3 (pipeline v1): the pipeline runs end to end, but locally
+  (`processing/spikes/fullgame.py`, a game in ~6-11 h on a Mac), started by
+  hand. The AWS Batch job that runs it after upload is not built.
+- Phase 4 (ball tracking): under way. A fine-tuned detector and a judge,
+  retrained per new ball colour and light, drive the follow cam.
+- Phases 5 (YouTube) and 6 (hardening): not started.
 
 Open work is tracked in [BACKLOG.md](BACKLOG.md).
 
@@ -27,7 +36,7 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
 | Phone-to-phone link | BLE | Works iPhone-to-Android with no Wi-Fi on the field; only small control messages |
 | Video sync | Audio cross-correlation in the cloud, seeded by a BLE clock estimate | BLE start commands jitter by tens of ms; audio from phones 10 cm apart gives sub-frame accuracy |
 | Backend | AWS: S3, Step Functions, Batch on Spot GPU (min 0), API Gateway + Lambda, DynamoDB, Cognito, CDK (TypeScript) | Scales to zero between games; one-command self-host |
-| License | Two repos: this one (apps / web / api / infra / shared) Apache-2.0; opensportsball-processing (processing / ml) AGPL-3.0-only; one CLA | See [LICENSING.md](LICENSING.md) |
+| License | Two repos: this one (apps / web / api / infra / shared) Apache-2.0; opensportsball-processing (processing pipeline and model training) AGPL-3.0-only; one CLA | See [LICENSING.md](LICENSING.md) |
 | Public repo | Private on GitHub ([OpenSportsBall](https://github.com/OpenSportsBall)) for now; public once CLA Assistant and the org's security settings are in place | |
 
 ## Open decisions
