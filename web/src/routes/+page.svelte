@@ -17,7 +17,7 @@
 	<section class="hero">
 		<h1>Film the whole game with two phones</h1>
 		<p class="lead">
-			OpenSportsBall is a free, open-source way to record youth soccer. Two phones on tripods cover the
+			OpenSportsBall is a free, open-source way to record field sports. Two phones on tripods cover the
 			full field. When you get home, they upload the footage on Wi-Fi and it is turned into one game video.
 		</p>
 		<div class="actions">
