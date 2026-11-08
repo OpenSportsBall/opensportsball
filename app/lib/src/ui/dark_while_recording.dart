@@ -13,6 +13,24 @@ import 'package:flutter/material.dart';
 ///
 /// A tap wakes the normal screen for [delay], then it darkens again. Only
 /// the tap is consumed while dark, so a stray touch can't press a button.
+/// What the dark screen shows while recording.
+class DarkStatus {
+  const DarkStatus({required this.elapsed, required this.link, this.linkProblem = false});
+
+  /// Time since recording started; null before the start time is known.
+  final Duration? elapsed;
+
+  /// The link to the other phone, e.g. "Secondary OK".
+  final String link;
+
+  /// True when [link] is bad news; it is then shown in amber.
+  final bool linkProblem;
+}
+
+/// Hours and minutes only ("1:07"): the dark screen redraws once a minute,
+/// so seconds would always be stale.
+String formatDarkElapsed(Duration d) => '${d.inHours}:${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+
 class DarkWhileRecording extends StatefulWidget {
   const DarkWhileRecording({
     super.key,
@@ -29,8 +47,8 @@ class DarkWhileRecording extends StatefulWidget {
   final bool recording;
   final DualCamera camera;
 
-  /// The one line shown while dark, e.g. "REC 00:41:12 · Secondary OK".
-  final String Function() status;
+  /// What the dark screen shows: elapsed time and the link to the other phone.
+  final DarkStatus Function() status;
   final Widget child;
   final Duration delay;
 
@@ -135,8 +153,15 @@ class DarkWhileRecordingState extends State<DarkWhileRecording> {
 class _DarkOverlay extends StatelessWidget {
   const _DarkOverlay({required this.status, required this.onWake});
 
-  final String status;
+  final DarkStatus status;
   final VoidCallback onWake;
+
+  // Light enough to read at 1% backlight; lit text costs little on OLED at
+  // that brightness, the saving comes from the backlight and paused preview.
+  static const _label = Color(0xFF8A8A8A);
+  static const _time = Color(0xFFB8B8B8);
+  static const _hint = Color(0xFF6A6A6A);
+  static const _problem = Color(0xFFE0A030);
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +169,7 @@ class _DarkOverlay extends StatelessWidget {
     // stay lit for the whole game.
     final step = DateTime.now().minute % 9;
     final align = Alignment(-0.8 + 0.8 * (step % 3), -0.8 + 0.8 * (step ~/ 3));
+    final elapsed = status.elapsed;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onWake,
@@ -154,18 +180,24 @@ class _DarkOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(color: Color(0xFF7A1F1F), shape: BoxShape.circle),
+              const Text('REC',
+                  style: TextStyle(color: _label, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 3)),
+              if (elapsed != null)
+                Text(
+                  formatDarkElapsed(elapsed),
+                  style: const TextStyle(
+                    color: _time,
+                    fontSize: 56,
+                    fontWeight: FontWeight.w300,
+                    height: 1.1,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Text(status, style: const TextStyle(color: Color(0xFF5A5A5A), fontSize: 14)),
-              ]),
               const SizedBox(height: 4),
-              const Text('Recording. Tap to show the screen.',
-                  style: TextStyle(color: Color(0xFF3A3A3A), fontSize: 12)),
+              Text(status.link,
+                  style: TextStyle(color: status.linkProblem ? _problem : _label, fontSize: 16)),
+              const SizedBox(height: 12),
+              const Text('Tap to show the screen', style: TextStyle(color: _hint, fontSize: 13)),
             ],
           ),
         ),

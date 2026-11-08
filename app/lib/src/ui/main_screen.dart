@@ -75,13 +75,12 @@ class _MainScreenState extends State<MainScreen> {
         status: () {
           final rec = c.current;
           final started = rec?.startedAtDeviceMs;
-          final elapsed = started == null
-              ? ''
-              : formatElapsed(DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)));
-          final peer = rec?.peer == null
-              ? 'this phone only'
-              : (c.secondaryStale ? 'no contact with Secondary' : 'Secondary OK');
-          return 'REC $elapsed · $peer';
+          final lost = rec?.peer != null && c.secondaryStale;
+          return DarkStatus(
+            elapsed: started == null ? null : DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)),
+            link: rec?.peer == null ? 'This phone only' : (lost ? 'No contact with Secondary' : 'Secondary OK'),
+            linkProblem: lost,
+          );
         },
         child: child,
       );

@@ -16,7 +16,7 @@ void main() {
           enabled: enabled,
           recording: recording,
           camera: camera,
-          status: () => 'REC 00:00:15 · Secondary OK',
+          status: () => const DarkStatus(elapsed: Duration(minutes: 67), link: 'Secondary OK'),
           child: Scaffold(body: Center(child: FilledButton(onPressed: () => taps++, child: const Text('Stop')))),
         ),
       );
@@ -29,10 +29,11 @@ void main() {
   testWidgets('goes dark 15 s into a recording and wakes on tap', (tester) async {
     await tester.pumpWidget(app(recording: true));
     await tester.pump(const Duration(seconds: 14));
-    expect(find.text('REC 00:00:15 · Secondary OK'), findsNothing);
+    expect(find.text('1:07'), findsNothing);
 
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('REC 00:00:15 · Secondary OK'), findsOneWidget);
+    expect(find.text('1:07'), findsOneWidget);
+    expect(find.text('Secondary OK'), findsOneWidget);
     expect(camera.brightness, [0.01]);
     expect(camera.previewPaused, isTrue);
 

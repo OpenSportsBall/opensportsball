@@ -136,10 +136,11 @@ class _SecondarySessionState extends State<_SecondarySession> {
         camera: c.recorder.camera,
         status: () {
           final started = c.current?.startedAtDeviceMs;
-          final elapsed = started == null
-              ? ''
-              : formatElapsed(DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)));
-          return 'REC $elapsed · ${c.connected ? 'Main OK' : 'Main out of range'}';
+          return DarkStatus(
+            elapsed: started == null ? null : DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(started)),
+            link: c.connected ? 'Main OK' : 'Main out of range',
+            linkProblem: !c.connected,
+          );
         },
         child: child,
       );
