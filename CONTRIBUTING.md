@@ -18,6 +18,6 @@ Thanks for helping. Before you open a pull request:
 
 ## Footage and privacy
 
-Game footage shows minors. Never commit video, frames, or labeled datasets
-to this repository; `.gitignore` blocks common video formats. Share test
-footage privately and only with the consent of the families involved.
+Our test footage shows adult players, who can still be identified. Never
+commit video, frames, or labeled datasets to this repository; `.gitignore`
+blocks common video formats. Share test footage privately, never publicly.
