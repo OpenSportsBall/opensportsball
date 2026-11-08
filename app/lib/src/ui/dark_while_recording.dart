@@ -6,13 +6,6 @@ import 'dart:async';
 import 'package:dual_camera/dual_camera.dart';
 import 'package:flutter/material.dart';
 
-/// Blacks out the screen [delay] after recording starts, to save battery
-/// and heat over a whole game. The screen can't actually turn off (the OS
-/// would take the camera away), so this shows black at minimum brightness,
-/// which on OLED phones is close to off, and stops drawing the preview.
-///
-/// A tap wakes the normal screen for [delay], then it darkens again. Only
-/// the tap is consumed while dark, so a stray touch can't press a button.
 /// What the dark screen shows while recording.
 class DarkStatus {
   const DarkStatus({required this.elapsed, required this.link, this.linkProblem = false});
@@ -31,6 +24,13 @@ class DarkStatus {
 /// so seconds would always be stale.
 String formatDarkElapsed(Duration d) => '${d.inHours}:${(d.inMinutes % 60).toString().padLeft(2, '0')}';
 
+/// Blacks out the screen [delay] after recording starts, to save battery
+/// and heat over a whole game. The screen can't actually turn off (the OS
+/// would take the camera away), so this shows black at minimum brightness,
+/// which on OLED phones is close to off, and stops drawing the preview.
+///
+/// A tap wakes the normal screen for [delay], then it darkens again. Only
+/// the tap is consumed while dark, so a stray touch can't press a button.
 class DarkWhileRecording extends StatefulWidget {
   const DarkWhileRecording({
     super.key,
