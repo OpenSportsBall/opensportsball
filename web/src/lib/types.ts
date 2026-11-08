@@ -91,7 +91,8 @@ export interface GameSummary {
 	/** When recording started; null until a phone has listed its segments. */
 	recordedAt: string | null;
 	recordingCount: number;
-	status: RecordingStatus;
+	/** Least-finished status of its recordings; null when it has none. */
+	status: RecordingStatus | null;
 }
 
 export interface RecordingDevice {

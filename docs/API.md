@@ -143,7 +143,8 @@ Deletes the account and everything in it for good. → `204`
 ### `GET /games`
 → `200 {"games": [{"gameId", "createdAt", "recordedAt", "recordingCount", "status"}]}`,
 newest first (by `recordedAt`, or `createdAt` while that is null). `status`
-is the least-finished status of its recordings.
+is the least-finished status of its recordings, or null when it has none
+(all deleted).
 
 `createdAt` is when the server first heard of the game or recording;
 `recordedAt` is when recording started: the earliest segment

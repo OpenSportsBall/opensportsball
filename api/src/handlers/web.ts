@@ -107,7 +107,8 @@ async function listGames(acct: string) {
         recs.map((r) => recordedAt(r, reports.filter((p) => p.gameId === g.gameId && p.recordingId === r.recordingId))),
       ),
       recordingCount: recs.length,
-      status: recs.length ? leastFinished(recs.map((r) => r.status)) : 'waiting_for_manifest',
+      // Null once every recording is deleted: nothing is waiting for anything.
+      status: recs.length ? leastFinished(recs.map((r) => r.status)) : null,
     };
   });
   out.sort((a, b) => when(b).localeCompare(when(a)));

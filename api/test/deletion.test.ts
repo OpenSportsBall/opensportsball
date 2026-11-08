@@ -107,6 +107,16 @@ describe('deleting recordings and games', () => {
     expect((await deleteRecording(alice, randomUUID())).status).toBe(404);
   });
 
+  it('a game with every recording deleted has no status, not "waiting for manifest"', async () => {
+    // Like the game that prompted this: one recording, never got a manifest.
+    expect((await uploadFile(main, gameId, recordingId, 0, mainFiles[0]!)).status).toBe(200);
+    expect((await callWeb(alice, 'GET /games')).body.games[0].status).toBe('waiting_for_manifest');
+    expect((await deleteRecording(alice)).status).toBe(204);
+    const games = (await callWeb(alice, 'GET /games')).body.games;
+    expect(games.find((g: any) => g.gameId === gameId)).toMatchObject({ recordingCount: 0, status: null });
+    expect((await deleteGame(alice)).status).toBe(204);
+  });
+
   it('other accounts cannot delete a recording or game', async () => {
     await record();
     const mallory = randomUUID();

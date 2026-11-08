@@ -209,10 +209,9 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 	}
 	function gameSummary(g: MockGame): GameSummary {
 		const recs = gameView(g).recordings;
-		const status = recs.reduce<RecordingStatus>(
-			(acc, r) => (ORDER.indexOf(r.status) < ORDER.indexOf(acc) ? r.status : acc),
-			'ready'
-		);
+		const status = recs.length
+			? recs.reduce<RecordingStatus>((acc, r) => (ORDER.indexOf(r.status) < ORDER.indexOf(acc) ? r.status : acc), 'ready')
+			: null;
 		return { gameId: g.gameId, createdAt: g.createdAt, recordedAt: gameRecordedAt(g), recordingCount: recs.length, status };
 	}
 

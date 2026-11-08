@@ -24,7 +24,7 @@
 		} catch (e) {
 			error = e;
 		}
-		return games?.some((g) => g.status !== 'ready') ?? false;
+		return games?.some((g) => g.status !== null && g.status !== 'ready') ?? false;
 	}
 
 	onMount(() => {
@@ -72,7 +72,7 @@
 						<div class="date">{formatDateTime(recordedTime(g))}</div>
 						<div class="muted small">{plural(g.recordingCount, 'recording')}</div>
 					</div>
-					<StatusBadge status={g.status} />
+					{#if g.status}<StatusBadge status={g.status} />{/if}
 				</a>
 			</li>
 		{/each}
