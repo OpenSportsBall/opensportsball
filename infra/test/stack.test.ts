@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import { generateKeyPairSync } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as cdk from 'aws-cdk-lib';
@@ -29,11 +30,14 @@ const routes = () =>
 describe('API', () => {
   it('has exactly the documented routes, each with the right kind of auth', () => {
     expect(routes().sort((a, b) => a.key.localeCompare(b.key))).toEqual([
+      { key: 'DELETE /admin/accounts/{accountId}/games/{gameId}', auth: 'JWT' },
+      { key: 'DELETE /admin/accounts/{accountId}/games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'DELETE /me', auth: 'JWT' },
       { key: 'GET /admin/accounts', auth: 'JWT' },
+      { key: 'GET /admin/accounts/{accountId}/games', auth: 'JWT' },
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
@@ -42,6 +46,7 @@ describe('API', () => {
       { key: 'POST /devices/unlink', auth: 'CUSTOM' },
       { key: 'POST /games/{gameId}/grant-tickets', auth: 'JWT' },
       { key: 'POST /games/{gameId}/grants', auth: 'CUSTOM' },
+      { key: 'POST /games/{gameId}/recordings/{recordingId}/downloads', auth: 'JWT' },
       { key: 'POST /grant-tickets', auth: 'CUSTOM' },
       { key: 'POST /grants/lookup', auth: 'NONE' },
       { key: 'POST /grants/redeem', auth: 'NONE' },
@@ -287,5 +292,76 @@ describe('custom domain', () => {
     const csp = JSON.stringify(policy.Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig.ContentSecurityPolicy);
     expect(csp).toContain('https://auth.example.com');
     expect(csp).not.toContain('osb-test.auth.');
+  });
+});
+
+describe('footage downloads', () => {
+  let f: Template;
+  const publicKey = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    .publicKey.export({ type: 'spki', format: 'pem' })
+    .toString()
+    .trim();
+  beforeAll(() => {
+    const app = new cdk.App({ context: { '@aws-cdk/customresources:installLatestAwsSdkDefault': false } });
+    const stack = new OpenSportsBallStack(app, 'TestFootage', {
+      repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+      authDomainPrefix: 'osb-test',
+      footageSigningPublicKey: publicKey,
+    });
+    f = Template.fromStack(stack);
+  }, 120_000);
+
+  const footageCdn = () =>
+    Object.values(f.findResources('AWS::CloudFront::Distribution')).find((d) =>
+      String(d.Properties.DistributionConfig.Comment).includes('footage'),
+    )!;
+
+  it('has no footage distribution without a signing key', () => {
+    t.resourceCountIs('AWS::CloudFront::Distribution', 1);
+    t.resourceCountIs('AWS::CloudFront::PublicKey', 0);
+    expect(Object.keys(t.toJSON().Outputs)).not.toContain('FootageCdnDomain');
+  });
+
+  it('serves footage only with a URL signed by the deployment key, over HTTPS, uncached', () => {
+    f.resourceCountIs('AWS::CloudFront::Distribution', 2);
+    f.hasResourceProperties('AWS::CloudFront::PublicKey', {
+      PublicKeyConfig: Match.objectLike({ EncodedKey: publicKey }),
+    });
+    const [keyGroup] = Object.keys(f.findResources('AWS::CloudFront::KeyGroup'));
+    const b = footageCdn().Properties.DistributionConfig.DefaultCacheBehavior;
+    expect(b.TrustedKeyGroups).toEqual([{ Ref: keyGroup }]);
+    expect(b.ViewerProtocolPolicy).toBe('https-only');
+    expect(b.AllowedMethods).toEqual(['GET', 'HEAD']);
+    // AWS's managed CachingDisabled policy.
+    expect(b.CachePolicyId).toBe('4135ea2d-6df8-44a3-9df3-4b5a84be39ad');
+    expect(footageCdn().Properties.DistributionConfig.PriceClass).toBe('PriceClass_100');
+    f.hasOutput('FootageCdnDomain', {});
+  });
+
+  it('reads the footage bucket through origin access control, read-only', () => {
+    const footage = Object.keys(f.findResources('AWS::S3::Bucket')).find((id) => id.startsWith('Footage'))!;
+    const policy = Object.values(f.findResources('AWS::S3::BucketPolicy')).find(
+      (p) => p.Properties.Bucket.Ref === footage,
+    )!;
+    const cf = (policy.Properties.PolicyDocument.Statement as Array<Record<string, any>>).filter(
+      (s) => s.Principal?.Service === 'cloudfront.amazonaws.com',
+    );
+    expect(cf.map((s) => s.Action)).toEqual(['s3:GetObject']);
+  });
+
+  it('the web Lambda can sign: it knows the distribution and key, and may read only its key parameter', () => {
+    const web = Object.values(f.findResources('AWS::Lambda::Function')).find(
+      (fn) => fn.Properties.Environment?.Variables?.FOOTAGE_CDN_DOMAIN,
+    )!;
+    const vars = web.Properties.Environment.Variables;
+    expect(vars.FOOTAGE_SIGNING_KEY_PARAM).toBe('/TestFootage/footage-signing-key');
+    expect(vars.FOOTAGE_KEY_PAIR_ID).toEqual({ Ref: expect.stringMatching(/^FootageSigningKey/) });
+    const readers = Object.values(f.findResources('AWS::IAM::Policy')).flatMap((p) =>
+      (p.Properties.PolicyDocument.Statement as Array<Record<string, any>>).filter((s) =>
+        [s.Action].flat().includes('ssm:GetParameter'),
+      ),
+    );
+    expect(readers).toHaveLength(1);
+    expect(JSON.stringify(readers[0]!.Resource)).toContain(':parameter/TestFootage/footage-signing-key');
   });
 });

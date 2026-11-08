@@ -14,6 +14,8 @@
  */
 import type {
 	AdminAccount,
+	AdminAccountGames,
+	AdminGame,
 	AdminReport,
 	Device,
 	Game,
@@ -221,6 +223,103 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		return `${s(8)}-${s(4)}-4${s(3)}-a${s(3)}-${s(12)}`;
 	}
 
+	const MOCK_ACCOUNT = 'mock-account-0001';
+	const adminEmails: Record<string, string> = {
+		[MOCK_ACCOUNT]: 'parent@example.com',
+		'mock-account-0002': 'coach.rivera@example.com',
+		'mock-account-0003': 'sam.k@example.com',
+		'mock-account-0004': 'new.parent@example.com'
+	};
+
+	/** [n] games a week apart, each with [recs] recordings of [gb] GB. */
+	function sampleGames(prefix: string, n: number, recs: number, gb: number, status: RecordingStatus, daysAgo: number): AdminGame[] {
+		return Array.from({ length: n }, (_, i) => {
+			const at = ago(60 * 24 * (daysAgo + 7 * i));
+			const recordings = Array.from({ length: recs }, (_, j) => ({
+				recordingId: `${prefix}-r${i}-${j}`,
+				createdAt: at,
+				recordedAt: at,
+				status,
+				hasManifest: status !== 'waiting_for_manifest',
+				storageBytes: Math.round(gb * GB),
+				objectCount: Math.max(1, Math.round(gb)),
+				lastUploadAt: at
+			}));
+			return {
+				gameId: `${prefix}-g${i}`,
+				createdAt: at,
+				recordedAt: at,
+				inTable: true,
+				storageBytes: recordings.reduce((sum, r) => sum + r.storageBytes, 0),
+				objectCount: recordings.reduce((sum, r) => sum + r.objectCount, 0),
+				recordings
+			};
+		});
+	}
+	const otherGames = new Map<string, AdminGame[]>([
+		['mock-account-0002', sampleGames('rivera', 14, 2, 14.7, 'ready', 2)],
+		['mock-account-0003', sampleGames('samk', 1, 1, 3.4, 'waiting_for_manifest', 38)],
+		[
+			'mock-account-0005',
+			[
+				{
+					gameId: 'orphan-g0',
+					createdAt: null,
+					recordedAt: null,
+					inTable: false,
+					storageBytes: 1.1 * GB,
+					objectCount: 1,
+					recordings: [
+						{ recordingId: 'orphan-r0', createdAt: null, recordedAt: null, status: null, hasManifest: false, storageBytes: 1.1 * GB, objectCount: 1, lastUploadAt: ago(60 * 24 * 12) }
+					]
+				}
+			]
+		]
+	]);
+
+	function adminGames(acct: string): AdminGame[] {
+		if (acct !== MOCK_ACCOUNT) return structuredClone(otherGames.get(acct) ?? []);
+		return games.map((g) => {
+			const recordings = g.recordings.map((r) => {
+				const v = recordingView(r);
+				return {
+					recordingId: r.recordingId,
+					createdAt: r.createdAt,
+					recordedAt: r.recordedAt,
+					status: v.status,
+					hasManifest: r.hasManifest,
+					storageBytes: v.devices.reduce((n, d) => n + d.uploadedBytes, 0),
+					objectCount: v.devices.reduce((n, d) => n + d.uploadedSegments, 0),
+					lastUploadAt: v.status === 'ready' ? r.createdAt : ago(1)
+				};
+			});
+			return {
+				gameId: g.gameId,
+				createdAt: g.createdAt,
+				recordedAt: gameRecordedAt(g),
+				inTable: true,
+				storageBytes: recordings.reduce((n, r) => n + r.storageBytes, 0),
+				objectCount: recordings.reduce((n, r) => n + r.objectCount, 0),
+				recordings
+			};
+		});
+	}
+
+	/** An account's game, recording and storage totals from its games. */
+	function videoTotals(acct: string) {
+		const gs = adminGames(acct);
+		const recs = gs.flatMap((g) => g.recordings);
+		const count = (s: RecordingStatus) => recs.filter((r) => r.status === s).length;
+		return {
+			// Like the API: only what the table knows counts as games and
+			// recordings; footage without a record still counts as storage.
+			games: gs.filter((g) => g.inTable).length,
+			recordings: { total: recs.filter((r) => r.status !== null).length, waiting_for_manifest: count('waiting_for_manifest'), uploading: count('uploading'), ready: count('ready') },
+			storageBytes: gs.reduce((n, g) => n + g.storageBytes, 0),
+			objectCount: gs.reduce((n, g) => n + g.objectCount, 0)
+		};
+	}
+
 	/** The mock user's own row from its games and phones, plus a few
 	 *  made-up accounts in other states. */
 	function adminReport(): AdminReport {
@@ -299,7 +398,9 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				oldestObjectAt: ago(60 * 24 * 12)
 			}
 		];
-		const accounts = [mine, ...others].sort((a, b) => b.storageBytes - a.storageBytes);
+		const accounts = [mine, ...others]
+			.map((a) => ({ ...a, ...videoTotals(a.accountId) }))
+			.sort((a, b) => b.storageBytes - a.storageBytes);
 		const sum = (f: (a: AdminAccount) => number) => accounts.reduce((n, a) => n + f(a), 0);
 		return {
 			generatedAt: iso(now()),
@@ -388,6 +489,38 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		}
 		if (method === 'GET' && path === '/admin/accounts') {
 			return json(200, adminReport());
+		}
+		if (method === 'GET' && (m = path.match(/^\/admin\/accounts\/([^/]+)\/games$/))) {
+			const id = decodeURIComponent(m[1]);
+			const body: AdminAccountGames = { accountId: id, email: adminEmails[id] ?? null, games: adminGames(id) };
+			return json(200, body);
+		}
+		if (method === 'DELETE' && (m = path.match(/^\/admin\/accounts\/([^/]+)\/games\/([^/]+)(?:\/recordings\/([^/]+))?$/))) {
+			const [acct, gameId, recId] = [m[1], m[2], m[3]].map((x) => (x === undefined ? undefined : decodeURIComponent(x)));
+			if (acct === MOCK_ACCOUNT) {
+				const gi = games.findIndex((g) => g.gameId === gameId);
+				if (gi < 0) return fail(404, 'not_found', 'No such game on that account.');
+				if (!recId) games.splice(gi, 1);
+				else {
+					const ri = games[gi].recordings.findIndex((r) => r.recordingId === recId);
+					if (ri < 0) return fail(404, 'not_found', 'No such recording on that account.');
+					games[gi].recordings.splice(ri, 1);
+				}
+				return new Response(null, { status: 204 });
+			}
+			const list = otherGames.get(acct!) ?? [];
+			const gi = list.findIndex((g) => g.gameId === gameId);
+			if (gi < 0) return fail(404, 'not_found', 'No such game on that account.');
+			if (!recId) list.splice(gi, 1);
+			else {
+				const g = list[gi];
+				const ri = g.recordings.findIndex((r) => r.recordingId === recId);
+				if (ri < 0) return fail(404, 'not_found', 'No such recording on that account.');
+				g.storageBytes -= g.recordings[ri].storageBytes;
+				g.objectCount -= g.recordings[ri].objectCount;
+				g.recordings.splice(ri, 1);
+			}
+			return new Response(null, { status: 204 });
 		}
 		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
 			const id = decodeURIComponent(m[1]);

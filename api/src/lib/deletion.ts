@@ -47,10 +47,12 @@ export async function refuseDeleted(acct: string, gameId: string, recordingId: s
   if (rec) throw gone('This recording was deleted on the website.');
 }
 
-export async function deleteRecording(acct: string, gameId: string, recordingId: string) {
+/** [footageOnly]: go ahead with no table item for it, for footage left in
+ *  the bucket without one (the admin page; the caller checked it exists). */
+export async function deleteRecording(acct: string, gameId: string, recordingId: string, footageOnly = false) {
   const marker = keys.deletedRecording(acct, gameId, recordingId);
   const [rec, deleted] = await Promise.all([exists(keys.recording(acct, gameId, recordingId)), exists(marker)]);
-  if (!rec && !deleted) throw notFound('No such recording.');
+  if (!rec && !deleted && !footageOnly) throw notFound('No such recording.');
   await putMarker(marker);
   await deleteFootage(recordingPrefix(acct, gameId, recordingId));
   const sub = `${gameId}#${recordingId}#`;
@@ -64,10 +66,11 @@ interface GrantRef {
   tokenHash: string;
 }
 
-export async function deleteGame(acct: string, gameId: string) {
+/** [footageOnly] as for deleteRecording. */
+export async function deleteGame(acct: string, gameId: string, footageOnly = false) {
   const marker = keys.deletedGame(acct, gameId);
   const [game, deleted] = await Promise.all([exists(keys.game(acct, gameId)), exists(marker)]);
-  if (!game && !deleted) throw notFound('No such game.');
+  if (!game && !deleted && !footageOnly) throw notFound('No such game.');
   await putMarker(marker);
   await deleteFootage(gamePrefix(acct, gameId));
 

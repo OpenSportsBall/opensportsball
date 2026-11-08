@@ -8,7 +8,7 @@ TypeScript on Node 22, AWS SDK v3. License: Apache-2.0. Deployed by
 |---|---|
 | `src/handlers/web.ts` | Website routes (Cognito JWT): `/me`, `/link-codes`, `/devices`, `/games` |
 | `src/handlers/device.ts` | Phone routes: `/devices/link` (link code is the credential), recording grants, manifest and report upload, multipart uploads |
-| `src/handlers/admin.ts` | Admin routes (Cognito JWT, `admins` group): `/admin/accounts`. Its own Lambda, the only one that may scan the table and list users |
+| `src/handlers/admin.ts` | Admin routes (Cognito JWT, `admins` group): `/admin/accounts`, and listing and deleting any account's games and recordings. Its own Lambda, the only one that may scan the table and list users |
 | `src/handlers/authorizer.ts` | Lambda authorizer for phone routes (device or grant token hash lookup, uncached) |
 | `src/handlers/ingest.ts` | S3 `ObjectCreated` for segment files |
 

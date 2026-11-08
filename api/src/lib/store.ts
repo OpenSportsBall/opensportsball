@@ -62,6 +62,11 @@ export const config = {
   get urlTtlSeconds() {
     return Number(env('URL_TTL_SECONDS', String(6 * 3600)));
   },
+  /** How long footage download links last: long enough for a whole game
+   *  on a slow connection. */
+  get downloadUrlTtlSeconds() {
+    return Number(env('DOWNLOAD_URL_TTL_SECONDS', String(12 * 3600)));
+  },
 };
 
 export const keys = {

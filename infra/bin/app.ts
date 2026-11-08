@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as cdk from 'aws-cdk-lib';
@@ -19,13 +20,27 @@ if (!ctx('siteDomain') && !ctx('authDomain')) {
   );
 }
 
+// The footage download key (infra/README.md, "Footage downloads"), also
+// git-ignored: without it there is no footage distribution, and deploying
+// a stack that had one removes it.
+const infraDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const footageKeyFile = resolve(infraDir, ctx('footageSigningPublicKeyFile') ?? 'footage-signing-public.pem');
+const footageSigningPublicKey = existsSync(footageKeyFile) ? readFileSync(footageKeyFile, 'utf8').trim() : undefined;
+if (!footageSigningPublicKey) {
+  console.warn(
+    `No ${footageKeyFile}: no footage download distribution (see infra/README.md, "Footage downloads"). ` +
+      'If this stack was deployed with one, this deploy removes it.',
+  );
+}
+
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 // Cognito login domains are global; default to one derived from the account.
 const authDomainPrefix = ctx('authDomainPrefix') ?? (account ? `opensportsball-${account}` : 'opensportsball-dev');
 
 new OpenSportsBallStack(app, ctx('stackName') ?? 'OpenSportsBall', {
   env: { account, region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1' },
-  repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+  repoRoot: resolve(infraDir, '..'),
+  footageSigningPublicKey,
   authDomainPrefix,
   devOrigins: (ctx('devOrigins') ?? 'http://localhost:5173').split(',').filter(Boolean),
   siteDomain: ctx('siteDomain'),

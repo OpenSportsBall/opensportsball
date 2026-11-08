@@ -40,6 +40,36 @@ export interface AdminAccount {
 	oldestObjectAt: string | null;
 }
 
+/** GET /admin/accounts/{accountId}/games: one recording and its footage. */
+export interface AdminRecording {
+	recordingId: string;
+	createdAt: string | null;
+	recordedAt: string | null;
+	/** Null when the bucket has footage the table has no record of. */
+	status: RecordingStatus | null;
+	hasManifest: boolean;
+	storageBytes: number;
+	objectCount: number;
+	lastUploadAt: string | null;
+}
+
+export interface AdminGame {
+	gameId: string;
+	createdAt: string | null;
+	recordedAt: string | null;
+	/** False when the bucket has footage for a game the table doesn't know. */
+	inTable: boolean;
+	storageBytes: number;
+	objectCount: number;
+	recordings: AdminRecording[];
+}
+
+export interface AdminAccountGames {
+	accountId: string;
+	email: string | null;
+	games: AdminGame[];
+}
+
 export interface AdminReport {
 	generatedAt: string;
 	totals: {

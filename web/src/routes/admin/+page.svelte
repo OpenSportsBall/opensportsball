@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { ApiError } from '#lib/api.ts';
+	import AdminAccountVideos from '#lib/components/AdminAccountVideos.svelte';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import { formatBytes, formatDate, formatRelative, platformLabel } from '#lib/format.ts';
 	import { session } from '#lib/session.svelte.ts';
@@ -22,6 +23,9 @@
 	let sortDesc = $state(true);
 	let open = $state<string | null>(null);
 	let copied = $state<string | null>(null);
+	/** Visible width of the table box, so an expanded row's details stay in
+	 *  view while the table itself scrolls sideways. */
+	let wrapWidth = $state(0);
 
 	type SortKey = 'email' | 'status' | 'devices' | 'games' | 'recordings' | 'storage' | 'lastUpload' | 'created';
 
@@ -171,7 +175,7 @@
 		<span class="muted small">{rows.length} of {report.accounts.length} accounts</span>
 	</div>
 
-	<div class="card table-wrap">
+	<div class="card table-wrap" bind:clientWidth={wrapWidth}>
 		<table>
 			<thead>
 				<tr>
@@ -226,7 +230,7 @@
 					{#if expanded}
 						<tr class="details">
 							<td colspan="8">
-								<dl>
+								<dl style:--wrap={wrapWidth ? `${wrapWidth}px` : undefined}>
 									<div>
 										<dt>Account id</dt>
 										<dd>
@@ -258,6 +262,10 @@
 												—
 											{/if}
 										</dd>
+									</div>
+									<div class="full">
+										<dt>Games and footage</dt>
+										<dd><AdminAccountVideos accountId={a.accountId} onDeleted={() => void load()} /></dd>
 									</div>
 									<div>
 										<dt>Phones</dt>
@@ -473,6 +481,10 @@
 		display: grid;
 		gap: 0.4rem;
 		margin: 0;
+		position: sticky;
+		left: 2rem;
+		/* The table box's width less this cell's side padding. */
+		width: calc(var(--wrap, 100%) - 2.7rem);
 	}
 	dl > div {
 		display: grid;
@@ -490,6 +502,11 @@
 		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 0.5rem;
+	}
+	dl > div.full {
+		grid-template-columns: 1fr;
+		gap: 0.35rem;
+		order: 1;
 	}
 	dd code {
 		word-break: break-all;
@@ -512,6 +529,10 @@
 		}
 		tr.details td {
 			padding-left: 0.7rem;
+		}
+		dl {
+			left: 0.7rem;
+			width: calc(var(--wrap, 100%) - 1.4rem);
 		}
 	}
 </style>

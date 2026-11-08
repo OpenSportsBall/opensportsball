@@ -8,8 +8,10 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { isAdmin } from '../lib/admin.js';
 import { json, notFound, pathParam, respond, type Result } from '../lib/http.js';
 import { expectedDevices } from '../lib/manifest.js';
+import { deployedFootageSigner } from '../lib/footageUrls.js';
 import {
   STATUS_ORDER,
+  getRecording,
   listObjects,
   listReports,
   recordedAt,
@@ -19,7 +21,7 @@ import {
   type RecordingItem,
   type RecordingStatus,
 } from '../lib/recordings.js';
-import { config, ddb, keys, queryPrefix } from '../lib/store.js';
+import { config, ddb, keys, manifestKey, queryPrefix, segmentKey } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 import { createGameTicket } from '../lib/grants.js';
@@ -59,6 +61,8 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         return json(204);
       case 'POST /games/{gameId}/grant-tickets':
         return postGameTicket(acct, pathParam(event, 'gameId'), event.requestContext.domainName);
+      case 'POST /games/{gameId}/recordings/{recordingId}/downloads':
+        return postDownloads(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'));
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
@@ -120,6 +124,45 @@ async function postGameTicket(acct: string, gameId: string, apiDomain: string) {
   const g = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.game(acct, gameId) }));
   if (!g.Item) throw notFound('No such game.');
   return json(201, await createGameTicket({ accountId: acct, gameId, apiDomain }));
+}
+
+/** Signed CloudFront links for every segment of a recording that has
+ *  arrived, with the size and SHA-256 its phone listed, and for the merged
+ *  manifest once the recording is ready. */
+async function postDownloads(acct: string, gameId: string, recordingId: string) {
+  const rec = await getRecording(acct, gameId, recordingId);
+  if (!rec) throw notFound('No such recording.');
+  const signer = await deployedFootageSigner();
+  const [objects, reports] = await Promise.all([
+    listObjects(acct, gameId, recordingId),
+    listReports(acct, gameId, recordingId),
+  ]);
+  // What each phone listed, by "<deviceId>/<fileName>".
+  const listed = new Map<string, { bytes: number; sha256: string }>();
+  const devices = [...(rec.manifest?.devices ?? []), ...reports.map((r) => r.device)];
+  for (const s of devices.flatMap((d) => d.segments ?? [])) listed.set(s.objectKey, s);
+  const expiresAt = new Date(Date.now() + config.downloadUrlTtlSeconds * 1000);
+  const files = objects
+    .map((o) => {
+      const l = listed.get(`${o.deviceId}/${o.fileName}`);
+      return {
+        deviceId: o.deviceId,
+        fileName: o.fileName,
+        bytes: o.bytes,
+        sha256: l && l.bytes === o.bytes ? l.sha256 : null,
+        url: signer.url(segmentKey(acct, gameId, recordingId, o.deviceId, o.fileName), expiresAt),
+      };
+    })
+    .sort((a, b) => a.deviceId.localeCompare(b.deviceId) || a.fileName.localeCompare(b.fileName));
+  return json(200, {
+    gameId,
+    recordingId,
+    status: rec.status,
+    expiresAt: expiresAt.toISOString(),
+    // Written when the recording turns ready (recordings.ts: checkReady).
+    manifestUrl: rec.status === 'ready' ? signer.url(manifestKey(acct, gameId, recordingId), expiresAt) : null,
+    files,
+  });
 }
 
 async function getGame(acct: string, gameId: string) {

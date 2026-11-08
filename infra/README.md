@@ -12,6 +12,7 @@ and the website. License: Apache-2.0.
 | Cognito user pool + managed login | Website sign-up and sign-in, styled like the site (`lib/login-branding.ts`) | free tier |
 | HTTP API + 4 Lambdas (Node 22, arm64) | `docs/API.md` | none |
 | S3 `Site` bucket + CloudFront | The website (`web/build`) and its `config.json` | ~none |
+| CloudFront `FootageCdn` (with a signing key) | Footage downloads with signed URLs only ("Footage downloads") | none |
 | EventBridge rule → CloudWatch Logs | Records `RecordingReady` until Phase 3 consumes it | none |
 
 Nothing runs between games. Footage storage is the main cost (about
@@ -48,6 +49,7 @@ Options (pass with `-c key=value`):
 | `siteCertArn` | none | ACM certificate **in us-east-1** for `siteDomain` and `www.<siteDomain>` (required with `siteDomain`) |
 | `authDomain` | none | Serve the sign-in pages at this domain, e.g. `auth.example.com`, instead of the Cognito prefix domain |
 | `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
+| `footageSigningPublicKeyFile` | `footage-signing-public.pem` | Public key for footage download URLs, relative to `infra/` ("Footage downloads") |
 
 ### Deployment settings
 
@@ -71,6 +73,32 @@ without it removes the stack's custom domains (synth prints a warning when
 none are set). The certificate ARNs can be found again with
 `aws acm list-certificates --region us-east-1`. Avoid `cdk context
 --clear`, which empties the file.
+
+### Footage downloads
+
+Footage leaves the bucket through a second CloudFront distribution,
+`FootageCdn`, not straight from S3: CloudFront's first 1 TB a month is
+free, and S3 to CloudFront costs nothing. It serves only URLs (or cookies)
+signed by the website API (`api/src/lib/footageUrls.ts`), which signs an
+account's own recordings. Nothing is cached, so a deleted recording is gone
+from CloudFront as soon as it is gone from S3. Uploads still go straight to
+S3.
+
+The distribution needs a key pair. Make it once per deployment, signed in
+to the AWS account:
+
+```
+infra/scripts/footage-signing-key.sh [stack name]
+cd infra && npx cdk deploy
+```
+
+The script puts the private key in SSM (SecureString
+`/<stack name>/footage-signing-key`, never on disk) and writes the public
+key to `infra/footage-signing-public.pem`, which is git-ignored like
+`cdk.context.json`. Keep a copy of it with that file: deploying without it
+removes the distribution (synth prints a warning). To change keys, run the
+script again and deploy straight away; URLs signed with the old key stop
+working.
 
 ### Custom domain
 

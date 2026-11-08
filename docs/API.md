@@ -193,6 +193,42 @@ uploaded something, with `role`, `model`, `expectedSegments` and
 `expectedBytes` null. After it arrives, a phone that has not reported its
 segments yet has `expectedSegments` and `expectedBytes` null.
 
+### `POST /games/{gameId}/recordings/{recordingId}/downloads`
+Signed links for downloading a recording's footage, e.g. for processing
+on your own computer. → `200`
+
+```json
+{
+  "gameId": "...",
+  "recordingId": "...",
+  "status": "waiting_for_manifest | uploading | ready",
+  "expiresAt": "...",
+  "manifestUrl": "https://<footage CDN>/accounts/.../manifest.json?Expires=...&Signature=...&Key-Pair-Id=... | null",
+  "files": [
+    {
+      "deviceId": "...", "fileName": "<deviceId>_000.mp4",
+      "bytes": 1100000000, "sha256": "... | null",
+      "url": "https://<footage CDN>/accounts/.../<deviceId>/<deviceId>_000.mp4?Expires=..."
+    }
+  ]
+}
+```
+
+- Every segment that has arrived, whether or not the recording is
+  complete: check `status` (`ready` means everything is there). `sha256` is
+  what the phone listed for that file, or null when no manifest or report
+  has listed it yet (or it listed another size); check it after
+  downloading.
+- `manifestUrl` is the merged manifest (both phones' segments), written
+  when the recording turns `ready`; null before that.
+- Links work for 12 hours (`expiresAt`), with plain `GET`s, including
+  range requests for resuming. Ask again for fresh ones. They are served
+  by the footage CloudFront distribution (infra/README.md, "Footage
+  downloads"), never straight from S3.
+- `404 not_found`: no such recording on the account (another account's,
+  or deleted). `503 downloads_unavailable`: this deployment has no footage
+  distribution.
+
 ### `DELETE /games/{gameId}/recordings/{recordingId}`
 Deletes one recording for good. → `204`
 
@@ -256,6 +292,33 @@ to the group must sign in again.
   listed only while anything of it is left.
 - Reads the whole table, the user pool and the bucket listing each call:
   fine for an admin page, not for anything hit often.
+
+### `GET /admin/accounts/{accountId}/games`
+→ `200 {"accountId", "email": "... | null", "games": [...]}`, newest first:
+
+```json
+{
+  "gameId": "...", "createdAt": "... | null", "recordedAt": "... | null",
+  "inTable": true, "storageBytes": 29400000000, "objectCount": 30,
+  "recordings": [
+    {"recordingId": "...", "createdAt": "... | null", "recordedAt": "... | null",
+     "status": "waiting_for_manifest | uploading | ready | null", "hasManifest": true,
+     "storageBytes": 14700000000, "objectCount": 15, "lastUploadAt": "... | null"}
+  ]
+}
+```
+
+Footage in the bucket with no table record is listed too: its game has
+`inTable: false` and its recordings `status: null`.
+
+### `DELETE /admin/accounts/{accountId}/games/{gameId}`
+### `DELETE /admin/accounts/{accountId}/games/{gameId}/recordings/{recordingId}`
+Deletes another account's game or recording exactly as its owner would
+(`DELETE /games/...` above, including the `410` for phones afterwards),
+and also footage the table has no record of. → `204`; `404 not_found`
+when there is neither a record nor footage. Each one logs an audit line
+(admin's account id, action and ids) in the admin Lambda's logs, kept for
+a month.
 
 ## Routes for phones
 

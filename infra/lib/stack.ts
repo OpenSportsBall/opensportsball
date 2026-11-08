@@ -57,7 +57,15 @@ export interface OpenSportsBallStackProps extends cdk.StackProps {
   siteDomain?: string;
   /** ACM certificate in us-east-1 covering siteDomain and www.<siteDomain>. */
   siteCertArn?: string;
+  /** PEM public key whose private half (in SSM, footageSigningKeyParam)
+   *  signs footage download URLs. Without it there is no footage
+   *  distribution. */
+  footageSigningPublicKey?: string;
 }
+
+/** The SSM SecureString parameter holding the footage URL signing private
+ *  key, for a stack name (infra/scripts/footage-signing-key.sh writes it). */
+export const footageSigningKeyParam = (stackName: string) => `/${stackName}/footage-signing-key`;
 
 export class OpenSportsBallStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: OpenSportsBallStackProps) {
@@ -91,6 +99,40 @@ export class OpenSportsBallStack extends cdk.Stack {
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+
+    // Footage downloads (a local processing app, playback) go through
+    // CloudFront: its first 1 TB a month is free and S3 -> CloudFront costs
+    // nothing. Every request needs a URL or cookies signed by the API
+    // (lib/footageUrls.ts in api/), which signs only an account's own
+    // recordings. Nothing is cached: each recording is fetched by about one
+    // person, and a deleted recording must not outlive its S3 objects.
+    let footageCdn: cloudfront.Distribution | undefined;
+    let footageKey: cloudfront.PublicKey | undefined;
+    if (props.footageSigningPublicKey) {
+      footageKey = new cloudfront.PublicKey(this, 'FootageSigningKey', {
+        encodedKey: props.footageSigningPublicKey,
+        comment: 'Signs OpenSportsBall footage download URLs',
+      });
+      footageCdn = new cloudfront.Distribution(this, 'FootageCdn', {
+        comment: 'OpenSportsBall footage downloads (signed URLs only)',
+        defaultBehavior: {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(footage, {
+            originAccessLevels: [cloudfront.AccessLevel.READ],
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          trustedKeyGroups: [
+            new cloudfront.KeyGroup(this, 'FootageSigningKeys', {
+              items: [footageKey],
+              comment: 'Keys trusted to sign OpenSportsBall footage URLs',
+            }),
+          ],
+        },
+        priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+        httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+      });
+    }
 
     // --- Website ------------------------------------------------------------
 
@@ -289,11 +331,24 @@ export class OpenSportsBallStack extends cdk.Stack {
     table.grantReadWriteData(ingestFn);
     table.grantReadData(authFn);
     // The admin report reads everything: every account's items, every
-    // sign-in, and the size of everything under accounts/.
-    table.grantReadData(adminFn);
+    // sign-in, and the size of everything under accounts/. Admins can also
+    // delete any account's recordings and games, as their owner can.
+    table.grantReadWriteData(adminFn);
     adminFn.addEnvironment('USER_POOL_ID', users.userPoolId);
     adminFn.addToRolePolicy(
-      new iam.PolicyStatement({ actions: ['cognito-idp:ListUsers'], resources: [users.userPoolArn] }),
+      new iam.PolicyStatement({
+        actions: ['cognito-idp:ListUsers', 'cognito-idp:AdminGetUser'],
+        resources: [users.userPoolArn],
+      }),
+    );
+    adminFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['s3:ListBucketMultipartUploads'], resources: [footage.bucketArn] }),
+    );
+    adminFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:DeleteObject', 's3:AbortMultipartUpload'],
+        resources: [footage.arnForObjects('accounts/*')],
+      }),
     );
     adminFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -326,6 +381,20 @@ export class OpenSportsBallStack extends cdk.Stack {
     webFn.addToRolePolicy(
       new iam.PolicyStatement({ actions: ['cognito-idp:AdminDeleteUser'], resources: [users.userPoolArn] }),
     );
+    // The website API signs footage download URLs for an account's own
+    // recordings, with the private key from SSM.
+    if (footageCdn && footageKey) {
+      const param = footageSigningKeyParam(this.stackName);
+      webFn.addEnvironment('FOOTAGE_CDN_DOMAIN', footageCdn.distributionDomainName);
+      webFn.addEnvironment('FOOTAGE_KEY_PAIR_ID', footageKey.publicKeyId);
+      webFn.addEnvironment('FOOTAGE_SIGNING_KEY_PARAM', param);
+      webFn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['ssm:GetParameter'],
+          resources: [this.formatArn({ service: 'ssm', resource: 'parameter', resourceName: param.slice(1) })],
+        }),
+      );
+    }
     // A segment that lands after its recording was deleted is removed.
     footage.grantDelete(ingestFn, 'accounts/*');
     const defaultBus = events.EventBus.fromEventBusName(this, 'DefaultBus', 'default');
@@ -383,7 +452,11 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(DELETE, '/games/{gameId}', webIntegration, people);
     route(DELETE, '/games/{gameId}/recordings/{recordingId}', webIntegration, people);
     route(POST, '/games/{gameId}/grant-tickets', webIntegration, people); // a link for a phone with no grant
+    route(POST, '/games/{gameId}/recordings/{recordingId}/downloads', webIntegration, people); // signed footage links
     route(GET, '/admin/accounts', adminIntegration, people); // admins group only, checked in the Lambda
+    route(GET, '/admin/accounts/{accountId}/games', adminIntegration, people);
+    route(DELETE, '/admin/accounts/{accountId}/games/{gameId}', adminIntegration, people);
+    route(DELETE, '/admin/accounts/{accountId}/games/{gameId}/recordings/{recordingId}', adminIntegration, people);
     route(POST, '/devices/link', deviceIntegration); // the link code is the credential
     route(POST, '/devices/unlink', deviceIntegration, phones); // a phone leaves its account
     route(POST, '/games/{gameId}/grants', deviceIntegration, phones); // Main lets its Secondary upload
@@ -459,6 +532,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'LoginDomain', { value: loginUrl });
     if (customLogin) new cdk.CfnOutput(this, 'LoginCdnDomain', { value: customLogin.cloudFrontEndpoint });
     new cdk.CfnOutput(this, 'FootageBucket', { value: footage.bucketName });
+    if (footageCdn) new cdk.CfnOutput(this, 'FootageCdnDomain', { value: footageCdn.distributionDomainName });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
   }
 }
