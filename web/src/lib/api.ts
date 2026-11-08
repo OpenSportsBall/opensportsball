@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
-import type { Device, Game, GameSummary, GameTicket, GrantLookup, LinkCode, Me } from './types';
+import type { AdminReport, Device, Game, GameSummary, GameTicket, GrantLookup, LinkCode, Me } from './types';
 
 /** An API failure: HTTP status plus the `{"error","message"}` body (docs/API.md). */
 export class ApiError extends Error {
@@ -99,6 +99,8 @@ export function createApiClient(opts: ApiClientOptions) {
 		deleteRecording: (gameId: string, recordingId: string) =>
 			request<void>('DELETE', `/games/${enc(gameId)}/recordings/${enc(recordingId)}`),
 		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`),
+		/** Every account, for admins only (403 otherwise). */
+		adminAccounts: () => request<AdminReport>('GET', '/admin/accounts'),
 		lookupGrantTicket: (ticket: string) => request<GrantLookup>('POST', '/grants/lookup', { ticket }, true)
 	};
 }

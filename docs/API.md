@@ -112,7 +112,10 @@ the ticket; the page still accepts them.
 ## Routes for people (Cognito token)
 
 ### `GET /me`
-→ `200 {"accountId": "...", "email": "..."}`
+→ `200 {"accountId": "...", "email": "...", "admin": false}`
+
+`admin` is true when the user is in the Cognito `admins` group (the
+website then shows its Admin page).
 
 ### `DELETE /me`
 Deletes the account and everything in it for good. → `204`
@@ -213,6 +216,45 @@ Deletes a game and all its recordings for good. → `204`
   that phone is told the game was deleted (`410`) rather than that it was
   signed out (`401`).
 - Again for a deleted game is `204`; `404 not_found` as above.
+
+## Admin routes (Cognito token, `admins` group)
+
+A Cognito token whose `cognito:groups` includes `admins`; anyone else gets
+`403 forbidden`. Group membership is read from the token, so a user added
+to the group must sign in again.
+
+### `GET /admin/accounts`
+→ `200`
+
+```json
+{
+  "generatedAt": "...",
+  "totals": {"accounts": 4, "deletedAccounts": 3, "devices": 5, "games": 18,
+             "recordings": 32, "storageBytes": 498900000000, "objectCount": 449},
+  "accounts": [
+    {
+      "accountId": "...", "email": "... | null",
+      "status": "active | disabled | unconfirmed | deleted | no_sign_in",
+      "createdAt": "... | null",
+      "devices": [{"deviceId", "platform", "model", "linkedAt", "lastSeenAt"}],
+      "games": 3,
+      "recordings": {"total": 5, "waiting_for_manifest": 1, "uploading": 2, "ready": 2},
+      "storageBytes": 81800000000, "objectCount": 73,
+      "lastUploadAt": "... | null", "oldestObjectAt": "... | null"
+    }
+  ]
+}
+```
+
+- One row per Cognito user, plus any account id that has table items or
+  footage but no user (`no_sign_in`), biggest storage first.
+- Storage is everything under `accounts/<accountId>/` in the bucket;
+  `lastUploadAt` and `oldestObjectAt` are its newest and oldest objects
+  (the oldest is the next to expire).
+- A deleted account (`DELETE /me`) is counted in `deletedAccounts`, and
+  listed only while anything of it is left.
+- Reads the whole table, the user pool and the bucket listing each call:
+  fine for an admin page, not for anything hit often.
 
 ## Routes for phones
 

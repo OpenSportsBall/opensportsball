@@ -234,6 +234,13 @@ export class OpenSportsBallStack extends cdk.Stack {
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.hours(1),
     });
+    // Members see the admin page (/admin) and may call GET /admin/accounts.
+    // Add someone with admin-add-user-to-group (api/README.md).
+    new cognito.CfnUserPoolGroup(this, 'Admins', {
+      userPoolId: users.userPoolId,
+      groupName: 'admins',
+      description: 'OpenSportsBall admins: can see every account (GET /admin/accounts)',
+    });
     // Managed login shows an error page to a client without a style.
     for (const [id, client] of [['LoginBranding', webClient], ['AppLoginBranding', appClient]] as const) {
       new cognito.CfnManagedLoginBranding(this, id, {
@@ -275,11 +282,26 @@ export class OpenSportsBallStack extends cdk.Stack {
     const deviceFn = fn('DeviceApi', 'device');
     const authFn = fn('DeviceAuthorizer', 'authorizer', 10);
     const ingestFn = fn('Ingest', 'ingest', 60);
+    const adminFn = fn('AdminApi', 'admin');
 
     table.grantReadWriteData(webFn);
     table.grantReadWriteData(deviceFn);
     table.grantReadWriteData(ingestFn);
     table.grantReadData(authFn);
+    // The admin report reads everything: every account's items, every
+    // sign-in, and the size of everything under accounts/.
+    table.grantReadData(adminFn);
+    adminFn.addEnvironment('USER_POOL_ID', users.userPoolId);
+    adminFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['cognito-idp:ListUsers'], resources: [users.userPoolArn] }),
+    );
+    adminFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [footage.bucketArn],
+        conditions: { StringLike: { 's3:prefix': ['accounts/*', 'accounts/'] } },
+      }),
+    );
     footage.grantReadWrite(deviceFn);
     // Deleting a recording or game from the website: list, abort and delete
     // what is under accounts/ (never the bucket itself).
@@ -341,6 +363,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     });
     const webIntegration = new HttpLambdaIntegration('WebIntegration', webFn);
     const deviceIntegration = new HttpLambdaIntegration('DeviceIntegration', deviceFn);
+    const adminIntegration = new HttpLambdaIntegration('AdminIntegration', adminFn);
 
     const route = (
       method: apigw.HttpMethod,
@@ -360,6 +383,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(DELETE, '/games/{gameId}', webIntegration, people);
     route(DELETE, '/games/{gameId}/recordings/{recordingId}', webIntegration, people);
     route(POST, '/games/{gameId}/grant-tickets', webIntegration, people); // a link for a phone with no grant
+    route(GET, '/admin/accounts', adminIntegration, people); // admins group only, checked in the Lambda
     route(POST, '/devices/link', deviceIntegration); // the link code is the credential
     route(POST, '/devices/unlink', deviceIntegration, phones); // a phone leaves its account
     route(POST, '/games/{gameId}/grants', deviceIntegration, phones); // Main lets its Secondary upload

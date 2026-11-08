@@ -13,6 +13,8 @@
  *   next GET /devices after that includes the new device.
  */
 import type {
+	AdminAccount,
+	AdminReport,
 	Device,
 	Game,
 	GameSummary,
@@ -220,6 +222,101 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		return `${s(8)}-${s(4)}-4${s(3)}-a${s(3)}-${s(12)}`;
 	}
 
+	/** The mock user's own row from its games and phones, plus a few
+	 *  made-up accounts in other states. */
+	function adminReport(): AdminReport {
+		materializeLinks();
+		const recs = games.flatMap((g) => g.recordings.map(recordingView));
+		const segments = recs.flatMap((r) => r.devices);
+		const count = (s: RecordingStatus) => recs.filter((r) => r.status === s).length;
+		const empty = { total: 0, waiting_for_manifest: 0, uploading: 0, ready: 0 };
+		const mine: AdminAccount = {
+			accountId: 'mock-account-0001',
+			email: 'parent@example.com',
+			status: 'active',
+			createdAt: ago(60 * 24 * 22),
+			devices: devices.map((d) => ({ ...d })),
+			games: games.length,
+			recordings: { total: recs.length, waiting_for_manifest: count('waiting_for_manifest'), uploading: count('uploading'), ready: count('ready') },
+			storageBytes: segments.reduce((n, d) => n + d.uploadedBytes, 0),
+			objectCount: segments.reduce((n, d) => n + d.uploadedSegments, 0),
+			lastUploadAt: recs.some((r) => r.status !== 'ready') ? ago(1) : ago(60 * 24 * 3),
+			oldestObjectAt: ago(60 * 24 * 7)
+		};
+		const others: AdminAccount[] = [
+			{
+				accountId: 'mock-account-0002',
+				email: 'coach.rivera@example.com',
+				status: 'active',
+				createdAt: ago(60 * 24 * 160),
+				devices: [
+					{ deviceId: 'c1d2e3f4-0000-4000-a000-000000000001', platform: 'ios', model: 'iPhone 16', linkedAt: ago(60 * 24 * 158), lastSeenAt: ago(60 * 24 * 2) },
+					{ deviceId: 'c1d2e3f4-0000-4000-a000-000000000002', platform: 'ios', model: 'iPhone 13', linkedAt: ago(60 * 24 * 158), lastSeenAt: ago(60 * 24 * 2) }
+				],
+				games: 14,
+				recordings: { ...empty, total: 26, ready: 26 },
+				storageBytes: 412.6 * GB,
+				objectCount: 372,
+				lastUploadAt: ago(60 * 24 * 2),
+				oldestObjectAt: ago(60 * 24 * 171)
+			},
+			{
+				accountId: 'mock-account-0003',
+				email: 'sam.k@example.com',
+				status: 'active',
+				createdAt: ago(60 * 24 * 40),
+				devices: [{ deviceId: 'c1d2e3f4-0000-4000-a000-000000000003', platform: 'android', model: 'Pixel 9', linkedAt: ago(60 * 24 * 39), lastSeenAt: null }],
+				games: 1,
+				recordings: { ...empty, total: 1, waiting_for_manifest: 1 },
+				storageBytes: 3.4 * GB,
+				objectCount: 3,
+				lastUploadAt: ago(60 * 24 * 38),
+				oldestObjectAt: ago(60 * 24 * 38)
+			},
+			{
+				accountId: 'mock-account-0004',
+				email: 'new.parent@example.com',
+				status: 'unconfirmed',
+				createdAt: ago(30),
+				devices: [],
+				games: 0,
+				recordings: empty,
+				storageBytes: 0,
+				objectCount: 0,
+				lastUploadAt: null,
+				oldestObjectAt: null
+			},
+			{
+				accountId: 'mock-account-0005',
+				email: null,
+				status: 'deleted',
+				createdAt: null,
+				devices: [],
+				games: 0,
+				recordings: empty,
+				storageBytes: 1.1 * GB,
+				objectCount: 1,
+				lastUploadAt: ago(60 * 24 * 12),
+				oldestObjectAt: ago(60 * 24 * 12)
+			}
+		];
+		const accounts = [mine, ...others].sort((a, b) => b.storageBytes - a.storageBytes);
+		const sum = (f: (a: AdminAccount) => number) => accounts.reduce((n, a) => n + f(a), 0);
+		return {
+			generatedAt: iso(now()),
+			totals: {
+				accounts: accounts.filter((a) => a.status !== 'deleted').length,
+				deletedAccounts: 3,
+				devices: sum((a) => a.devices.length),
+				games: sum((a) => a.games),
+				recordings: sum((a) => a.recordings.total),
+				storageBytes: sum((a) => a.storageBytes),
+				objectCount: sum((a) => a.objectCount)
+			},
+			accounts
+		};
+	}
+
 	/** Pretend a phone scanned every code that is at least 5 s old. */
 	function materializeLinks() {
 		for (const c of codes) {
@@ -237,7 +334,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 	function route(method: string, path: string): Response {
 		let m: RegExpMatchArray | null;
 		if (method === 'GET' && path === '/me') {
-			return json(200, { accountId: 'mock-account-0001', email: 'parent@example.com' });
+			return json(200, { accountId: 'mock-account-0001', email: 'parent@example.com', admin: true });
 		}
 		if (method === 'DELETE' && path === '/me') {
 			devices.splice(0);
@@ -289,6 +386,9 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			if (!g || i < 0) return fail(404, 'not_found', 'No such recording.');
 			g.recordings.splice(i, 1);
 			return new Response(null, { status: 204 });
+		}
+		if (method === 'GET' && path === '/admin/accounts') {
+			return json(200, adminReport());
 		}
 		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
 			const id = decodeURIComponent(m[1]);

@@ -33,6 +33,7 @@ describe('API', () => {
       { key: 'DELETE /games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'DELETE /me', auth: 'JWT' },
+      { key: 'GET /admin/accounts', auth: 'JWT' },
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
@@ -50,6 +51,14 @@ describe('API', () => {
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/manifest', auth: 'CUSTOM' },
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/report', auth: 'CUSTOM' },
     ]);
+  });
+
+  it('has an admins group, and only the admin Lambda may list users', () => {
+    t.hasResourceProperties('AWS::Cognito::UserPoolGroup', { GroupName: 'admins' });
+    const listers = Object.entries(t.findResources('AWS::IAM::Policy')).filter(([, p]) =>
+      JSON.stringify(p.Properties.PolicyDocument).includes('cognito-idp:ListUsers'),
+    );
+    expect(listers.map(([id]) => id)).toEqual([expect.stringMatching(/^AdminApi/)]);
   });
 
   it('the phone authorizer is never cached, so unlinking is immediate', () => {
@@ -70,7 +79,7 @@ describe('API', () => {
     const fns = Object.values(t.findResources('AWS::Lambda::Function')).filter(
       (f) => f.Properties.Environment?.Variables?.TABLE_NAME,
     );
-    expect(fns).toHaveLength(4);
+    expect(fns).toHaveLength(5);
     for (const f of fns) {
       expect(f.Properties.Runtime).toBe('nodejs22.x');
       expect(f.Properties.Architectures).toEqual(['arm64']);

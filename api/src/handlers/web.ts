@@ -5,6 +5,7 @@
 
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
+import { isAdmin } from '../lib/admin.js';
 import { json, notFound, pathParam, respond, type Result } from '../lib/http.js';
 import { expectedDevices } from '../lib/manifest.js';
 import {
@@ -35,7 +36,7 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
     const acct = String(claims.sub);
     switch (event.routeKey) {
       case 'GET /me':
-        return json(200, { accountId: acct, email: claims.email ?? null });
+        return json(200, { accountId: acct, email: claims.email ?? null, admin: isAdmin(claims) });
       case 'DELETE /me':
         await deleteAccount(acct);
         return json(204);

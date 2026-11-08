@@ -19,6 +19,39 @@ export type Role = 'main' | 'secondary';
 export interface Me {
 	accountId: string;
 	email: string;
+	/** In the Cognito `admins` group: may open /admin. */
+	admin?: boolean;
+}
+
+/** GET /admin/accounts, one row per account. */
+export interface AdminAccount {
+	accountId: string;
+	email: string | null;
+	/** `deleted`: closed, but something was left behind. `no_sign_in`: data
+	 *  for an id with no Cognito user. */
+	status: 'active' | 'disabled' | 'unconfirmed' | 'deleted' | 'no_sign_in';
+	createdAt: string | null;
+	devices: Device[];
+	games: number;
+	recordings: Record<RecordingStatus, number> & { total: number };
+	storageBytes: number;
+	objectCount: number;
+	lastUploadAt: string | null;
+	oldestObjectAt: string | null;
+}
+
+export interface AdminReport {
+	generatedAt: string;
+	totals: {
+		accounts: number;
+		deletedAccounts: number;
+		devices: number;
+		games: number;
+		recordings: number;
+		storageBytes: number;
+		objectCount: number;
+	};
+	accounts: AdminAccount[];
 }
 
 export interface LinkCode {

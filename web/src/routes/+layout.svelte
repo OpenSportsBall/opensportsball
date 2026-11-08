@@ -41,6 +41,9 @@
 			<a href={resolve('/games')} aria-current={path === '/games' || path === '/game' ? 'page' : undefined}>Games</a>
 			<a href={resolve('/devices')} aria-current={path === '/devices' ? 'page' : undefined}>Devices</a>
 			<a href={resolve('/account')} aria-current={path === '/account' ? 'page' : undefined}>Account</a>
+			{#if session.admin}
+				<a href={resolve('/admin')} aria-current={path === '/admin' ? 'page' : undefined}>Admin</a>
+			{/if}
 		</nav>
 	{/if}
 </header>

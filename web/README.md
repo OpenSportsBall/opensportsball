@@ -15,6 +15,7 @@ S3 + CloudFront, and talks to the API described in
 | `/games` | Games, newest first, with recording count and status. |
 | `/game?id=<gameId>` | Recordings with per-phone upload progress. Refreshes every 15 s while anything is still uploading. |
 | `/devices` | Linked phones, Unlink, and **Link a phone** (QR code, `ABCD-EFGH` code, expiry countdown; polls every 3 s until the phone shows up). |
+| `/admin` | Admins only (Cognito `admins` group; the nav link shows for them): totals, then every account with status, phones, games, recordings and storage, sortable and filterable; a row expands to the account id, phones and oldest footage. See `api/README.md` to add an admin. |
 
 Not built yet (later phases): connect YouTube, default upload settings
 (privacy, title template), output downloads. Default video privacy will be
@@ -34,7 +35,8 @@ npm run dev:mock      # http://localhost:5173
 `/config.json` with [`config.mock.json`](config.mock.json), which sets
 `"apiUrl": "mock"`. The site then:
 
-- skips Cognito and uses a fake signed-in user (`parent@example.com`).
+- skips Cognito and uses a fake signed-in user (`parent@example.com`), who
+  is an admin, so `/admin` shows sample accounts.
   **Sign out** shows the signed-out home page; **Sign in** signs back in.
 - answers every API call from an in-memory mock
   ([`src/lib/mock.ts`](src/lib/mock.ts)) behind the real API client: three

@@ -11,6 +11,8 @@ class Session {
 	error = $state<string | null>(null);
 	signedIn = $state(false);
 	email = $state<string | null>(null);
+	/** From GET /me; shows the Admin link. The API checks it again. */
+	admin = $state(false);
 	config = $state<SiteConfig | null>(null);
 	/** True when config.json says `"apiUrl": "mock"`. */
 	mock = $state(false);
@@ -62,7 +64,9 @@ class Session {
 
 	async #loadMe() {
 		try {
-			this.email = (await this.api.me()).email || this.email;
+			const me = await this.api.me();
+			this.email = me.email || this.email;
+			this.admin = me.admin === true;
 		} catch {
 			/* header falls back to the ID-token email; pages show their own errors */
 		}
