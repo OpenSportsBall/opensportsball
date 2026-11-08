@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { REPO_URL, SUPPORT_EMAIL } from '#lib/site.ts';
 
-	const UPDATED = 'November 3, 2026';
+	const UPDATED = 'November 7, 2026';
 </script>
 
 <svelte:head><title>Privacy policy · OpenSportsBall</title></svelte:head>
@@ -75,7 +75,10 @@
 			Uploaded footage (video and audio): deleted automatically 180 days after it is uploaded, or sooner if you
 			delete it or your account.
 		</li>
-		<li>Games and recording details: until you delete them or your account.</li>
+		<li>
+			Games and recording details: until you delete them or your account. When you delete a game or recording we
+			keep only its ID and when it was deleted (see below).
+		</li>
 		<li>Service logs: up to 3 months.</li>
 		<li>
 			Database backups: up to 35 days. After you delete something it can stay in these backups until they expire;
@@ -85,7 +88,9 @@
 
 	<h2>Deleting your data</h2>
 	<p>
-		You can delete a recording or a whole game on the Games page. To delete everything, go to
+		You can delete a recording or a whole game on the Games page. Its footage and details are removed right away;
+		we keep only the game or recording ID and when it was deleted, so that a phone still trying to upload it is
+		turned away instead of adding it back. That record goes when you delete your account. To delete everything, go to
 		<a href={resolve('/account')}>Account</a> and choose <strong>Delete my account</strong>. The app links to it
 		from its account screen. It removes your footage, games, linked phones and sign-in right away. We keep only
 		a record of your account ID and when it was deleted, so that a phone still trying to upload is turned away. Or
