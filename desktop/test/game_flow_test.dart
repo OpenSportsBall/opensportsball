@@ -120,6 +120,10 @@ void main() {
     expect(File('${ctl.folder!.path}/main/main_000.mp4').readAsBytesSync(), seg);
     expect(ctl.phase, Phase.questions);
     expect(ctl.questions!.pending, ['pitch', 'kits']);
+    // The last step's name, start and log, for the step clock.
+    expect(ctl.step, 'pitch');
+    expect(ctl.stepStartedAt, isNotNull);
+    expect(ctl.stepLog, '${ctl.folder!.path}/engine/logs/pitch.log');
 
     await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
     expect(ctl.questions!.pending, ['kits']);

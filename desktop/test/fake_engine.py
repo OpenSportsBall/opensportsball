@@ -38,7 +38,7 @@ if cmd == "status":
          output=str(out) if out.exists() else None)
 elif cmd == "prepare":
     for s in ("verify-footage", "sync", "pitch"):
-        emit("step", step=s, status="started")
+        emit("step", step=s, status="started", log=f"engine/logs/{s}.log")
         emit("step", step=s, status="done", seconds=0.1)
     (rec / "pitch").mkdir(exist_ok=True)
     q = {

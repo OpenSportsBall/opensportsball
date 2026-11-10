@@ -45,6 +45,19 @@ const stepNames = {
   'cleanup': 'Tidying up',
 };
 
+/// How long each `prepare` step usually takes, from two games on an M-series
+/// Mac (rec3 and a Pixel + iPhone game, 4 segments a phone): shown beside
+/// the time so far, so a long step doesn't look stuck.
+const usualStepSeconds = {
+  'verify-footage': 30,
+  'sync': 60,
+  'pitch': 180,
+  'goals': 30,
+  'kit-sample': 450,
+  'kits': 120,
+  'pitch-review': 30,
+};
+
 String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
 
 /// The folder a game's recording goes in: `<work>/<date time> <game id>`.
@@ -72,6 +85,11 @@ class GameController extends ChangeNotifier {
 
   /// What it's doing now, for the progress line.
   String? activity;
+
+  /// The engine step under way: its name, when it started and its log.
+  String? step;
+  DateTime? stepStartedAt;
+  String? stepLog;
   double? fraction;
   double? etaS;
   DownloadProgress? download;
@@ -316,6 +334,10 @@ class GameController extends ChangeNotifier {
   void _onStep(EngineEvent e) {
     if (e.event == 'step' && e.status == 'started') {
       activity = stepName(e.step);
+      step = e.step;
+      stepStartedAt = DateTime.now();
+      final log = e.log;
+      stepLog = log == null ? null : (log.startsWith('/') ? log : '${folder!.path}/$log');
       notifyListeners();
     } else if (e.event == 'progress') {
       activity = stepName(e.stage);
