@@ -1,0 +1,4 @@
+// Copy to Engine.xcconfig (git-ignored) to build the processing engine into
+// the app. OSB_ENGINE_DIR is the osb-engine folder that
+// opensportsball-processing's packaging/mac/build_engine.sh makes.
+OSB_ENGINE_DIR = /path/to/osb-engine

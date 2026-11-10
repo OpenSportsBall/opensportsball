@@ -35,7 +35,11 @@ giving it the saved sign-in.
 
 The engine is looked for in Settings, then inside the app
 (`Contents/Resources/osb-engine/osb-engine`), then `$OSB_ENGINE`. Build one
-with opensportsball-processing's `packaging/mac/build_engine.sh`.
+with opensportsball-processing's `packaging/mac/build_engine.sh`. To build it
+into the app, copy `macos/Runner/Configs/Engine.example.xcconfig` to
+`Engine.xcconfig` (git-ignored) and set its folder: `macos/copy_engine.sh`
+copies it in at build time (about 1.8 GB the first time, then only what
+changed). Without it, as in CI, the app is built without the engine.
 
 Signing in needs a site whose `/config.json` has `desktopClientId` (infra's
 `Desktop` Cognito client).
