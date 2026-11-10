@@ -1,0 +1,8 @@
+// Copy to Signing.xcconfig (git-ignored) to sign builds on this Mac with
+// your Apple Development certificate. A stable signature lets the Keychain
+// keep recognising the app across rebuilds. `security find-identity -v -p
+// codesigning` lists your certificates; the team id is in parentheses in
+// Xcode's Accounts settings.
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development
+DEVELOPMENT_TEAM = YOURTEAMID

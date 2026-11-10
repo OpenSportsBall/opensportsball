@@ -8,3 +8,9 @@ PRODUCT_BUNDLE_IDENTIFIER = dev.opensportsball.mac
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 The OpenSportsBall Authors. Apache-2.0.
+
+// Signing on a developer's Mac: copy Signing.example.xcconfig to
+// Signing.xcconfig (git-ignored) and set your team. Without it the app is
+// signed ad hoc (as in CI), and each rebuild looks like a new app to the
+// Keychain, which then asks again for the saved sign-in.
+#include? "Signing.xcconfig"
