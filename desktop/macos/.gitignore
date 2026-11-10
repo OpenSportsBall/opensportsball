@@ -11,3 +11,6 @@
 
 # This Mac's signing (Runner/Configs/Signing.example.xcconfig).
 Runner/Configs/Signing.xcconfig
+
+# This Mac's engine folder (Runner/Configs/Engine.example.xcconfig).
+Runner/Configs/Engine.xcconfig

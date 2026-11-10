@@ -60,9 +60,10 @@ const usualStepSeconds = {
 };
 
 /// How long one chunk (10 minutes of video) of `run` usually takes on an
-/// M-series Mac: 52.6 min for rec3's first chunk. Used for an estimate until
-/// the engine has one of its own (after its first chunk).
-const usualChunkSeconds = 3160;
+/// M-series Mac: 52.6 min for rec3's first chunk, 58.1 for a Pixel + iPhone
+/// game's. Used for an estimate until the engine has one of its own (after
+/// its first chunk).
+const usualChunkSeconds = 3320;
 
 String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
 

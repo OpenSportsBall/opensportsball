@@ -14,3 +14,8 @@ PRODUCT_COPYRIGHT = Copyright © 2026 The OpenSportsBall Authors. Apache-2.0.
 // signed ad hoc (as in CI), and each rebuild looks like a new app to the
 // Keychain, which then asks again for the saved sign-in.
 #include? "Signing.xcconfig"
+
+// The packaged engine to put in the app (copy_engine.sh): copy
+// Engine.example.xcconfig to Engine.xcconfig (git-ignored) and set its
+// folder. Without it the app is built without the engine.
+#include? "Engine.xcconfig"
