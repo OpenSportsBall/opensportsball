@@ -59,11 +59,12 @@ class GamePane extends StatelessWidget {
               ],
             ),
           ),
-          if (ctl.folder != null && ctl.phase != Phase.loading)
+          // The game's folder appears when its download starts.
+          if (ctl.folder?.existsSync() ?? false)
             TextButton.icon(
               onPressed: () => openFile(ctl.folder!.path),
               icon: const Icon(Icons.folder_open_outlined, size: 18),
-              label: const Text('Folder'),
+              label: const Text('Show in Finder'),
             ),
         ],
       ),
