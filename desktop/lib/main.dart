@@ -15,7 +15,7 @@ Future<void> main() async {
   final client = http.Client();
   // OSB_DEMO_RECORDING: a stand-in server for development (src/demo.dart).
   final demo = demoSession();
-  final auth = AuthController(client: client, store: KeychainTokenStore(), session: demo);
+  final auth = AuthController(client: client, store: KeychainTokenStore(), session: demo, settings: settings);
   runApp(OsbDesktopApp(auth: auth, settings: settings, client: client));
   await auth.restore();
 }

@@ -12,6 +12,8 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 import 'package:osb_core/osb_core.dart';
 
+import 'services.dart';
+
 /// Where managed login returns to (infra's `DESKTOP_LOGIN_CALLBACK`).
 const desktopLoginCallback = 'opensportsball://desktop-auth';
 
@@ -20,7 +22,10 @@ Future<String> _systemSheet(Uri url, String callbackScheme) async {
     return await FlutterWebAuth2.authenticate(
       url: url.toString(),
       callbackUrlScheme: callbackScheme,
-      options: const FlutterWebAuth2Options(preferEphemeral: true),
+      // Shares the browser's session: already signed in on the website,
+      // the app signs in with a click (macOS asks once). After signing out
+      // here, the next sign-in asks for the account again (chooseAccount).
+      options: const FlutterWebAuth2Options(preferEphemeral: false),
     );
   } on PlatformException catch (e) {
     if (e.code == 'CANCELED') throw const SignInCanceled();
@@ -29,13 +34,16 @@ Future<String> _systemSheet(Uri url, String callbackScheme) async {
 }
 
 class AuthController extends ChangeNotifier {
-  AuthController({required this.client, required this.store, OpenLogin? openLogin, this.session})
+  AuthController({required this.client, required this.store, OpenLogin? openLogin, this.session, this.settings})
     : _openLogin = openLogin ?? _systemSheet,
       restored = session != null;
 
   final http.Client client;
   final TokenStore store;
   final OpenLogin _openLogin;
+
+  /// Remembers a sign-out across launches (`chooseAccount`).
+  final Settings? settings;
 
   Session? session;
 
@@ -74,7 +82,9 @@ class AuthController extends ChangeNotifier {
         clientId: clientId,
         redirectUri: desktopLoginCallback,
         signUp: signUp,
+        chooseAccount: settings?.chooseAccount ?? false,
       );
+      await settings?.set('chooseAccount', null);
       final s = Session(config: config, tokens: tokens, clientId: clientId, client: client, store: store);
       await s.save();
       session = s;
@@ -92,6 +102,8 @@ class AuthController extends ChangeNotifier {
   /// server changes).
   Future<void> signOut() async {
     await session?.signOut();
+    // The browser may still be signed in: ask for the account next time.
+    await settings?.set('chooseAccount', true);
     session = null;
     notifyListeners();
   }
