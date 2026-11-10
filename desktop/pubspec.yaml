@@ -1,0 +1,47 @@
+name: osb_desktop
+description: >-
+  OpenSportsBall for Mac: turns a game's footage into the followed game
+  video on your own computer, with the processing engine
+  (opensportsball-processing) running beside it.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  osb_core:
+    path: ../packages/osb_core
+  http: ^1.6.0
+  crypto: ^3.0.7
+  flutter_web_auth_2: ^5.1.0
+  flutter_secure_storage: ^11.2.0
+  path_provider: ^2.1.6
+  url_launcher: ^6.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Rubik
+      fonts:
+        - asset: assets/fonts/Rubik-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Rubik-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Rubik-Bold.ttf
+          weight: 700
+    - family: Atkinson Hyperlegible
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: assets/fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
+    - family: IBM Plex Mono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-Regular.ttf

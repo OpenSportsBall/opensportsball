@@ -73,3 +73,32 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze lib test
       - run: flutter test
+
+  osb_core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/osb_core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
+
+  desktop:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze lib test
+      - run: flutter test
+      - run: flutter build macos --debug
