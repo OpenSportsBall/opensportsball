@@ -28,6 +28,7 @@ import {
   recordingPrefix,
   s3,
 } from './store.js';
+import { deleteAllContributions } from './contributions.js';
 
 type Key = { pk: string; sk: string };
 
@@ -105,6 +106,8 @@ export async function deleteAccount(acct: string) {
   ]);
 
   await deleteFootage(accountPrefix(acct));
+  // What the user shared to improve the models goes with the account (lib/contributions.ts).
+  await deleteAllContributions(acct);
 
   const items = await queryPrefix<Key>(acct, '');
   await deleteKeys(items.filter((i) => i.sk !== 'CLOSED').map(({ pk, sk }) => ({ pk, sk })));
@@ -123,12 +126,17 @@ const putMarker = (key: Key) =>
 
 /** Aborts unfinished uploads, then deletes every object, under [prefix]. */
 async function deleteFootage(prefix: string) {
+  await deletePrefix(config.bucket, prefix);
+}
+
+/** Aborts unfinished uploads, then deletes every object, under [prefix] in [bucket]. */
+export async function deletePrefix(bucket: string, prefix: string) {
   let keyMarker: string | undefined;
   let uploadIdMarker: string | undefined;
   do {
     const r = await s3.send(
       new ListMultipartUploadsCommand({
-        Bucket: config.bucket,
+        Bucket: bucket,
         Prefix: prefix,
         KeyMarker: keyMarker,
         UploadIdMarker: uploadIdMarker,
@@ -136,7 +144,7 @@ async function deleteFootage(prefix: string) {
     );
     await Promise.all(
       (r.Uploads ?? []).map((u) =>
-        s3.send(new AbortMultipartUploadCommand({ Bucket: config.bucket, Key: u.Key, UploadId: u.UploadId })),
+        s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: u.Key, UploadId: u.UploadId })),
       ),
     );
     [keyMarker, uploadIdMarker] = r.IsTruncated ? [r.NextKeyMarker, r.NextUploadIdMarker] : [undefined, undefined];
@@ -144,11 +152,11 @@ async function deleteFootage(prefix: string) {
 
   let token: string | undefined;
   do {
-    const r = await s3.send(new ListObjectsV2Command({ Bucket: config.bucket, Prefix: prefix, ContinuationToken: token }));
+    const r = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
     const objects = (r.Contents ?? []).map((o) => ({ Key: o.Key! }));
     if (objects.length) {
       const d = await s3.send(
-        new DeleteObjectsCommand({ Bucket: config.bucket, Delete: { Objects: objects, Quiet: true } }),
+        new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: objects, Quiet: true } }),
       );
       if (d.Errors?.length) throw new Error(`could not delete ${d.Errors.length} objects: ${JSON.stringify(d.Errors[0])}`);
     }

@@ -1,6 +1,17 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
-import type { AdminAccountGames, AdminReport, Device, Game, GameSummary, GameTicket, GrantLookup, LinkCode, Me } from './types';
+import type {
+	AdminAccountGames,
+	AdminReport,
+	Contribution,
+	Device,
+	Game,
+	GameSummary,
+	GameTicket,
+	GrantLookup,
+	LinkCode,
+	Me
+} from './types';
 
 /** An API failure: HTTP status plus the `{"error","message"}` body (docs/API.md). */
 export class ApiError extends Error {
@@ -99,6 +110,12 @@ export function createApiClient(opts: ApiClientOptions) {
 		deleteRecording: (gameId: string, recordingId: string) =>
 			request<void>('DELETE', `/games/${enc(gameId)}/recordings/${enc(recordingId)}`),
 		createGameTicket: (gameId: string) => request<GameTicket>('POST', `/games/${enc(gameId)}/grant-tickets`),
+		/** What the account shared to improve the models (pitch maps, kit groups, labels). */
+		listContributions: async () =>
+			(await request<{ contributions: Contribution[] }>('GET', '/contributions')).contributions,
+		/** Withdraws a shared result: its files are deleted, for good. */
+		withdrawContribution: (contributionId: string) =>
+			request<void>('DELETE', `/contributions/${enc(contributionId)}`),
 		/** Every account, for admins only (403 otherwise). */
 		adminAccounts: () => request<AdminReport>('GET', '/admin/accounts'),
 		/** One account's games and recordings with their footage (admins). */

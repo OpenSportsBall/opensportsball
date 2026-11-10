@@ -29,7 +29,8 @@ const routes = () =>
 
 describe('API', () => {
   it('has exactly the documented routes, each with the right kind of auth', () => {
-    expect(routes().sort((a, b) => a.key.localeCompare(b.key))).toEqual([
+    const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
+    expect(routes().sort(byKey)).toEqual([
       { key: 'DELETE /admin/accounts/{accountId}/games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /admin/accounts/{accountId}/games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
@@ -37,11 +38,15 @@ describe('API', () => {
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
       { key: 'DELETE /me', auth: 'JWT' },
       { key: 'GET /admin/accounts', auth: 'JWT' },
+      { key: 'DELETE /contributions/{contributionId}', auth: 'JWT' },
       { key: 'GET /admin/accounts/{accountId}/games', auth: 'JWT' },
+      { key: 'GET /contributions', auth: 'JWT' },
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
       { key: 'GET /me', auth: 'JWT' },
+      { key: 'POST /contributions', auth: 'JWT' },
+      { key: 'POST /contributions/{contributionId}/complete', auth: 'JWT' },
       { key: 'POST /devices/link', auth: 'NONE' },
       { key: 'POST /devices/unlink', auth: 'CUSTOM' },
       { key: 'POST /games/{gameId}/grant-tickets', auth: 'JWT' },
@@ -55,7 +60,7 @@ describe('API', () => {
       { key: 'POST /uploads/complete', auth: 'CUSTOM' },
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/manifest', auth: 'CUSTOM' },
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/report', auth: 'CUSTOM' },
-    ]);
+    ].sort(byKey));
   });
 
   it('has an admins group, and only the admin Lambda may list users', () => {
@@ -160,6 +165,31 @@ describe('deleting footage', () => {
     expect(actions(del).sort()).toEqual(['s3:AbortMultipartUpload', 's3:DeleteObject']);
     expect(JSON.stringify(del.Resource)).toContain('/accounts/*');
     expect(st.flatMap(actions).some((a) => a === 's3:DeleteBucket' || a === 's3:*')).toBe(false);
+  });
+
+  it('contributions have their own private bucket, kept on stack delete and not expired with footage', () => {
+    const [id, bucket] = Object.entries(t.findResources('AWS::S3::Bucket')).find(([k]) => k.startsWith('Contributions'))!;
+    expect(bucket.DeletionPolicy).toBe('Retain');
+    expect(bucket.Properties.PublicAccessBlockConfiguration).toEqual({
+      BlockPublicAcls: true,
+      BlockPublicPolicy: true,
+      IgnorePublicAcls: true,
+      RestrictPublicBuckets: true,
+    });
+    // Without contributionRetentionDays nothing expires: kept until withdrawn.
+    expect(bucket.Properties.LifecycleConfiguration.Rules).toEqual([
+      expect.objectContaining({ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } }),
+    ]);
+    // Only the web Lambda may write and delete there, under contributions/.
+    const rw = statements('WebApi').find((s) => JSON.stringify(s.Resource).includes(id) && actions(s).includes('s3:PutObject'))!;
+    expect(JSON.stringify(rw.Resource)).toContain('/contributions/*');
+    for (const fn of ['DeviceApi', 'Ingest', 'AdminApi']) {
+      expect(JSON.stringify(statements(fn)).includes(id), fn).toBe(false);
+    }
+    const web = Object.values(t.findResources('AWS::Lambda::Function')).find((f) =>
+      JSON.stringify(f.Properties.Environment ?? {}).includes('CONTRIBUTIONS_BUCKET_NAME'),
+    )!;
+    expect(web.Properties.Environment.Variables.CONTRIBUTIONS_BUCKET_NAME).toEqual({ Ref: id });
   });
 
   it('the ingest Lambda may delete a segment that lands after its recording was deleted', () => {

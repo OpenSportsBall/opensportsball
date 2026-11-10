@@ -46,18 +46,20 @@ export async function resetAws() {
       ],
     }),
   );
-  try {
-    const listed = await s3.send(new ListObjectsV2Command({ Bucket: bucket }));
-    if (listed.Contents?.length) {
-      await s3.send(
-        new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: listed.Contents.map((o) => ({ Key: o.Key! })) } }),
-      );
+  for (const name of [bucket, process.env.CONTRIBUTIONS_BUCKET_NAME!]) {
+    try {
+      const listed = await s3.send(new ListObjectsV2Command({ Bucket: name }));
+      if (listed.Contents?.length) {
+        await s3.send(
+          new DeleteObjectsCommand({ Bucket: name, Delete: { Objects: listed.Contents.map((o) => ({ Key: o.Key! })) } }),
+        );
+      }
+      await s3.send(new DeleteBucketCommand({ Bucket: name }));
+    } catch {
+      // didn't exist
     }
-    await s3.send(new DeleteBucketCommand({ Bucket: bucket }));
-  } catch {
-    // didn't exist
+    await s3.send(new CreateBucketCommand({ Bucket: name }));
   }
-  await s3.send(new CreateBucketCommand({ Bucket: bucket }));
 
   const q = await sqs.send(new CreateQueueCommand({ QueueName: `ready-${randomUUID()}` }));
   queueUrl = q.QueueUrl!;
@@ -68,7 +70,7 @@ export async function resetAws() {
   await eb.send(
     new PutRuleCommand({
       Name: rule,
-      EventPattern: JSON.stringify({ source: ['opensportsball'], 'detail-type': ['RecordingReady'] }),
+      EventPattern: JSON.stringify({ source: ['opensportsball'], 'detail-type': ['RecordingReady', 'ContributionReady'] }),
     }),
   );
   await eb.send(new PutTargetsCommand({ Rule: rule, Targets: [{ Id: 'q', Arn: arn }] }));

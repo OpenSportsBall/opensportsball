@@ -19,6 +19,7 @@ export default defineConfig({
       S3_FORCE_PATH_STYLE: '1',
       TABLE_NAME: 'osb-test',
       BUCKET_NAME: 'osb-test-footage',
+      CONTRIBUTIONS_BUCKET_NAME: 'osb-test-contributions',
       PART_SIZE_BYTES: '100',
     },
   },

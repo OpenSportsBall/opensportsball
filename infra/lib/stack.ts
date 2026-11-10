@@ -61,6 +61,10 @@ export interface OpenSportsBallStackProps extends cdk.StackProps {
    *  signs footage download URLs. Without it there is no footage
    *  distribution. */
   footageSigningPublicKey?: string;
+  /** Days a shared result (contributions bucket) is kept before it expires.
+   *  Unset: kept until the user withdraws it or closes the account. A
+   *  decision for the privacy policy (web/src/routes/privacy). */
+  contributionRetentionDays?: number;
 }
 
 /** The SSM SecureString parameter holding the footage URL signing private
@@ -96,6 +100,22 @@ export class OpenSportsBallStack extends cdk.Stack {
       lifecycleRules: [
         { abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) },
         { id: 'ExpireUploads', prefix: 'accounts/', expiration: cdk.Duration.days(FOOTAGE_RETENTION_DAYS) },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // What users share to improve the models (api/src/lib/contributions.ts):
+    // kept apart from footage, not expired with it, deleted when the user
+    // withdraws it or closes the account (the privacy policy says so).
+    const contributions = new s3.Bucket(this, 'Contributions', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      lifecycleRules: [
+        { abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) },
+        ...(props.contributionRetentionDays
+          ? [{ id: 'ExpireContributions', expiration: cdk.Duration.days(props.contributionRetentionDays) }]
+          : []),
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
@@ -376,6 +396,11 @@ export class OpenSportsBallStack extends cdk.Stack {
         resources: [footage.arnForObjects('accounts/*')],
       }),
     );
+    // Contributions: the web Lambda signs their uploads, checks and stores
+    // them, and deletes them (withdrawn, or the account closed), all under
+    // contributions/.
+    webFn.addEnvironment('CONTRIBUTIONS_BUCKET_NAME', contributions.bucketName);
+    contributions.grantReadWrite(webFn, 'contributions/*'); // objects under contributions/, and listing the bucket
     // Deleting the account (DELETE /me) also deletes its sign-in.
     webFn.addEnvironment('USER_POOL_ID', users.userPoolId);
     webFn.addToRolePolicy(
@@ -400,6 +425,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     const defaultBus = events.EventBus.fromEventBusName(this, 'DefaultBus', 'default');
     defaultBus.grantPutEventsTo(deviceFn);
     defaultBus.grantPutEventsTo(ingestFn);
+    defaultBus.grantPutEventsTo(webFn); // ContributionReady
 
     footage.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(ingestFn), {
       prefix: 'accounts/',
@@ -453,6 +479,10 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(DELETE, '/games/{gameId}/recordings/{recordingId}', webIntegration, people);
     route(POST, '/games/{gameId}/grant-tickets', webIntegration, people); // a link for a phone with no grant
     route(POST, '/games/{gameId}/recordings/{recordingId}/downloads', webIntegration, people); // signed footage links
+    route(GET, '/contributions', webIntegration, people); // what the user shared to improve the models
+    route(POST, '/contributions', webIntegration, people); // signed uploads for one shared result
+    route(POST, '/contributions/{contributionId}/complete', webIntegration, people);
+    route(DELETE, '/contributions/{contributionId}', webIntegration, people); // withdraw it
     route(GET, '/admin/accounts', adminIntegration, people); // admins group only, checked in the Lambda
     route(GET, '/admin/accounts/{accountId}/games', adminIntegration, people);
     route(DELETE, '/admin/accounts/{accountId}/games/{gameId}', adminIntegration, people);
@@ -477,6 +507,18 @@ export class OpenSportsBallStack extends cdk.Stack {
       targets: [
         new targets.CloudWatchLogGroup(
           new logs.LogGroup(this, 'RecordingReadyLog', {
+            retention: logs.RetentionDays.THREE_MONTHS,
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
+          }),
+        ),
+      ],
+    });
+    // Shared results: logged until training picks them up.
+    new events.Rule(this, 'ContributionReady', {
+      eventPattern: { source: ['opensportsball'], detailType: ['ContributionReady'] },
+      targets: [
+        new targets.CloudWatchLogGroup(
+          new logs.LogGroup(this, 'ContributionReadyLog', {
             retention: logs.RetentionDays.THREE_MONTHS,
             removalPolicy: cdk.RemovalPolicy.DESTROY,
           }),
@@ -532,6 +574,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'LoginDomain', { value: loginUrl });
     if (customLogin) new cdk.CfnOutput(this, 'LoginCdnDomain', { value: customLogin.cloudFrontEndpoint });
     new cdk.CfnOutput(this, 'FootageBucket', { value: footage.bucketName });
+    new cdk.CfnOutput(this, 'ContributionsBucket', { value: contributions.bucketName });
     if (footageCdn) new cdk.CfnOutput(this, 'FootageCdnDomain', { value: footageCdn.distributionDomainName });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
   }

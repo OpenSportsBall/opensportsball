@@ -47,5 +47,6 @@ new OpenSportsBallStack(app, ctx('stackName') ?? 'OpenSportsBall', {
   siteCertArn: ctx('siteCertArn'),
   authDomain: ctx('authDomain'),
   authCertArn: ctx('authCertArn'),
+  contributionRetentionDays: ctx('contributionRetentionDays') ? Number(ctx('contributionRetentionDays')) : undefined,
   description: 'OpenSportsBall: phone recording uploads, accounts and website',
 });

@@ -6,7 +6,7 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { isAdmin } from '../lib/admin.js';
-import { json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { body, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
 import { expectedDevices } from '../lib/manifest.js';
 import { deployedFootageSigner } from '../lib/footageUrls.js';
 import {
@@ -26,6 +26,12 @@ import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 import { createGameTicket } from '../lib/grants.js';
 import { deleteAccount, deleteGame, deleteRecording } from '../lib/deletion.js';
+import {
+  completeContribution,
+  createContribution,
+  deleteContribution,
+  listContributions,
+} from '../lib/contributions.js';
 
 interface GameItem {
   gameId: string;
@@ -63,6 +69,15 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         return postGameTicket(acct, pathParam(event, 'gameId'), event.requestContext.domainName);
       case 'POST /games/{gameId}/recordings/{recordingId}/downloads':
         return postDownloads(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'));
+      case 'GET /contributions':
+        return json(200, await listContributions(acct));
+      case 'POST /contributions':
+        return json(201, await createContribution(acct, body(event)));
+      case 'POST /contributions/{contributionId}/complete':
+        return json(200, await completeContribution(acct, pathParam(event, 'contributionId')));
+      case 'DELETE /contributions/{contributionId}':
+        await deleteContribution(acct, pathParam(event, 'contributionId'));
+        return json(204);
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }

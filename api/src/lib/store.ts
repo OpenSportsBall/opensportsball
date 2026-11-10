@@ -21,6 +21,7 @@
  * | ACCOUNT#<acct>      | DELETED#<gameId>                        | deleted game            |
  * | ACCOUNT#<acct>      | DELETED#<gameId>#<recordingId>          | deleted recording       |
  * | ACCOUNT#<acct>      | CLOSED                                  | deleted account         |
+ * | ACCOUNT#<acct>      | CONTRIB#<contributionId>                | shared result (models)  |
  */
 
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
@@ -49,6 +50,14 @@ export const config = {
   },
   get bucket() {
     return env('BUCKET_NAME');
+  },
+  /** Shared results (lib/contributions.ts): apart from footage, with their own retention. */
+  get contributionsBucket() {
+    return env('CONTRIBUTIONS_BUCKET_NAME');
+  },
+  /** The same, or null in a deployment without one (account deletion skips it). */
+  get contributionsBucketOrNull(): string | null {
+    return process.env.CONTRIBUTIONS_BUCKET_NAME ?? null;
   },
   get userPoolId() {
     return env('USER_POOL_ID');
@@ -106,6 +115,7 @@ export const keys = {
   /** Left when an account is deleted (lib/deletion.ts), so a link code or
    *  an upload already under way can't bring it back. */
   closedAccount: (acct: string) => ({ pk: `ACCOUNT#${acct}`, sk: 'CLOSED' }),
+  contribution: (acct: string, id: string) => ({ pk: `ACCOUNT#${acct}`, sk: `CONTRIB#${id}` }),
 };
 
 /** All items in one account whose sort key starts with [prefix], or all

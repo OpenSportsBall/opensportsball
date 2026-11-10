@@ -107,6 +107,22 @@ export interface GrantLookup extends GameTicket {
 	used: boolean;
 }
 
+/** Something the user shared to improve the models (the Mac app uploads them). */
+export interface Contribution {
+	contributionId: string;
+	gameId: string;
+	recordingId: string;
+	kind: 'pitch' | 'kits' | 'ball' | 'moments' | string;
+	name: string;
+	engineVersion: string;
+	consentVersion: string;
+	status: 'uploading' | 'complete';
+	files: number;
+	bytes: number;
+	createdAt: string;
+	completedAt: string | null;
+}
+
 export interface Device {
 	deviceId: string;
 	platform: Platform | string;
