@@ -93,8 +93,9 @@ class FootageDownloader {
           final key = (s as Map)['objectKey'] as String;
           final got = v[key];
           final f = File('${folder.path}/$key');
-          if (got is! Map || !f.existsSync() || f.lengthSync() != got['bytes'] || got['bytes'] != s['bytes'])
+          if (got is! Map || !f.existsSync() || f.lengthSync() != got['bytes'] || got['bytes'] != s['bytes']) {
             return false;
+          }
         }
       }
       return segments > 0;
@@ -239,8 +240,9 @@ class FootageDownloader {
       for (final d in m['devices'] as List) {
         for (final s in ((d as Map)['segments'] as List? ?? [])) {
           final seg = (s as Map).cast<String, Object?>();
-          if (seg['objectKey'] is String && seg['sha256'] is String)
+          if (seg['objectKey'] is String && seg['sha256'] is String) {
             out[seg['objectKey'] as String] = seg['sha256'] as String;
+          }
         }
       }
     } on Object {
@@ -251,8 +253,9 @@ class FootageDownloader {
 
   Future<void> _getSmall(Uri url, File dest) async {
     final res = await send(() => client.get(url), timeout: const Duration(minutes: 2));
-    if (res.statusCode != 200)
+    if (res.statusCode != 200) {
       throw OsbException('Could not download the manifest (${res.statusCode}).', status: res.statusCode);
+    }
     final tmp = File('${dest.path}.part');
     await tmp.writeAsBytes(res.bodyBytes, flush: true);
     await tmp.rename(dest.path);
@@ -288,8 +291,9 @@ class FootageDownloader {
       }
       if (res.statusCode == 403 || res.statusCode == 401) {
         await res.stream.drain<void>();
-        if (++refusals > 2)
+        if (++refusals > 2) {
           throw OsbException('The footage server refused ${f.objectKey} (${res.statusCode}).', status: res.statusCode);
+        }
         await _fresh(force: true);
         continue;
       }
@@ -297,8 +301,9 @@ class FootageDownloader {
         have = 0; // the server ignored the range: start over
       } else if (res.statusCode != 200 && res.statusCode != 206) {
         await res.stream.drain<void>();
-        if (++failures > 5)
+        if (++failures > 5) {
           throw OsbException('Could not download ${f.objectKey} (${res.statusCode}).', status: res.statusCode);
+        }
         await Future<void>.delayed(Duration(seconds: 2 * failures));
         continue;
       }

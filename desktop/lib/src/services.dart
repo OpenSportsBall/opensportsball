@@ -62,6 +62,10 @@ class Settings extends ChangeNotifier {
   /// The engine's launcher. Unset: the one inside the app, or $OSB_ENGINE.
   String? get enginePath => _values['enginePath'] as String?;
 
+  /// Signed out in the app: the next sign-in shows the login form even if
+  /// the browser is still signed in.
+  bool get chooseAccount => _values['chooseAccount'] == true;
+
   int get outputHeight => (_values['outputHeight'] as num?)?.toInt() ?? 1080;
 
   /// For development: process only this many chunks of a game (the job's

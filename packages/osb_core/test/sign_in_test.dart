@@ -74,6 +74,12 @@ void main() {
     expect(t.refreshToken, 'r1');
 
     final req = LoginRequest(cognitoDomain: 'https://l', clientId: 'c', redirectUri: 'x://y');
+    expect(req.url.queryParameters.containsKey('prompt'), isFalse);
+    expect(
+        LoginRequest(cognitoDomain: 'https://l', clientId: 'c', redirectUri: 'x://y', chooseAccount: true)
+            .url
+            .queryParameters['prompt'],
+        'login');
     expect(() => req.codeFrom('x://y?code=c&state=other'), throwsA(isA<OsbException>()));
     expect(() => req.codeFrom('x://y?error=access_denied&state=${req.state}'), throwsA(isA<OsbException>()));
   });

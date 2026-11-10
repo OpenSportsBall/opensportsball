@@ -53,6 +53,7 @@ class LoginRequest {
     required this.clientId,
     required this.redirectUri,
     bool signUp = false,
+    this.chooseAccount = false,
     Random? random,
   })  : verifier = randomString(random ?? Random.secure(), 64),
         state = randomString(random ?? Random.secure(), 32),
@@ -65,6 +66,10 @@ class LoginRequest {
   final String state;
   final bool _signUp;
 
+  /// Show the login form even when the browser is still signed in
+  /// (`prompt=login`), so another account can be chosen.
+  final bool chooseAccount;
+
   Uri get url => Uri.parse('$cognitoDomain/${_signUp ? 'signup' : 'oauth2/authorize'}').replace(
         queryParameters: {
           'response_type': 'code',
@@ -74,6 +79,7 @@ class LoginRequest {
           'state': state,
           'code_challenge': base64Url.encode(sha256.convert(ascii.encode(verifier)).bytes).replaceAll('=', ''),
           'code_challenge_method': 'S256',
+          if (chooseAccount) 'prompt': 'login',
         },
       );
 
@@ -160,10 +166,16 @@ Future<Tokens> signIn({
   required String clientId,
   required String redirectUri,
   bool signUp = false,
+  bool chooseAccount = false,
   Random? random,
 }) async {
   final req = LoginRequest(
-      cognitoDomain: cognitoDomain, clientId: clientId, redirectUri: redirectUri, signUp: signUp, random: random);
+      cognitoDomain: cognitoDomain,
+      clientId: clientId,
+      redirectUri: redirectUri,
+      signUp: signUp,
+      chooseAccount: chooseAccount,
+      random: random);
   final code = req.codeFrom(await openLogin(req.url, Uri.parse(redirectUri).scheme));
   return requestTokens(client, cognitoDomain, {
     'grant_type': 'authorization_code',
