@@ -43,6 +43,14 @@
 			<strong>Service logs:</strong> our servers record requests, including IP addresses, to keep the service running
 			and secure.
 		</li>
+		<li>
+			<strong>Results you choose to share</strong> (only if you turn sharing on, in the Mac app): when you process a
+			game on your own computer, you check the pitch lines and the kit groups, and you may label the ball or mark
+			moments the camera missed. If you agree, the app sends those results to improve OpenSportsBall: the empty-pitch
+			panorama and the points you marked, small pictures of people on the pitch grouped by kit, still frames and
+			panoramas of the game, and your labels. These are pictures of the game, so they show players, often children,
+			and anyone else in view. We record which wording of the agreement you accepted.
+		</li>
 	</ul>
 	<p>
 		The app uses Bluetooth only to connect your two phones to each other, not to find your location. It asks for the
@@ -59,7 +67,9 @@
 	<h2>How we use it</h2>
 	<p>
 		Only to run the service: to sign you in, to receive uploads from your phones, to turn your footage into a game
-		video, to show you your games, to improve our offering, and to fix problems.
+		video, to show you your games, to improve our offering, and to fix problems. Results you choose to share are used
+		to train and test OpenSportsBall's models (pitch mapping, team colours, ball finding and following the play), and
+		only by the people who build them. We don't publish them.
 	</p>
 
 	<h2>Where it is stored, and who processes it</h2>
@@ -79,6 +89,11 @@
 			Games and recording details: until you delete them or your account. When you delete a game or recording we
 			keep only its ID and when it was deleted (see below).
 		</li>
+		<li>
+			Results you choose to share: kept apart from your footage until you withdraw them or delete your account. They
+			are not deleted when you delete the game they came from, and footage expiring after 180 days doesn't remove
+			them. A model already trained on them isn't undone.
+		</li>
 		<li>Service logs: up to 3 months.</li>
 		<li>
 			Database backups: up to 35 days. After you delete something it can stay in these backups until they expire;
@@ -93,8 +108,10 @@
 		turned away instead of adding it back. That record goes when you delete your account. To delete everything, go to
 		<a href={resolve('/account')}>Account</a> and choose <strong>Delete my account</strong>. The app links to it
 		from its account screen. It removes your footage, games, linked phones and sign-in right away. We keep only
-		a record of your account ID and when it was deleted, so that a phone still trying to upload is turned away. Or
-		email us at <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> and we'll do it for you.
+		a record of your account ID and when it was deleted, so that a phone still trying to upload is turned away.
+		Deleting your account also deletes everything you shared. To withdraw a shared result on its own, go to
+		<a href={resolve('/account')}>Account</a>, <strong>Shared to improve OpenSportsBall</strong>: its files are
+		deleted right away. Or email us at <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a> and we'll do it for you.
 	</p>
 
 	<h2>Children</h2>

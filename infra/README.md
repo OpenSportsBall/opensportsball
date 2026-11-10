@@ -13,14 +13,18 @@ and the website. License: Apache-2.0.
 | HTTP API + 4 Lambdas (Node 22, arm64) | `docs/API.md` | none |
 | S3 `Site` bucket + CloudFront | The website (`web/build`) and its `config.json` | ~none |
 | CloudFront `FootageCdn` (with a signing key) | Footage downloads with signed URLs only ("Footage downloads") | none |
-| EventBridge rule → CloudWatch Logs | Records `RecordingReady` until Phase 3 consumes it | none |
+| S3 `Contributions` bucket | Results users share to improve the models, under `contributions/<id>/...` (`docs/API.md`, "Contributions") | storage only |
+| EventBridge rules → CloudWatch Logs | Record `RecordingReady` until Phase 3 consumes it, and `ContributionReady` until training does | none |
 
 Nothing runs between games. Footage storage is the main cost (about
 $0.023/GB-month); Phase 3 adds the rule that deletes raw footage after
 rendering.
 
-The footage bucket, table and user pool are **retained** if the stack is
-deleted, so a mistaken `cdk destroy` can't delete recordings or accounts.
+The footage and contributions buckets, table and user pool are
+**retained** if the stack is deleted, so a mistaken `cdk destroy` can't
+delete recordings, shared results or accounts. Shared results don't expire
+with footage: they stay until the user withdraws them or deletes the
+account, unless `contributionRetentionDays` is set.
 
 ## Deploy
 
@@ -50,6 +54,7 @@ Options (pass with `-c key=value`):
 | `authDomain` | none | Serve the sign-in pages at this domain, e.g. `auth.example.com`, instead of the Cognito prefix domain |
 | `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
 | `footageSigningPublicKeyFile` | `footage-signing-public.pem` | Public key for footage download URLs, relative to `infra/` ("Footage downloads") |
+| `contributionRetentionDays` | none (kept until withdrawn) | Expire shared results this many days after upload; the privacy policy must say the same |
 
 ### Deployment settings
 

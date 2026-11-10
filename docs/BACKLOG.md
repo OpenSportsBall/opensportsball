@@ -111,6 +111,27 @@ Footage and logs from these tests decide several items below.
       second run replaces the first.
 - [ ] Lifecycle rule deleting raw footage N days after a successful render.
 
+## Local apps (docs/MAC-APP-PLAN.md)
+
+- [x] Contributions backend (step C), 2026-11-09, not deployed: `POST
+      /contributions` (signed PUT per file, size and SHA-256 enforced by
+      S3), `.../complete`, `GET`, `DELETE` (withdraw); its own `Contributions`
+      bucket, kept on stack delete, not expired with footage; deleted with
+      the account; `ContributionReady` logged. The website's Account page
+      lists them with Withdraw; the privacy policy has a draft section; the
+      consent wording is `shared/consent/share-v1.md` (draft).
+- [ ] Decide before C ships (the privacy policy and consent text must say the
+      same): how long shared results are kept (today: until withdrawn;
+      `contributionRetentionDays` can cap it); whether they may go into the
+      shared benchmark dataset (today the policy says we don't publish them);
+      approve `share-v1`'s wording. Then set the policy's "Last updated" and
+      deploy.
+- [ ] Contributions left `uploading` (the app quit before `complete`): sweep
+      them after a few days, or let the app resume them.
+- [ ] Training's read path: how the processing repo pulls complete
+      contributions (an admin role reading `contributions/`, or a script on
+      `ContributionReady`) and records which consent version each came with.
+
 ## Phase 4-6
 
 - [ ] YouTube: OAuth connect, Fargate upload task, notifications; default

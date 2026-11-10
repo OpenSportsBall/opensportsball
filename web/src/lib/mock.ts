@@ -17,6 +17,7 @@ import type {
 	AdminAccountGames,
 	AdminGame,
 	AdminReport,
+	Contribution,
 	Device,
 	Game,
 	GameSummary,
@@ -431,12 +432,41 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 	const fail = (status: number, error: string, message: string) => json(status, { error, message });
 
+	// What the mock user shared from the Mac app (pitch, kits, a ball label set).
+	const contributions: Contribution[] = games.slice(0, 1).flatMap((g) =>
+		(['pitch', 'kits', 'ball'] as const).map((kind, i) => ({
+			contributionId: uuid(),
+			gameId: g.gameId,
+			recordingId: g.recordings[0]?.recordingId ?? uuid(),
+			kind,
+			name: kind === 'ball' ? 'ball-1' : kind,
+			engineVersion: 'abc1234',
+			consentVersion: 'share-v1',
+			status: 'complete' as const,
+			files: [7, 417, 101][i]!,
+			bytes: [10_400_000, 1_600_000, 8_600_000][i]!,
+			createdAt: g.createdAt,
+			completedAt: g.createdAt
+		}))
+	);
+
 	function route(method: string, path: string): Response {
 		let m: RegExpMatchArray | null;
+		if (method === 'GET' && path === '/contributions') {
+			return json(200, { contributions: contributions.map((c) => ({ ...c })) });
+		}
+		if (method === 'DELETE' && (m = path.match(/^\/contributions\/([^/]+)$/))) {
+			const id = decodeURIComponent(m[1]);
+			const i = contributions.findIndex((c) => c.contributionId === id);
+			if (i < 0) return fail(404, 'not_found', 'No such contribution on this account.');
+			contributions.splice(i, 1);
+			return new Response(null, { status: 204 });
+		}
 		if (method === 'GET' && path === '/me') {
 			return json(200, { accountId: 'mock-account-0001', email: 'parent@example.com', admin: true });
 		}
 		if (method === 'DELETE' && path === '/me') {
+			contributions.splice(0);
 			devices.splice(0);
 			games.splice(0);
 			codes.splice(0);

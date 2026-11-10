@@ -10,7 +10,7 @@ The contract between the phones, the website and the backend (`api/`,
 - JSON in and out, `Content-Type: application/json`.
 - Errors: HTTP status plus `{"error": "<code>", "message": "<text>"}`.
   Codes used: `bad_request`, `unauthorized`, `forbidden`, `not_found`,
-  `gone`, `conflict`, `invalid_manifest`, `internal`.
+  `gone`, `conflict`, `invalid_manifest`, `invalid_contribution`, `internal`.
 - Times are ISO-8601 UTC strings unless a field name ends in `Ms`.
 
 ## Who is calling
@@ -253,6 +253,74 @@ Deletes a game and all its recordings for good. → `204`
   that phone is told the game was deleted (`410`) rather than that it was
   signed out (`401`).
 - Again for a deleted game is `204`; `404 not_found` as above.
+
+## Contributions (Cognito token)
+
+Results a user agreed to share to improve the models, made by the
+processing engine on their own computer (`engine.py share` in
+opensportsball-processing) and uploaded by the Mac app: a pitch map, kit
+groups, a ball label set, must-see moments. Kept apart from footage (their
+own bucket), not deleted with the game they came from, deleted when the
+user withdraws them or deletes the account (privacy policy). The consent
+wording the user accepted is stored with each one: `shared/consent/<version>.md`.
+
+### `POST /contributions`
+Starts one upload. → `201`
+
+```json
+{
+  "gameId": "...",
+  "recordingId": "...",
+  "consentVersion": "share-v1",
+  "contribution": { "...": "the engine's file, shared/schemas/engine-contribution.schema.json" }
+}
+```
+
+Response: the contribution (as in `GET /contributions`, `status:
+"uploading"`) plus `expiresAt` and `uploads`, one per listed file:
+`{"path", "url", "headers"}`. `PUT` each file's bytes to its `url` with
+exactly those `headers` (`x-amz-checksum-sha256`, `content-length`): the
+URL is signed for the file's size and SHA-256, and S3 refuses other bytes.
+Links last as long as upload links (6 hours); start again for fresh ones.
+
+- `400 bad_request`: unknown `consentVersion`, a path that isn't a plain
+  relative path (no `..`, no leading or trailing `/`), a file listed
+  twice, more than 2000 files, a file over 50 MB or 500 MB in all, or a
+  contribution from another game than `gameId`.
+- `400 invalid_contribution`: the contribution doesn't match the schema
+  (`details` lists why).
+- `404 not_found`: no such recording on the account.
+
+### `POST /contributions/{contributionId}/complete`
+Checks every file arrived with its size and checksum, stores the
+contribution file beside them, marks it `complete`, and publishes
+`ContributionReady` (below). → `200` with the contribution. Again when
+already complete: `200`. `409 conflict` with `details.missing` (up to 50
+paths) when files are missing or differ.
+
+### `GET /contributions`
+→ `200` `{"contributions": [...]}`, newest first:
+
+```json
+{
+  "contributionId": "...", "gameId": "...", "recordingId": "...",
+  "kind": "pitch | kits | ball | moments", "name": "pitch | ball-1 | ...",
+  "engineVersion": "...", "consentVersion": "share-v1",
+  "status": "uploading | complete", "files": 7, "bytes": 10400000,
+  "createdAt": "...", "completedAt": "... | null"
+}
+```
+
+### `DELETE /contributions/{contributionId}`
+Withdraws it: its files and record are deleted, for good. → `204`.
+`404 not_found`: no such contribution on the account.
+
+Storage: the contributions bucket, `contributions/<accountId>/<contributionId>/`
+holds `contribution.json` (the ids, consent version and the engine's file)
+and `files/<path>`. On `complete` an EventBridge event goes to the default
+bus: `source` `opensportsball`, `detail-type` `ContributionReady`, `detail`
+`{"accountId", "contributionId", "kind", "bucket", "prefix"}`. Deleting the
+account (`DELETE /me`) deletes everything under `contributions/<accountId>/`.
 
 ## Admin routes (Cognito token, `admins` group)
 
