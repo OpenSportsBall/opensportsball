@@ -277,11 +277,8 @@ class _Body extends StatelessWidget {
             const SizedBox(height: 24),
             _Progress(
               title: ctl.activity ?? 'Processing the game',
-              fraction: ctl.fraction,
-              detail: [
-                if (ctl.fraction != null) '${(ctl.fraction! * 100).toStringAsFixed(0)}%',
-                ctl.etaS == null ? 'working out how long it takes' : 'about ${formatDuration(ctl.etaS!)} left',
-              ].join(' · '),
+              fraction: ctl.shownFraction,
+              detail: runDetail(ctl),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -468,4 +465,25 @@ class _StepClockState extends State<StepClock> {
     ].join(' · ');
     return Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: BrandColors.of(context).inkMuted));
   }
+}
+
+/// The line under the processing bar. Before the engine has finished its
+/// first chunk it can't say how long the rest takes, so the app estimates
+/// from the chunk count and says so.
+String runDetail(GameController ctl) {
+  final so = ctl.runElapsedS == null ? null : '${formatDuration(ctl.runElapsedS!)} so far';
+  final eta = ctl.shownEtaS;
+  if (eta == null) return so ?? 'Starting…';
+  if (ctl.etaIsEstimate) {
+    return [
+      ?so,
+      'about ${formatDuration(eta)} left',
+      'an estimate until the first 10 minutes of video are done',
+    ].join(' · ');
+  }
+  return [
+    if ((ctl.fraction ?? 0) > 0) '${(ctl.fraction! * 100).toStringAsFixed(0)}%',
+    ?so,
+    'about ${formatDuration(eta)} left',
+  ].join(' · ');
 }
