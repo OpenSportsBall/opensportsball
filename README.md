@@ -33,7 +33,7 @@ Website (static, S3 + CloudFront) -- API Gateway + Lambda + DynamoDB + Cognito
 | `web/` | Account website | Apache-2.0 |
 | `api/` | Lambda API handlers | Apache-2.0 |
 | `infra/` | AWS CDK stack | Apache-2.0 |
-| `shared/` | Data contracts shared by both sides (upload manifest schema) | Apache-2.0 |
+| `shared/` | Data contracts shared by both sides (upload manifest; the processing engine's job, questions, answers, progress events, label sets and contributions) | Apache-2.0 |
 | `docs/`, `scripts/`, root files | Docs and tooling | Apache-2.0 |
 
 ## Licensing
