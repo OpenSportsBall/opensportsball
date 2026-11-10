@@ -25,6 +25,7 @@ class FakeCdn {
   int validFrom = 1;
   int linksAsked = 0;
   bool expireAfterManifest = false;
+  String? manifestOverride;
 
   String get manifest => jsonEncode({
         'devices': [
@@ -61,7 +62,7 @@ class FakeCdn {
         if (v < validFrom) return http.StreamedResponse(Stream.value(utf8.encode('expired')), 403);
         if (req.url.path == '/manifest.json') {
           if (expireAfterManifest) validFrom = 2;
-          return http.StreamedResponse(Stream.value(utf8.encode(manifest)), 200);
+          return http.StreamedResponse(Stream.value(utf8.encode(manifestOverride ?? manifest)), 200);
         }
         final body = files[req.url.path.substring(1)]!;
         final range = req.headers['Range'];
@@ -97,6 +98,46 @@ void main() {
     cdn.requests.clear();
     await FootageDownloader(folder: dir, links: cdn.links, client: cdn.client).run();
     expect(cdn.requests.map((r) => r.url.path), ['/manifest.json']);
+  });
+
+  test('with maxSegments, fetches only the first segments of each phone and trims the manifest', () async {
+    final c = Uint8List.fromList(List.generate(30000, (i) => (i * 3) % 251));
+    final cdn = FakeCdn({'main/main_000.mp4': a, 'main/main_001.mp4': c, 'sec/sec_000.mp4': b, 'sec/sec_001.mp4': c});
+    // The fake manifest lists segments in order: give them indexes.
+    final m = jsonDecode(cdn.manifest) as Map;
+    final segs = (m['devices'] as List).first['segments'] as List;
+    m['devices'] = [
+      {
+        'segments': [
+          for (final s in segs)
+            if ((s['objectKey'] as String).startsWith('main/')) s
+        ]
+      },
+      {
+        'segments': [
+          for (final s in segs)
+            if ((s['objectKey'] as String).startsWith('sec/')) s
+        ]
+      },
+    ];
+    for (final d in m['devices'] as List) {
+      for (final s in d['segments'] as List) {
+        s['index'] = (s['objectKey'] as String).endsWith('_000.mp4') ? 0 : 1;
+      }
+    }
+    cdn.manifestOverride = jsonEncode(m);
+    await FootageDownloader(folder: dir, links: cdn.links, client: cdn.client, maxSegments: 1).run();
+    expect(cdn.requests.where((r) => r.url.path.endsWith('.mp4')).map((r) => r.url.path).toSet(),
+        {'/main/main_000.mp4', '/sec/sec_000.mp4'});
+    final local = jsonDecode(await File('${dir.path}/manifest.json').readAsString()) as Map;
+    expect([
+      for (final d in local['devices'] as List)
+        for (final s in d['segments'] as List) s['objectKey']
+    ], [
+      'main/main_000.mp4',
+      'sec/sec_000.mp4'
+    ]);
+    expect(await FootageDownloader.isComplete(dir), isTrue);
   });
 
   test('resumes a partial file with a range request', () async {
