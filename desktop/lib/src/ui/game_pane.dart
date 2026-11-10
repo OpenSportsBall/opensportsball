@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:osb_core/osb_core.dart';
 
@@ -216,10 +218,19 @@ class _Body extends StatelessWidget {
             _Progress(
               title: ctl.activity ?? 'Getting ready',
               fraction: null,
-              detail: 'Syncing the phones, mapping the pitch and grouping the kits takes a few minutes.',
+              detail: 'Syncing the phones, mapping the pitch and grouping the kits takes a quarter of an hour or so.',
             ),
+            const SizedBox(height: 6),
+            StepClock(startedAt: ctl.stepStartedAt, usualS: usualStepSeconds[ctl.step]),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: ctl.stop, child: const Text('Stop')),
+            Wrap(
+              spacing: 12,
+              children: [
+                OutlinedButton(onPressed: ctl.stop, child: const Text('Stop')),
+                if (ctl.stepLog != null)
+                  TextButton(onPressed: () => openFile(ctl.stepLog!), child: const Text('Show the log')),
+              ],
+            ),
           ],
         );
       case Phase.questions:
@@ -273,7 +284,14 @@ class _Body extends StatelessWidget {
               ].join(' · '),
             ),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: ctl.stop, child: const Text('Pause')),
+            Wrap(
+              spacing: 12,
+              children: [
+                OutlinedButton(onPressed: ctl.stop, child: const Text('Pause')),
+                if (ctl.stepLog != null)
+                  TextButton(onPressed: () => openFile(ctl.stepLog!), child: const Text('Show the log')),
+              ],
+            ),
             const SizedBox(height: 8),
             Text('Paused or quit, it carries on where it was.', style: t.bodySmall?.copyWith(color: c.inkMuted)),
           ],
@@ -413,5 +431,41 @@ class _Checks extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+/// How long the current step has been running, beside how long it usually
+/// takes, ticking: so a long step reads as working, not stuck.
+class StepClock extends StatefulWidget {
+  const StepClock({super.key, required this.startedAt, this.usualS});
+  final DateTime? startedAt;
+  final int? usualS;
+
+  @override
+  State<StepClock> createState() => _StepClockState();
+}
+
+class _StepClockState extends State<StepClock> {
+  late final Timer _timer = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final started = widget.startedAt;
+    if (started == null) return const SizedBox.shrink();
+    final s = DateTime.now().difference(started).inSeconds;
+    final so = s < 60 ? '$s s so far' : '${s ~/ 60} min ${(s % 60).toString().padLeft(2, '0')} s so far';
+    final usual = widget.usualS;
+    final text = [
+      so,
+      if (usual != null) 'usually about ${usual < 90 ? '1 min' : '${(usual / 60).round()} min'}',
+      if (usual != null && s > usual * 2) 'slower than usual, still working',
+    ].join(' · ');
+    return Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: BrandColors.of(context).inkMuted));
   }
 }
