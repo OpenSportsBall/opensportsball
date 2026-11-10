@@ -8,7 +8,7 @@ accepts contributions only with a version listed in
 api/src/lib/contributions.ts (CONSENT_VERSIONS); a changed wording gets a
 new file and a new version, and contributions keep the version agreed to.
 
-DRAFT, not yet approved. Decided 2026-11-10: kept until withdrawn, the
+Approved 2026-11-10. Kept until withdrawn, the
 account is deleted, or it goes unused for 3 years; used only inside the
 project (training and its own benchmarks). Sharing outside the project
 would need a separate opt-in and wording.

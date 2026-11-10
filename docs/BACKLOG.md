@@ -125,9 +125,11 @@ Footage and logs from these tests decide several items below.
       account goes unused for 3 years, with no fixed cap (training and
       stable benchmarks need them); used only inside the project, for
       training and its own held-out benchmarks, never published.
-- [ ] Before C ships: approve `share-v1`'s wording (ideally a lawyer reads
-      it and the policy section: pictures of children), set the policy's
-      "Last updated", deploy.
+- [x] `share-v1`'s wording approved and the privacy policy dated
+      (November 10, 2026), 2026-11-10.
+- [ ] Deploy C with the next deploy (the privacy section goes live with
+      it). A lawyer reading the policy section and `share-v1` is still
+      worth it: the pictures show children.
 - [ ] Inactivity sweep, needed before the first contribution is 3 years old
       (the policy promises it): an account-level `lastActiveAt` (website
       sign-in, app sign-in, any linked phone or Mac calling the API; devices

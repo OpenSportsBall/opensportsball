@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { REPO_URL, SUPPORT_EMAIL } from '#lib/site.ts';
 
-	const UPDATED = 'November 7, 2026';
+	const UPDATED = 'November 10, 2026';
 </script>
 
 <svelte:head><title>Privacy policy · OpenSportsBall</title></svelte:head>
