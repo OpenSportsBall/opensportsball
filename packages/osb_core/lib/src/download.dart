@@ -66,6 +66,7 @@ class FootageDownloader {
     required this.links,
     required this.client,
     this.parallel = 2,
+    this.maxSegments,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -74,6 +75,11 @@ class FootageDownloader {
   final LinksSource links;
   final http.Client client;
   final int parallel;
+
+  /// For development: only the first this many segments (by index) of each
+  /// phone, with the manifest trimmed to match, so the engine sees a short
+  /// but complete recording. Null: all of it.
+  final int? maxSegments;
   final DateTime Function() _now;
 
   bool _stop = false;
@@ -139,14 +145,23 @@ class FootageDownloader {
       }
     }
     await folder.create(recursive: true);
-    await _getSmall(l.manifestUrl!, File('${folder.path}/manifest.json'));
-    final manifestSha = _manifestHashes(await File('${folder.path}/manifest.json').readAsString());
+    final manifestFile = File('${folder.path}/manifest.json');
+    await _getSmall(l.manifestUrl!, manifestFile);
+    var files = l.files;
+    if (maxSegments != null) {
+      final keep = await _trimManifest(manifestFile, maxSegments!);
+      files = [
+        for (final f in l.files)
+          if (keep.contains(f.objectKey)) f
+      ];
+    }
+    final manifestSha = _manifestHashes(await manifestFile.readAsString());
 
     final verified = await _verified();
-    final total = l.files.fold<int>(0, (a, f) => a + f.bytes);
+    final total = files.fold<int>(0, (a, f) => a + f.bytes);
     var done = 0, filesDone = 0;
     final todo = <FootageFile>[];
-    for (final f in l.files) {
+    for (final f in files) {
       final dest = File('${folder.path}/${f.objectKey}');
       final v = verified[f.objectKey];
       if (await dest.exists()) {
@@ -184,7 +199,7 @@ class FootageDownloader {
         doneBytes: got,
         totalBytes: total,
         filesDone: filesDone,
-        files: l.files.length,
+        files: files.length,
         current: current,
         bytesPerSecond: secs > 2 ? (got - startedDone) / secs : null,
       ));
@@ -231,6 +246,32 @@ class FootageDownloader {
     }
 
     await Future.wait([for (var i = 0; i < parallel; i++) guarded()], eagerError: true);
+  }
+
+  /// Keeps the first [n] segment indexes in [manifest] (the same indexes
+  /// on every phone) and returns the objectKeys kept.
+  static Future<Set<String>> _trimManifest(File manifest, int n) async {
+    final m = (jsonDecode(await manifest.readAsString()) as Map).cast<String, Object?>();
+    final devices = [for (final d in m['devices'] as List) (d as Map).cast<String, Object?>()];
+    int indexOf(Object? s) => ((s as Map)['index'] as num).toInt();
+    final indexes = {
+      for (final d in devices)
+        for (final s in (d['segments'] as List? ?? [])) indexOf(s)
+    }.toList()
+      ..sort();
+    final kept = indexes.take(n).toSet();
+    final keys = <String>{};
+    for (final d in devices) {
+      final segs = [
+        for (final s in (d['segments'] as List? ?? []))
+          if (kept.contains(indexOf(s))) s
+      ];
+      d['segments'] = segs;
+      keys.addAll([for (final s in segs) (s as Map)['objectKey'] as String]);
+    }
+    m['devices'] = devices;
+    await manifest.writeAsString(jsonEncode(m));
+    return keys;
   }
 
   Map<String, String> _manifestHashes(String manifest) {

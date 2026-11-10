@@ -34,6 +34,22 @@ with opensportsball-processing's `packaging/mac/build_engine.sh`.
 Signing in needs a site whose `/config.json` has `desktopClientId` (infra's
 `Desktop` Cognito client).
 
+### A real game, shortened
+
+To try a real game from the site without downloading and processing all
+of it:
+
+```sh
+OSB_MAX_SEGMENTS=4 OSB_MAX_CHUNKS=1 OSB_WORK_FOLDER=/tmp/osb-short \
+OSB_ENGINE=/path/to/osb-engine/osb-engine flutter run -d macos
+```
+
+`OSB_MAX_SEGMENTS` downloads only the first few segments of each phone
+(about 2.5 GB a segment pair) and trims the local manifest to match, so the
+engine sees a short but complete recording; `OSB_MAX_CHUNKS` processes only
+that many chunks. Use a separate `OSB_WORK_FOLDER`: a shortened game's
+results would otherwise sit where the full game's go.
+
 ### Without a server
 
 `OSB_DEMO_RECORDING` serves a recording already on this Mac (its merged

@@ -210,6 +210,7 @@ class GameController extends ChangeNotifier {
     _downloader = FootageDownloader(
       folder: folder!,
       client: session.client,
+      maxSegments: settings.maxSegments,
       links: () => session.downloads(summary.gameId, rec.recordingId),
     );
     try {

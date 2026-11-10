@@ -70,6 +70,11 @@ class Settings extends ChangeNotifier {
 
   /// For development: process only this many chunks of a game (the job's
   /// maxChunks); null for the whole game.
+  /// For development: download only the first this many segments of each
+  /// phone (and process just those); null for the whole recording.
+  int? get maxSegments =>
+      (_values['maxSegments'] as num?)?.toInt() ?? int.tryParse(Platform.environment['OSB_MAX_SEGMENTS'] ?? '');
+
   int? get maxChunks =>
       (_values['maxChunks'] as num?)?.toInt() ?? int.tryParse(Platform.environment['OSB_MAX_CHUNKS'] ?? '');
 
