@@ -10,6 +10,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
@@ -58,6 +59,11 @@ const usualStepSeconds = {
   'pitch-review': 30,
 };
 
+/// How long one chunk (10 minutes of video) of `run` usually takes on an
+/// M-series Mac: 52.6 min for rec3's first chunk. Used for an estimate until
+/// the engine has one of its own (after its first chunk).
+const usualChunkSeconds = 3160;
+
 String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
 
 /// The folder a game's recording goes in: `<work>/<date time> <game id>`.
@@ -92,6 +98,28 @@ class GameController extends ChangeNotifier {
   String? stepLog;
   double? fraction;
   double? etaS;
+
+  /// `run`'s chunk count and time so far, from its progress lines.
+  int? chunks;
+  double? runElapsedS;
+
+  /// The engine's estimate, or until it has one (before its first chunk is
+  /// done) one from the chunk count and [usualChunkSeconds].
+  bool get etaIsEstimate => etaS == null && chunks != null;
+
+  double? get shownEtaS {
+    if (etaS != null) return etaS;
+    if (chunks == null) return null;
+    return math.max(60, chunks! * usualChunkSeconds - (runElapsedS ?? 0)).toDouble();
+  }
+
+  /// The engine's fraction once it moves; before that, time so far against
+  /// the estimate (never past 95%, so a slow Mac doesn't look finished).
+  double? get shownFraction {
+    if ((fraction ?? 0) > 0 || !etaIsEstimate) return fraction;
+    return math.min(0.95, (runElapsedS ?? 0) / (chunks! * usualChunkSeconds));
+  }
+
   DownloadProgress? download;
   String? error;
   String? errorLog;
@@ -343,6 +371,8 @@ class GameController extends ChangeNotifier {
       activity = stepName(e.stage);
       fraction = e.fraction;
       etaS = e.etaS;
+      chunks = (e.raw['chunks'] as num?)?.toInt() ?? chunks;
+      runElapsedS = e.elapsedS ?? runElapsedS;
       notifyListeners();
     } else if (e.event == 'done' && e.output != null) {
       output = e.output;
@@ -386,6 +416,8 @@ class GameController extends ChangeNotifier {
     activity = 'Processing the game';
     fraction = null;
     etaS = null;
+    chunks = null;
+    runElapsedS = null;
     notifyListeners();
     _powerTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkPower());
     final exit = await _runEngine([
