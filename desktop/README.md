@@ -27,6 +27,12 @@ are in `../packages/osb_core`, tested with `dart test` there.
 flutter run -d macos
 ```
 
+To sign builds with your Apple Development certificate, copy
+`macos/Runner/Configs/Signing.example.xcconfig` to `Signing.xcconfig` (git-
+ignored) and set your team. Without it the app is signed ad hoc, and each
+rebuild looks like a new app to the Keychain, which asks again before
+giving it the saved sign-in.
+
 The engine is looked for in Settings, then inside the app
 (`Contents/Resources/osb-engine/osb-engine`), then `$OSB_ENGINE`. Build one
 with opensportsball-processing's `packaging/mac/build_engine.sh`.
