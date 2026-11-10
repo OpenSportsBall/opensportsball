@@ -256,6 +256,10 @@ void main() {
   });
 
   test('a recording the app died during is recovered at startup', () async {
+    // A dead app runs no timers. The live recorder would otherwise lock
+    // focus mid-test and save its own copy of the recording (still
+    // recording) over the recovered one.
+    main.recorder.settlePollEvery = const Duration(days: 1);
     expect(await main.startRecording(alone: true), isTrue);
     await mainCam.finishSegment(); // hashed and recorded
     final rec = main.current!;
