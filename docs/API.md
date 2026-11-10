@@ -55,12 +55,14 @@ The deployed site serves `/config.json`:
   "userPoolId": "us-east-1_XXXX",
   "userPoolClientId": "xxxxxxxx",
   "appClientId": "yyyyyyyy",
+  "desktopClientId": "zzzzzzzz",
   "cognitoDomain": "https://opensportsball-xxxx.auth.us-east-1.amazoncognito.com"
 }
 ```
 
 `appClientId` is the phone app's Cognito client ("Signing in from the
-app"); the website ignores it.
+app"), `desktopClientId` the Mac app's ("Signing in from the Mac app");
+the website ignores both.
 
 ## Linking a phone
 
@@ -90,6 +92,15 @@ With the Cognito access token the app calls `POST /link-codes` for
 itself, then `POST /devices/link` with that code, exactly as if it had
 scanned it. It keeps only the device token; the Cognito tokens are
 dropped.
+
+## Signing in from the Mac app
+
+The Mac app (desktop/) signs in the same way with client
+`desktopClientId` and redirect `opensportsball://desktop-auth`, but keeps
+the Cognito tokens (in the Keychain) and calls the people routes with
+them: `GET /games`, `GET /games/{gameId}`, `POST .../downloads`, and the
+contributions. Its refresh token lasts 30 days, like the website's, so a
+game can be downloaded and processed overnight without signing in again.
 
 ## Upload permission link
 

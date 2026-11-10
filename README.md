@@ -30,6 +30,8 @@ Website (static, S3 + CloudFront) -- API Gateway + Lambda + DynamoDB + Cognito
 |---|---|---|
 | `app/` | Flutter app (one app, Main / Secondary roles) | Apache-2.0 |
 | `app/plugins/dual_camera/` | Native camera plugin (CameraX / AVFoundation) | Apache-2.0 |
+| `desktop/` | Mac app (Flutter): processes a game on the user's own Mac with the engine | Apache-2.0 |
+| `packages/osb_core/` | Plain Dart shared by the apps: sign-in, API, footage download, driving the engine | Apache-2.0 |
 | `web/` | Account website | Apache-2.0 |
 | `api/` | Lambda API handlers | Apache-2.0 |
 | `infra/` | AWS CDK stack | Apache-2.0 |

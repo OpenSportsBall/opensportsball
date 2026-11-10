@@ -33,6 +33,8 @@ import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js'
 
 /** Where managed login sends the phone app back to (docs/API.md). */
 export const APP_LOGIN_CALLBACK = 'opensportsball://auth';
+/** Where managed login returns to the desktop (Mac) app. */
+export const DESKTOP_LOGIN_CALLBACK = 'opensportsball://desktop-auth';
 
 /** How long the phones' uploads stay in the footage bucket. The privacy
  *  policy (web/src/routes/privacy) states this number. */
@@ -296,6 +298,23 @@ export class OpenSportsBallStack extends cdk.Stack {
       idTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.hours(1),
     });
+    // The Mac app (later Windows) calls the people routes itself (games,
+    // footage downloads, contributions) with these tokens, so like the
+    // website it keeps a refresh token for 30 days.
+    const desktopClient = users.addClient('Desktop', {
+      generateSecret: false,
+      preventUserExistenceErrors: true,
+      supportedIdentityProviders: [cognito.UserPoolClientIdentityProvider.COGNITO],
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+        callbackUrls: [DESKTOP_LOGIN_CALLBACK],
+        logoutUrls: [DESKTOP_LOGIN_CALLBACK],
+      },
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
+    });
     // Members see the admin page (/admin) and may call GET /admin/accounts.
     // Add someone with admin-add-user-to-group (api/README.md).
     new cognito.CfnUserPoolGroup(this, 'Admins', {
@@ -304,7 +323,11 @@ export class OpenSportsBallStack extends cdk.Stack {
       description: 'OpenSportsBall admins: can see every account (GET /admin/accounts)',
     });
     // Managed login shows an error page to a client without a style.
-    for (const [id, client] of [['LoginBranding', webClient], ['AppLoginBranding', appClient]] as const) {
+    for (const [id, client] of [
+      ['LoginBranding', webClient],
+      ['AppLoginBranding', appClient],
+      ['DesktopLoginBranding', desktopClient],
+    ] as const) {
       new cognito.CfnManagedLoginBranding(this, id, {
         userPoolId: users.userPoolId,
         clientId: client.userPoolClientId,
@@ -449,7 +472,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     const stage = api.defaultStage!.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 50, throttlingRateLimit: 20 };
 
-    const people = new HttpUserPoolAuthorizer('People', users, { userPoolClients: [webClient, appClient] });
+    const people = new HttpUserPoolAuthorizer('People', users, { userPoolClients: [webClient, appClient, desktopClient] });
     const phones = new HttpLambdaAuthorizer('Phones', authFn, {
       responseTypes: [HttpLambdaResponseType.SIMPLE],
       identitySource: ['$request.header.Authorization'],
@@ -552,6 +575,7 @@ export class OpenSportsBallStack extends cdk.Stack {
           userPoolId: users.userPoolId,
           userPoolClientId: webClient.userPoolClientId,
           appClientId: appClient.userPoolClientId,
+          desktopClientId: desktopClient.userPoolClientId,
           cognitoDomain: loginUrl,
         }),
       ],
@@ -571,6 +595,7 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'UserPoolId', { value: users.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: webClient.userPoolClientId });
     new cdk.CfnOutput(this, 'AppClientId', { value: appClient.userPoolClientId });
+    new cdk.CfnOutput(this, 'DesktopClientId', { value: desktopClient.userPoolClientId });
     new cdk.CfnOutput(this, 'LoginDomain', { value: loginUrl });
     if (customLogin) new cdk.CfnOutput(this, 'LoginCdnDomain', { value: customLogin.cloudFrontEndpoint });
     new cdk.CfnOutput(this, 'FootageBucket', { value: footage.bucketName });

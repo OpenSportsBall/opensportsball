@@ -226,9 +226,19 @@ describe('accounts and website', () => {
       CallbackURLs: ['opensportsball://auth'],
     });
     // One style per client, or managed login shows the app an error page.
-    t.resourceCountIs('AWS::Cognito::ManagedLoginBranding', 2);
+    t.resourceCountIs('AWS::Cognito::ManagedLoginBranding', 3);
     const [authorizer] = Object.values(t.findResources('AWS::ApiGatewayV2::Authorizer', { Properties: { AuthorizerType: 'JWT' } }));
-    expect(authorizer!.Properties.JwtConfiguration.Audience).toHaveLength(2);
+    expect(authorizer!.Properties.JwtConfiguration.Audience).toHaveLength(3);
+  });
+
+  it('the desktop app signs in on managed login and keeps a 30-day refresh token', () => {
+    t.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      AllowedOAuthFlows: ['code'],
+      GenerateSecret: false,
+      CallbackURLs: ['opensportsball://desktop-auth'],
+      RefreshTokenValidity: 43200,
+      TokenValidityUnits: Match.objectLike({ RefreshToken: 'minutes' }),
+    });
   });
 
   it('serves the site through CloudFront only', () => {

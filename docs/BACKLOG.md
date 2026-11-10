@@ -145,6 +145,32 @@ Footage and logs from these tests decide several items below.
 - [ ] Training's read path: how the processing repo pulls complete
       contributions (an admin role reading `contributions/`, or a script on
       `ContributionReady`) and records which consent version each came with.
+- [x] Mac app (step E), first slice, 2026-11-10: `desktop/` (Flutter, macOS)
+      and `packages/osb_core/` (plain Dart: sign-in with PKCE and refresh,
+      the API, the resumable footage download with SHA-256 checks, the
+      engine driver). Sign in, the games list, pre-flight checks, download,
+      prepare, the cameras / pitch / kit checks, the overnight run (kept
+      awake, paused on battery, resumed after a quit), the video in the
+      Finder. A `Desktop` Cognito client (30-day refresh) in infra and
+      `desktopClientId` in config.json. `OSB_DEMO_RECORDING` serves a local
+      recording through a stand-in API for development; `test/e2e_test.dart`
+      runs it through the real engine.
+- [ ] Deploy the `Desktop` client, then sign in from the Mac app against
+      the real site and process a real game end to end.
+- [ ] Put the engine in the app (`Contents/Resources/osb-engine`, a build
+      phase running packaging/mac/build_engine.sh's output), a DMG, Sparkle
+      updates, Developer ID signing and notarization (needs the certificate).
+- [ ] One job record (MAC-APP-PLAN "Architecture"): the app writes "processing
+      on your Mac" and "done" to the API, so the website and phones show it and
+      a game isn't processed twice.
+- [ ] A notification when the video is ready (UserNotifications).
+- [ ] After the video: ball labels and must-see moments (`engine.py label`),
+      then sharing (`engine.py share`, the share-v1 consent, `POST
+      /contributions`), and withdrawing from the app.
+- [ ] When the video is made, offer to delete the downloaded footage (~40 GB).
+- [ ] The phone app uses `osb_core` (sign-in, URL helpers) and both apps take
+      the brand theme and fonts from one shared package
+      (`desktop/lib/src/brand.dart` is a copy of the phone's).
 
 ## Phase 4-6
 

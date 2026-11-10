@@ -1,0 +1,48 @@
+name: desktop
+
+# The Mac app and the Dart package under it. Runs only when they (or the
+# engine formats they read) change: the build needs a macOS runner.
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "packages/**"
+      - "shared/schemas/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "packages/**"
+      - "shared/schemas/**"
+      - ".github/workflows/desktop.yml"
+
+jobs:
+  osb_core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/osb_core
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
+
+  desktop:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze lib test
+      - run: flutter test
+      - run: flutter build macos --debug
