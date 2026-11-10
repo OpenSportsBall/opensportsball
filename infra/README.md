@@ -23,8 +23,9 @@ rendering.
 The footage and contributions buckets, table and user pool are
 **retained** if the stack is deleted, so a mistaken `cdk destroy` can't
 delete recordings, shared results or accounts. Shared results don't expire
-with footage: they stay until the user withdraws them or deletes the
-account, unless `contributionRetentionDays` is set.
+with footage: they stay until the user withdraws them, deletes the
+account, or the account goes unused for 3 years (a sweep still to build,
+docs/BACKLOG.md), unless `contributionRetentionDays` is set.
 
 ## Deploy
 

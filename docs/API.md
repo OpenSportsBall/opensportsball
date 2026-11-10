@@ -261,7 +261,9 @@ processing engine on their own computer (`engine.py share` in
 opensportsball-processing) and uploaded by the Mac app: a pitch map, kit
 groups, a ball label set, must-see moments. Kept apart from footage (their
 own bucket), not deleted with the game they came from, deleted when the
-user withdraws them or deletes the account (privacy policy). The consent
+user withdraws them, deletes the account, or the account goes unused for 3
+years (privacy policy; the inactivity sweep is in docs/BACKLOG.md). Used only
+inside the project, never published. The consent
 wording the user accepted is stored with each one: `shared/consent/<version>.md`.
 
 ### `POST /contributions`

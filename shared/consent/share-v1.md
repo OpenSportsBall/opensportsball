@@ -8,7 +8,10 @@ accepts contributions only with a version listed in
 api/src/lib/contributions.ts (CONSENT_VERSIONS); a changed wording gets a
 new file and a new version, and contributions keep the version agreed to.
 
-DRAFT (2026-11-09): not yet approved. Open decisions are marked [DECIDE].
+DRAFT, not yet approved. Decided 2026-11-10: kept until withdrawn, the
+account is deleted, or it goes unused for 3 years; used only inside the
+project (training and its own benchmarks). Sharing outside the project
+would need a separate opt-in and wording.
 -->
 
 # Share this to improve OpenSportsBall
@@ -35,10 +38,11 @@ What happens to it:
 - It is kept apart from your game's footage, and **it is not deleted when
   you delete the game or the recording**: that's what makes it useful for
   training.
-- It is kept until you withdraw it. [DECIDE: or for at most N years.]
-- It is seen only by the people who build OpenSportsBall's models, to train
-  and test them. [DECIDE: whether it may also go into OpenSportsBall's
-  benchmark dataset, which is shared with researchers under its own terms.]
+- It is kept until you withdraw it or close your account, or until your
+  account has gone unused for 3 years.
+- It is used only to train and test OpenSportsBall's models, and seen only
+  by the people who build them. It is not published or shared outside the
+  project.
 - You can withdraw anything you shared at any time, in the app or on the
   website (Account, Shared to improve OpenSportsBall), and closing your
   account withdraws all of it. A model already trained on it isn't undone.

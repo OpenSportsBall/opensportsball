@@ -120,12 +120,26 @@ Footage and logs from these tests decide several items below.
       the account; `ContributionReady` logged. The website's Account page
       lists them with Withdraw; the privacy policy has a draft section; the
       consent wording is `shared/consent/share-v1.md` (draft).
-- [ ] Decide before C ships (the privacy policy and consent text must say the
-      same): how long shared results are kept (today: until withdrawn;
-      `contributionRetentionDays` can cap it); whether they may go into the
-      shared benchmark dataset (today the policy says we don't publish them);
-      approve `share-v1`'s wording. Then set the policy's "Last updated" and
-      deploy.
+- [x] Decided 2026-11-10 (privacy policy and `share-v1` say the same): shared
+      results are kept until withdrawn, the account is deleted, or the
+      account goes unused for 3 years, with no fixed cap (training and
+      stable benchmarks need them); used only inside the project, for
+      training and its own held-out benchmarks, never published.
+- [ ] Before C ships: approve `share-v1`'s wording (ideally a lawyer reads
+      it and the policy section: pictures of children), set the policy's
+      "Last updated", deploy.
+- [ ] Inactivity sweep, needed before the first contribution is 3 years old
+      (the policy promises it): an account-level `lastActiveAt` (website
+      sign-in, app sign-in, any linked phone or Mac calling the API; devices
+      already have `lastSeenAt`), and a scheduled job deleting
+      `contributions/<accountId>/` for accounts idle 3 years. Optionally
+      email a warning a month before.
+- [ ] Benchmark versions: when a withdrawal removes test items, the
+      held-out set gets a new version and records what it lost, so scores
+      stay comparable.
+- [ ] Sharing contributions outside the project (the gated Hugging Face
+      benchmark dataset): only with a separate opt-in, its own consent
+      wording and a legal review. Not planned.
 - [ ] Contributions left `uploading` (the app quit before `complete`): sweep
       them after a few days, or let the app resume them.
 - [ ] Training's read path: how the processing repo pulls complete

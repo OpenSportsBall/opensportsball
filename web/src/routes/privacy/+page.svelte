@@ -69,7 +69,7 @@
 		Only to run the service: to sign you in, to receive uploads from your phones, to turn your footage into a game
 		video, to show you your games, to improve our offering, and to fix problems. Results you choose to share are used
 		to train and test OpenSportsBall's models (pitch mapping, team colours, ball finding and following the play), and
-		only by the people who build them. We don't publish them.
+		only by the people who build them. We don't publish them or share them outside the project.
 	</p>
 
 	<h2>Where it is stored, and who processes it</h2>
@@ -90,8 +90,9 @@
 			keep only its ID and when it was deleted (see below).
 		</li>
 		<li>
-			Results you choose to share: kept apart from your footage until you withdraw them or delete your account. They
-			are not deleted when you delete the game they came from, and footage expiring after 180 days doesn't remove
+			Results you choose to share: kept apart from your footage until you withdraw them, delete your account, or
+			your account goes unused for 3 years (no sign-in, and none of your phones or computers contacting us). They are
+			not deleted when you delete the game they came from, and footage expiring after 180 days doesn't remove
 			them. A model already trained on them isn't undone.
 		</li>
 		<li>Service logs: up to 3 months.</li>
