@@ -19,3 +19,13 @@ PRODUCT_COPYRIGHT = Copyright © 2026 The OpenSportsBall Authors. Apache-2.0.
 // Engine.example.xcconfig to Engine.xcconfig (git-ignored) and set its
 // folder. Without it the app is built without the engine.
 #include? "Engine.xcconfig"
+
+// Updates (Sparkle, AppDelegate.swift): the appcast tool/release_mac.sh
+// publishes with each release, and the public half of the key that signs
+// them (the private half is in the release Mac's Keychain). Release builds
+// check for updates; debug builds never do.
+OSB_UPDATE_FEED_URL = https:/$()/github.com/OpenSportsBall/opensportsball/releases/latest/download/appcast.xml
+OSB_UPDATE_PUBLIC_KEY = Z96wVNXa5/livSt7QPepR6+D9DEiCUCGgHiO4Rg1n+Y=
+
+// The engine is built for Apple silicon only.
+EXCLUDED_ARCHS = x86_64

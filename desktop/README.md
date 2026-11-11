@@ -74,6 +74,54 @@ OSB_WORK_FOLDER=/tmp/osb-demo OSB_MAX_CHUNKS=1 flutter run -d macos
 `OSB_DEMO_SEGMENTS` keeps the first few segments per phone; `OSB_MAX_CHUNKS`
 processes only that many chunks.
 
+## Releasing
+
+People install a DMG from the
+[GitHub releases](https://github.com/OpenSportsBall/opensportsball/releases)
+(`mac-v<version>`). The app then updates itself with
+[Sparkle](https://sparkle-project.org): release builds read
+`releases/latest/download/appcast.xml` and offer a newer version there.
+That link follows the release marked "latest", so a release of anything
+else in this repository must not be marked latest. Debug builds, and builds
+without the update key, never offer updates.
+
+`tool/release_mac.sh` builds the release with the engine inside and signs
+every program and library in the app with the hardened runtime and a
+secure timestamp (about 450 in the engine). It makes
+`build/release/OpenSportsBall-<version>.dmg` (about 800 MB), notarizes and
+staples it, writes `build/release/appcast.xml`, and prints the
+`gh release create` command that publishes both. Bump `version:` in
+`pubspec.yaml` first: Sparkle compares the build number after the `+`.
+
+It needs, once per release Mac:
+
+- **A Developer ID Application certificate** in the Keychain. The Apple
+  Developer account holder creates it under Certificates, Identifiers &
+  Profiles (or Xcode → Settings → Accounts → Manage Certificates). Without
+  it the script stops. `OSB_SIGN_IDENTITY="Apple Development: …"` signs a
+  build that only your team's Macs can open, to try the script.
+- **The update key.** Sparkle's `generate_keys` (built under
+  `build/macos/SourcePackages/artifacts/sparkle/Sparkle/bin/` by the first
+  build) creates it in the login Keychain and prints its public half:
+
+  ```sh
+  build/macos/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys --account opensportsball-mac
+  ```
+
+  Put the public half in `OSB_UPDATE_PUBLIC_KEY` in
+  `macos/Runner/Configs/AppInfo.xcconfig`. Back the private half up
+  (`generate_keys --account opensportsball-mac -x <file>`, then keep that
+  file somewhere safe and off this Mac): installed apps accept only
+  updates it signed.
+- **A notary key**, an App Store Connect API key, in `OSB_NOTARY_KEY_ID`,
+  `OSB_NOTARY_ISSUER` and `OSB_NOTARY_KEY` (the `.p8` file), or a
+  `xcrun notarytool store-credentials` profile in `OSB_NOTARY_PROFILE`.
+  Notarizing uploads the DMG to Apple and usually takes 5-30 minutes.
+
+The engine inside is AGPL: each release's notes say which
+opensportsball-processing commit it was built from (the engine's
+`VERSION` file) and link its source.
+
 ## Tests
 
 ```sh
