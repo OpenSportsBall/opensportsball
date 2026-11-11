@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
+	import MacDownloadLink from '#lib/components/MacDownloadLink.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import { formatDateTime, recordedTime } from '#lib/format.ts';
 	import { poll } from '#lib/poll.ts';
@@ -47,7 +48,10 @@
 
 <svelte:head><title>Games · OpenSportsBall</title></svelte:head>
 
-<div class="page-head"><h1>Games</h1></div>
+<div class="page-head">
+	<h1>Games</h1>
+	<MacDownloadLink />
+</div>
 
 {#if error}<ErrorBanner {error} retry={() => void load()} />{/if}
 

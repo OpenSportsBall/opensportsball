@@ -33,7 +33,9 @@ NAME=$(sed -n 's/^version: *\([0-9.]*\)+\([0-9]*\).*/\1/p' pubspec.yaml)
 BUILD=$(sed -n 's/^version: *\([0-9.]*\)+\([0-9]*\).*/\2/p' pubspec.yaml)
 [ -n "$NAME" ] && [ -n "$BUILD" ] || die "pubspec.yaml has no version x.y.z+N"
 TAG="mac-v$NAME"
-DMG_NAME="OpenSportsBall-$NAME.dmg"
+# The same name in every release: the website links to
+# releases/latest/download/OpenSportsBall.dmg (web/src/lib/site.ts).
+DMG_NAME="OpenSportsBall.dmg"
 KEY_ACCOUNT=${OSB_UPDATE_KEY_ACCOUNT:-opensportsball-mac}
 
 IDENTITY=${OSB_SIGN_IDENTITY:-$(security find-identity -v -p codesigning |
