@@ -88,18 +88,34 @@ without the update key, never offer updates.
 `tool/release_mac.sh` builds the release with the engine inside and signs
 every program and library in the app with the hardened runtime and a
 secure timestamp (about 450 in the engine). It makes
-`build/release/OpenSportsBall-<version>.dmg` (about 800 MB), notarizes and
+`build/release/OpenSportsBall.dmg` (about 800 MB; the same name in every
+release, because the website links to the latest release's), notarizes and
 staples it, writes `build/release/appcast.xml`, and prints the
 `gh release create` command that publishes both. Bump `version:` in
 `pubspec.yaml` first: Sparkle compares the build number after the `+`.
 
 It needs, once per release Mac:
 
-- **A Developer ID Application certificate** in the Keychain. The Apple
-  Developer account holder creates it under Certificates, Identifiers &
-  Profiles (or Xcode → Settings → Accounts → Manage Certificates). Without
-  it the script stops. `OSB_SIGN_IDENTITY="Apple Development: …"` signs a
-  build that only your team's Macs can open, to try the script.
+- **A Developer ID Application certificate** in the login keychain. Only
+  the account holder can create one. In Keychain Access (on recent macOS:
+  `open "/System/Library/CoreServices/Applications/Keychain Access.app"`),
+  Certificate Assistant → Request a Certificate From a Certificate
+  Authority… → Saved to disk; then at developer.apple.com → Certificates →
+  "+" → Developer ID Application (G2 Sub-CA), upload that file, and
+  double-click the `.cer` it gives back. Check that the certificate and its
+  key are both in the **login** keychain (`security find-identity -v -p
+  codesigning ~/Library/Keychains/login.keychain-db` lists it); one that
+  lands in another keychain, such as `old-login`, makes codesign ask for a
+  password that never works. Then let codesign use the key without asking,
+  once (it asks for the login password):
+
+  ```sh
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db
+  ```
+
+  Without the certificate the script stops. `OSB_SIGN_IDENTITY="Apple
+  Development: …"` signs a build that only your team's Macs can open, to
+  try the script.
 - **The update key.** Sparkle's `generate_keys` (built under
   `build/macos/SourcePackages/artifacts/sparkle/Sparkle/bin/` by the first
   build) creates it in the login Keychain and prints its public half:
@@ -118,9 +134,25 @@ It needs, once per release Mac:
   `xcrun notarytool store-credentials` profile in `OSB_NOTARY_PROFILE`.
   Notarizing uploads the DMG to Apple and usually takes 5-30 minutes.
 
-The engine inside is AGPL: each release's notes say which
-opensportsball-processing commit it was built from (the engine's
-`VERSION` file) and link its source.
+### Each release
+
+1. Rebuild the engine if processing changed (opensportsball-processing's
+   `packaging/mac/build_engine.sh`) and point `Engine.xcconfig` at it.
+2. Bump `version:` in `pubspec.yaml` (the number after `+` must go up),
+   merge that to `main`.
+3. Run `tool/release_mac.sh` with the notary settings. It ends by printing
+   the publish command.
+4. Write the release notes: what changed, and, because the engine is AGPL,
+   the opensportsball-processing commit it was built from (its `VERSION`
+   file, `Contents/Resources/osb-engine/VERSION`) with links to that
+   commit's source and to `packaging/mac/build_engine.sh`.
+5. Publish with the printed `gh release create … --latest` command, with
+   `--target` set to the `main` commit it was built from. Installed apps
+   see the new appcast at once, and the website's "Get the Mac app" link
+   now gives the new DMG.
+6. Check: the release is marked latest,
+   `releases/latest/download/appcast.xml` is the new one, and the DMG
+   opens on a Mac that hasn't run a development build.
 
 ## Tests
 

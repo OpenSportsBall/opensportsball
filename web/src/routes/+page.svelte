@@ -4,7 +4,9 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import AppStoreLink from '#lib/components/AppStoreLink.svelte';
+	import MacDownloadLink from '#lib/components/MacDownloadLink.svelte';
 	import { session } from '#lib/session.svelte.ts';
+	import { REPO_URL } from '#lib/site.ts';
 
 	$effect(() => {
 		if (session.status === 'ready' && session.signedIn) void goto(resolve('/games'), { replace: true });
@@ -23,6 +25,7 @@
 		<div class="actions">
 			<button class="btn btn-primary big" onclick={() => session.signIn('/games')}>Sign in</button>
 			<AppStoreLink />
+			<MacDownloadLink />
 		</div>
 		<p class="muted small">New here? Choose "Sign up" on the next screen to create an account.</p>
 	</section>
@@ -39,6 +42,25 @@
 		<div class="card">
 			<h2>3. Upload on Wi-Fi</h2>
 			<p class="muted">The phones upload by themselves. Follow progress here on the Games page.</p>
+		</div>
+		<div class="card">
+			<h2>4. Make the video on your Mac</h2>
+			<p class="muted">
+				The free Mac app downloads the game and turns it into one video that follows the play, overnight.
+			</p>
+		</div>
+	</section>
+
+	<section class="card mac">
+		<h2>OpenSportsBall for Mac</h2>
+		<p>
+			Open the downloaded file and drag OpenSportsBall to Applications, then sign in with the same account
+			as your phones. Needs a Mac with Apple silicon (M1 or later) and macOS 13 or later, and about 100 GB
+			free while a game is processed.
+		</p>
+		<div class="actions">
+			<MacDownloadLink />
+			<a class="btn" href="{REPO_URL}/releases/latest" target="_blank" rel="noopener">What's new</a>
 		</div>
 	</section>
 {/if}
@@ -67,7 +89,7 @@
 	}
 	.steps {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
 		gap: 0.75rem;
 	}
 	.steps h2 {
@@ -75,5 +97,12 @@
 	}
 	.steps p {
 		margin: 0;
+	}
+	.mac {
+		margin-top: 1.5rem;
+		max-width: 38rem;
+	}
+	.mac h2 {
+		font-size: 1.15rem;
 	}
 </style>
