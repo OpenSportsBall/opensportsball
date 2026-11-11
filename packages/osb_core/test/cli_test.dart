@@ -129,7 +129,8 @@ void main() {
   List<Map<String, Object?>> events() =>
       [for (final l in const LineSplitter().convert(out.toString())) (jsonDecode(l) as Map).cast<String, Object?>()];
 
-  CliHost host({Future<bool> Function(Uri)? openBrowser, Future<void>? stop}) => CliHost(
+  CliHost host({Future<bool> Function(Uri)? openBrowser, Future<void>? stop, String? executable}) => CliHost(
+        executable: executable ?? '${dir.path}/bin/osb',
         client: service.client,
         store: store,
         out: out,
@@ -160,6 +161,20 @@ void main() {
     expect(await runCli(['sign-in'], host(openBrowser: browser)), exitOk);
     out.clear();
   }
+
+  test('inside the app it names the engine the app carries, by its full path', () async {
+    expect(await runCli(['status'], host()), exitOk);
+    expect(events().single.containsKey('engine'), isFalse);
+    out.clear();
+
+    // OpenSportsBall.app/Contents/MacOS/osb and Contents/Resources/osb-engine/osb-engine
+    final app = '${dir.path}/Open Sports.app/Contents';
+    final engine = await File('$app/Resources/osb-engine/osb-engine').create(recursive: true);
+    final inApp = host(executable: '$app/MacOS/osb');
+    expect(await runCli(['status'], inApp), exitOk);
+    expect(events().single, containsPair('engine', engine.path));
+    expect(inApp.engineCommand, "'${engine.path}'");
+  });
 
   test('signs in through the browser and keeps the session', () async {
     expect(await runCli(['status'], host()), exitOk);

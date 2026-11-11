@@ -61,7 +61,9 @@ class CliHost {
     this.loginTimeout = const Duration(minutes: 10),
     this.progressEvery = const Duration(seconds: 5),
     this.stop,
-  })  : client = client ?? http.Client(),
+    String? executable,
+  })  : executable = executable ?? Platform.resolvedExecutable,
+        client = client ?? http.Client(),
         environment = environment ?? Platform.environment,
         out = out ?? stdout {
     this.store = store ?? FileTokenStore(defaultSessionFile(this.environment));
@@ -78,6 +80,14 @@ class CliHost {
 
   /// Completes when the person stops the command (Ctrl-C).
   final Future<void>? stop;
+
+  /// This program's own file: inside the app, the engine is found from it.
+  final String executable;
+
+  /// How to call the engine in `next`: its full path when one is known
+  /// (the app's own, or $OSB_ENGINE), else the bare name for the PATH.
+  String? get engine => engineLauncher(environment, executable);
+  String get engineCommand => engine == null ? 'osb-engine' : _quoted(engine!);
 
   void emit(String event, [Map<String, Object?> fields = const {}]) =>
       out.writeln(jsonEncode({'event': event, 'at': DateTime.now().toUtc().toIso8601String(), ...fields}));
@@ -172,6 +182,7 @@ Future<int> _status(CliHost h) async {
     if (s != null) 'site': s.config.siteUrl,
     if (s?.email != null) 'email': s!.email,
     'workFolder': defaultWorkFolder(h.environment),
+    if (h.engine != null) 'engine': h.engine,
     'next': s == null ? 'osb sign-in' : 'osb games',
   });
   return exitOk;
@@ -313,7 +324,7 @@ Future<int> _download(CliHost h, _Args a) async {
   Map<String, Object?> done() => {
         'recording': folder.path,
         'job': job.path,
-        'next': 'osb-engine prepare ${_quoted(job.path)}',
+        'next': '${h.engineCommand} prepare ${_quoted(job.path)}',
       };
   Future<void> writeJob() async {
     // The app's job, if it made one, stays as it is (its output size, its options).

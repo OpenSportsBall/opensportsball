@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- For Contents/MacOS/osb only (tool/release_mac.sh). A program made
+	     by `dart compile exe` carries its compiled code as data and maps it
+	     executable when it starts; under the hardened runtime macOS kills
+	     it at launch (exit 137) without this. allow-jit alone isn't enough. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>
