@@ -23,3 +23,15 @@ String recordingFolder(String work, GameSummary g, String recordingId, {required
   final name = '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}.${two(t.minute)} ${g.gameId.substring(0, 8)}';
   return onlyRecording ? '$work/$name' : '$work/$name/${recordingId.substring(0, 8)}';
 }
+
+/// The engine's launcher for a command that runs from inside the app:
+/// `$OSB_ENGINE`, else the one the app carries
+/// (`OpenSportsBall.app/Contents/Resources/osb-engine/osb-engine`, with
+/// [executable] in `Contents/MacOS`). Null when there is neither.
+String? engineLauncher([Map<String, String>? environment, String? executable]) {
+  final env = environment ?? Platform.environment;
+  final named = env['OSB_ENGINE'];
+  if (named != null && named.isNotEmpty) return named;
+  final inApp = File('${File(executable ?? Platform.resolvedExecutable).parent.parent.path}/Resources/osb-engine/osb-engine');
+  return inApp.existsSync() ? inApp.path : null;
+}

@@ -79,11 +79,14 @@ processes only that many chunks.
 What the app does before the engine takes over, as a command for a script
 or a model working for the user (docs/MAC-APP-PLAN.md, "Using it without
 the GUI"). It lives in `../packages/osb_core` (`bin/osb.dart`,
-`lib/src/cli.dart`):
+`lib/src/cli.dart`), and every build puts it inside the app
+(`macos/build_osb.sh`), where it needs nothing else installed:
 
 ```sh
-cd ../packages/osb_core && dart compile exe bin/osb.dart -o osb
+alias osb=/Applications/OpenSportsBall.app/Contents/MacOS/osb
+# or from a checkout: cd ../packages/osb_core && dart compile exe bin/osb.dart -o osb
 
+osb status                 # signed in? where games go; the engine it found
 osb sign-in                # opens the browser; waits for the person to sign in
 osb games                  # the account's games
 osb download <game id>     # into the folder the app uses, with a job.json
@@ -94,7 +97,10 @@ Every line it prints is one JSON object with an `event`, as the engine's
 are, and `next` names the command that follows. Exit codes: 0 done, 2 a
 bad command or a game that isn't there or ready, 3 not signed in, 4 the
 server or network failed, 130 stopped. From there the engine is driven as
-opensportsball-processing's `docs/ENGINE-AGENTS.md` describes.
+opensportsball-processing's `docs/ENGINE-AGENTS.md` describes. Run from
+inside the app, `osb` names the engine the app carries by its full path
+(`status`'s `engine`, and `next` after a download); `$OSB_ENGINE` names
+another. Neither is on the PATH yet.
 
 Signing in happens in the person's browser; the command never sees the
 password, and keeps its session apart from the app's, in a file only its

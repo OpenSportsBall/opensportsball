@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds the Mac app for people to install: the release build with the
-# engine inside, every program and library in it signed with the hardened
-# runtime, a DMG, notarized and stapled when a notary key is given, and the
+# engine and osb inside, every program and library in it signed with the
+# hardened runtime, a DMG, notarized and stapled when a notary key is given, and the
 # Sparkle appcast that offers it as an update. Publishing is a separate,
 # printed step (a GitHub release). See README.md "Releasing".
 #
@@ -93,6 +93,16 @@ awk -F'\t' -v first="$FIRST" '$2=="lib" && $1!=first {print $1}' "$LIST" | tr '\
 awk -F'\t' '$2=="exe" {print $1}' "$LIST" | while IFS= read -r f; do
   sign --entitlements "$ENGINE_ENT" "$f"
 done
+
+say "Signing osb"
+OSB="$STAGED/Contents/MacOS/osb"
+[ -x "$OSB" ] || die "the build has no osb (macos/build_osb.sh)"
+sign --entitlements macos/Osb.entitlements "$OSB"
+printf '%s\texe\n' "$OSB" >> "$LIST"
+# Signed wrongly it is killed as it starts (137), so run it: with no
+# command it prints its usage and exits 2, touching nothing.
+RC=0; "$OSB" > /dev/null 2>&1 || RC=$?
+[ "$RC" = 2 ] || die "the signed osb doesn't run (exit $RC; macos/Osb.entitlements)"
 
 say "Signing Sparkle and the frameworks"
 SP="$STAGED/Contents/Frameworks/Sparkle.framework"

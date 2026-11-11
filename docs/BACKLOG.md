@@ -167,6 +167,15 @@ Footage and logs from these tests decide several items below.
       GitHub releases (desktop/README.md "Releasing"). Tried with an Apple
       Development certificate: the signed engine prepares a game, and a
       0.1.0 test build updated itself to 0.1.1.
+- [x] `osb` (sign in, list games, download without the window:
+      `packages/osb_core/bin/osb.dart`) and, 2026-11-10, built into the app
+      at `Contents/MacOS/osb` (`desktop/macos/build_osb.sh`); the release
+      script signs it with `macos/Osb.entitlements`. Tried with an ad-hoc
+      signature only; the release script itself hasn't been run since.
+- [ ] `osb` against the real site (needs the `Desktop` client deployed with
+      the localhost callbacks), and `osb` and `osb-engine` on the PATH for
+      people who ask: small launcher scripts, as the engine's launcher
+      doesn't follow a symlink.
 - [ ] First public Mac release: a Developer ID Application certificate, the
       Sparkle update key (its public half in AppInfo.xcconfig), notarize,
       publish `mac-v0.1.0`.
