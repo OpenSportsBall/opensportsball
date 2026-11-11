@@ -14,6 +14,7 @@ import 'cameras_check.dart';
 import 'games_screen.dart';
 import 'kits_check.dart';
 import 'pitch_check.dart';
+import 'share_views.dart';
 
 String formatGb(int bytes) => '${(bytes / gb).toStringAsFixed(bytes < 10 * gb ? 1 : 0)} GB';
 
@@ -272,6 +273,7 @@ class _Body extends StatelessWidget {
             // A game stopped part-way has segments to show, and may already know about its ball.
             if (ctl.chunkDetails.isNotEmpty) ...[const SizedBox(height: 8), segments],
             BallNotice(controller: ctl),
+            ShareCard(controller: ctl),
           ],
         );
       case Phase.running:
@@ -298,6 +300,7 @@ class _Body extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Paused or quit, it carries on where it was.', style: t.bodySmall?.copyWith(color: c.inkMuted)),
             BallNotice(controller: ctl),
+            ShareCard(controller: ctl),
           ],
         );
       case Phase.paused:
@@ -318,6 +321,7 @@ class _Body extends StatelessWidget {
               ],
             ),
             BallNotice(controller: ctl),
+            ShareCard(controller: ctl),
           ],
         );
       case Phase.done:
@@ -348,6 +352,7 @@ class _Body extends StatelessWidget {
               ],
             ),
             BallNotice(controller: ctl),
+            ShareCard(controller: ctl),
             if (!ctl.ballLow && ctl.chunkDetails.isNotEmpty) ...[
               const SizedBox(height: 24),
               Text('Help the engine follow the ball better', style: t.titleSmall),

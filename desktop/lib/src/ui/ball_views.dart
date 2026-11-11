@@ -17,6 +17,7 @@ import 'package:osb_core/osb_core.dart';
 import '../brand.dart';
 import '../game_controller.dart';
 import '../services.dart';
+import 'share_views.dart';
 
 String _clock(double seconds) {
   final s = seconds.round();
@@ -324,7 +325,7 @@ class _BallLabelState extends State<BallLabelScreen> {
   @override
   void initState() {
     super.initState();
-    if (_settings.shareLabels) unawaited(_load());
+    if (_settings.sharingAgreed) unawaited(_load());
   }
 
   @override
@@ -457,10 +458,10 @@ class _BallLabelState extends State<BallLabelScreen> {
     final c = BrandColors.of(context);
     final s = _set;
     Widget body;
-    if (!_settings.shareLabels) {
+    if (!_settings.sharingAgreed) {
       body = _Agreement(
         onAgree: () async {
-          await _settings.set('shareLabels', true);
+          await _settings.setSharingAgreed(true);
           if (mounted) unawaited(_load());
         },
       );
@@ -472,7 +473,8 @@ class _BallLabelState extends State<BallLabelScreen> {
           Text('Thank you: ${s?.labelled ?? 0} pictures marked.', style: t.titleLarge),
           const SizedBox(height: 8),
           Text(
-            'They are saved with this game, ready to share. They teach the next version of the engine this ball.',
+            'They are being sent to the project now, and teach the next version of the engine this ball. The game’s '
+            'page says what it has shared, and lets you withdraw it.',
             style: t.bodyMedium?.copyWith(color: c.inkMuted),
             textAlign: TextAlign.center,
           ),
@@ -747,35 +749,41 @@ class _Agreement extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final c = BrandColors.of(context);
-    return _Centered(
-      children: [
-        Icon(Icons.lock_outline, size: 40, color: c.inkMuted),
-        const SizedBox(height: 12),
-        Text('Marking the ball is for sharing', style: t.titleLarge, textAlign: TextAlign.center),
-        const SizedBox(height: 10),
-        Text(
-          'These marks exist to teach the engine, so they are only useful shared with the OpenSportsBall project. '
-          'What is shared: the pictures you mark, which are frames of your game and show the players, often '
-          'children; where you marked the ball; and the camera details needed to use them.',
-          style: t.bodyMedium,
-          textAlign: TextAlign.center,
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.lock_outline, color: c.inkMuted),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text('Marking the ball is for sharing', style: t.titleLarge)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'These marks exist to teach the engine, so they are only made to be shared. This is what you agree '
+                'to, for the ball marks and for the checks whose switches you leave on:',
+                style: t.bodyMedium?.copyWith(color: c.inkMuted),
+              ),
+              const SizedBox(height: 14),
+              const ConsentBody(heading: false),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 12,
+                children: [
+                  OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Not now')),
+                  FilledButton(onPressed: onAgree, child: const Text('I agree')),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'This version saves them with the game on this Mac, ready to share; nothing is sent yet. You can change '
-          'your mind in Settings.',
-          style: t.bodyMedium?.copyWith(color: c.inkMuted),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 20),
-        Wrap(
-          spacing: 12,
-          children: [
-            OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Not now')),
-            FilledButton(onPressed: onAgree, child: const Text('I agree to share them')),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

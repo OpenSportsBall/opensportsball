@@ -6,6 +6,7 @@ library;
 
 export 'src/api.dart';
 export 'src/cli.dart';
+export 'src/contributions.dart';
 export 'src/download.dart';
 export 'src/engine.dart';
 export 'src/engine_game.dart';

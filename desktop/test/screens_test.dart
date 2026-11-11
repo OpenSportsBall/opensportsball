@@ -25,6 +25,7 @@ import 'package:osb_desktop/src/game_controller.dart';
 import 'package:osb_desktop/src/services.dart';
 import 'package:osb_desktop/src/ui/ball_views.dart';
 import 'package:osb_desktop/src/ui/game_pane.dart';
+import 'package:osb_desktop/src/ui/share_views.dart';
 
 Future<void> _loadFonts() async {
   Future<void> family(String name, List<String> files) async {
@@ -307,7 +308,7 @@ void main() {
       }
     }
 
-    await tester.runAsync(() => ctl.settings.set('shareLabels', null));
+    await tester.runAsync(() => ctl.settings.setSharingAgreed(false));
     await shoot(
       tester,
       '11-mark-the-ball-locked',
@@ -316,7 +317,7 @@ void main() {
     );
     late BallLabelSet set;
     await tester.runAsync(() async {
-      await ctl.settings.set('shareLabels', true);
+      await ctl.settings.setSharingAgreed(true);
       set = (await BallLabelSet.all(Directory(ballRec))).last;
     });
     await shoot(
@@ -341,6 +342,48 @@ void main() {
         await tester.pump();
       },
     );
-    await tester.runAsync(() => ctl.settings.set('shareLabels', null));
+    await tester.runAsync(() => ctl.settings.setSharingAgreed(false));
   }, skip: skip != null || ballRec == null);
+
+  testWidgets('sharing', (tester) async {
+    await tester.runAsync(() => ctl.settings.setSharingAgreed(false));
+    ctl
+      ..questions = null
+      ..phase = Phase.readyToRun;
+    await shoot(tester, '14-share-ask');
+    await shoot(
+      tester,
+      '15-share-wording',
+      child: const Center(
+        child: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(padding: EdgeInsets.all(24), child: ConsentBody()),
+        ),
+      ),
+      size: const Size(1020, 1000),
+    );
+    await tester.runAsync(() async {
+      await ctl.settings.setSharingAgreed(true);
+      final dir = await Directory.systemTemp.createTemp('osb_screens_sent');
+      await File('${dir.path}/engine/share/sent.json').create(recursive: true);
+      await File('${dir.path}/engine/share/sent.json').writeAsString(
+        jsonEncode({
+          'sent': {
+            'pitch': {'contributionId': 'a', 'digest': 'x'},
+            'kits': {'contributionId': 'b', 'digest': 'y'},
+            'ball-1': {'contributionId': 'c', 'digest': 'z'},
+          },
+        }),
+      );
+      ctl.sent = await SentRecord.read(dir);
+    });
+    ctl
+      ..phase = Phase.done
+      ..output = '$rec/fullgame/game.mp4';
+    await shoot(tester, '16-shared');
+    ctl.sending = (name: 'kits', filesDone: 120, files: 417);
+    await shoot(tester, '17-sharing');
+    ctl.sending = null;
+    await tester.runAsync(() => ctl.settings.setSharingAgreed(false));
+  }, skip: skip != null);
 }

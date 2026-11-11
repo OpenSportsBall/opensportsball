@@ -13,6 +13,7 @@ import 'package:osb_desktop/src/game_controller.dart';
 import 'package:osb_desktop/src/services.dart';
 import 'package:osb_desktop/src/ui/ball_views.dart';
 import 'package:osb_desktop/src/ui/game_pane.dart';
+import 'package:osb_desktop/src/ui/share_views.dart';
 
 GameController _controller(Directory dir) => GameController(
   summary: GameSummary(gameId: '11111111-2222-3333-4444-555555555555', createdAt: DateTime(2026, 10, 15)),
@@ -203,15 +204,17 @@ void main() {
 
     await tester.pumpWidget(app(BallLabelScreen(controller: ctl)));
     expect(find.text('Marking the ball is for sharing'), findsOneWidget);
-    expect(find.textContaining('nothing is sent yet'), findsOneWidget);
+    expect(find.textContaining('they show the players, who are often'), findsOneWidget);
     expect(find.textContaining('Picture 1 of 2'), findsNothing);
 
+    await tester.ensureVisible(find.text('I agree')); // below the wording
+    await tester.pump();
     await tester.runAsync(() async {
-      await tester.tap(find.text('I agree to share them'));
+      await tester.tap(find.text('I agree'));
       await Future<void>.delayed(const Duration(milliseconds: 300));
     });
     await tester.pump();
-    expect(ctl.settings.shareLabels, isTrue);
+    expect(ctl.settings.sharingAgreed, isTrue);
     expect(find.text('Picture 1 of 2'), findsOneWidget);
     expect(find.text('2:05 into the game'), findsOneWidget);
     expect(find.text('0 of 2 marked'), findsOneWidget);
@@ -233,5 +236,83 @@ void main() {
     expect(find.text('2 of 2 marked'), findsOneWidget);
     expect(find.text('Save and close'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Finish')).onPressed, isNotNull);
+  });
+
+  test('the sharing wording in the app is the approved one, word for word', () {
+    final file = File('../shared/consent/share-v1.md').readAsStringSync();
+    final approved = file.substring(file.indexOf('-->') + 3).trim();
+    expect(shareConsentText.trim(), approved);
+    expect(shareConsentVersion, 'share-v1');
+    final blocks = consentBlocks(shareConsentText);
+    expect(blocks.first, (kind: 'heading', text: 'Share this to improve OpenSportsBall', url: null));
+    expect(blocks.where((b) => b.kind == 'bullet'), hasLength(8));
+    expect(blocks.last, (kind: 'link', text: 'Read the privacy policy', url: 'https://opensportsball.com/privacy'));
+    // Nothing of the wording is dropped by the layout.
+    final words = blocks.map((b) => b.text).join(' ').replaceAll(RegExp(r'\s+'), ' ');
+    for (final line in approved.split('\n').where((l) => l.trim().isNotEmpty && !l.startsWith('['))) {
+      expect(words, contains(line.replaceFirst(RegExp(r'^(# |- )'), '').trim()));
+    }
+  });
+
+  testWidgets('the share card: asks first, then says what went and lets it be withdrawn', (tester) async {
+    tester.view.physicalSize = const Size(1100, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('osb_share_card');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final ctl = _controller(dir)
+      ..phase = Phase.done
+      ..folder = Directory('${dir.path}/game');
+    Future<void> show() => tester.pumpWidget(app(SingleChildScrollView(child: ShareCard(controller: ctl))));
+
+    await show();
+    expect(find.text('Help OpenSportsBall get better'), findsOneWidget);
+    expect(find.textContaining('Nothing is sent until you agree'), findsOneWidget);
+    await tester.tap(find.text('Read what is shared'));
+    await tester.pump();
+    expect(find.text('Share this to improve OpenSportsBall'), findsOneWidget);
+    expect(find.textContaining('it is not deleted when you delete the game'), findsOneWidget);
+    await tester.tap(find.text('Not now'));
+    await tester.pump();
+    expect(ctl.settings.sharingAgreed, isFalse);
+
+    await tester.runAsync(() async {
+      await ctl.settings.setSharingAgreed(true);
+      await Directory('${ctl.folder!.path}/engine/share').create(recursive: true);
+      await File('${ctl.folder!.path}/engine/share/sent.json').writeAsString(
+        jsonEncode({
+          'stopped': false,
+          'sent': {
+            'pitch': {'contributionId': 'c1', 'digest': 'x'},
+            'ball-1': {'contributionId': 'c2', 'digest': 'y'},
+            'ball-2': {'contributionId': 'c3', 'digest': 'z'},
+          },
+        }),
+      );
+      ctl.sent = await SentRecord.read(ctl.folder!);
+    });
+    await show();
+    expect(find.text('Shared to improve OpenSportsBall'), findsOneWidget);
+    expect(find.text('From this game: ball marks and the pitch map. Thank you.'), findsOneWidget);
+    expect(find.text('Withdraw'), findsOneWidget);
+
+    ctl.sending = (name: 'kits', filesDone: 120, files: 417);
+    await show();
+    expect(find.text('Sharing the kit groups'), findsOneWidget);
+    expect(find.text('120 of 417 files'), findsOneWidget);
+
+    ctl
+      ..sending = null
+      ..shareError = 'Could not reach the server. Check the internet connection.';
+    await show();
+    expect(find.text('Not shared yet'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+
+    ctl
+      ..shareError = null
+      ..sent!.stopped = true;
+    await show();
+    expect(find.text('Withdrawn'), findsOneWidget);
+    expect(find.text('Share this game again'), findsOneWidget);
   });
 }

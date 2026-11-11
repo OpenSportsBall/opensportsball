@@ -189,12 +189,21 @@ Footage and logs from these tests decide several items below.
       two stages, times, logs and ball share (`status`'s `chunkDetails`),
       and "Mark the ball" labels a ball set (`engine.py label ball`, also
       while the game is still running): click the ball or the engine's
-      ring, or say it isn't there. Locked until sharing is agreed (a
-      setting on this Mac, not yet the share-v1 consent); the labels and
-      the share list stay in the game's folder.
-- [ ] Must-see moments (`engine.py label moments`), then sending what was
-      agreed (the share-v1 consent, `POST /contributions`), and
-      withdrawing from the app. Until then nothing marked leaves the Mac.
+      ring, or say it isn't there. Locked until sharing is agreed.
+- [x] Sending what was agreed, 2026-11-10: the app shows the share-v1
+      wording (word for word, checked by a test), and once agreed sends
+      the pitch map and the kit groups (each check's switch) and the ball
+      sets with marks: `engine.py share` lists them, `POST /contributions`,
+      a PUT per file, `complete` (packages/osb_core `contributions.dart`).
+      A changed result is sent again and the older copy withdrawn; each
+      game has a card saying what it shared, with Withdraw.
+      `engine/share/sent.json` records it. Tried only against a stand-in
+      API: the contributions backend isn't deployed.
+- [ ] Deploy the contributions backend, then share from a real game and
+      withdraw it, from the app and from the website.
+- [ ] Must-see moments (`engine.py label moments`); sent like the rest.
+- [ ] `osb share` and `osb withdraw` for the command line, on the same
+      code (the consent has to be shown and agreed there too).
 - [ ] When the video is made, offer to delete the downloaded footage (~40 GB).
 - [ ] The phone app uses `osb_core` (sign-in, URL helpers) and both apps take
       the brand theme and fonts from one shared package

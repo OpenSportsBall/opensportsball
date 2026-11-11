@@ -284,6 +284,9 @@ user withdraws them, deletes the account, or the account goes unused for 3
 years (privacy policy; the inactivity sweep is in docs/BACKLOG.md). Used only
 inside the project, never published. The consent
 wording the user accepted is stored with each one: `shared/consent/<version>.md`.
+The Mac app shows that wording before the first send, then sends each
+result as it is made or changed (withdrawing the copy it replaces) and
+keeps what it sent in the game's `engine/share/sent.json`.
 
 ### `POST /contributions`
 Starts one upload. → `201`

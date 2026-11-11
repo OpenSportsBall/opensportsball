@@ -83,9 +83,45 @@ elif cmd == "label":
     (sd / "set.json").write_text(json.dumps(s))
     emit("labels", set=answers["set"], labelled=len(merged), items=len(s["items"]))
 elif cmd == "share":
-    (eng / "share").mkdir(exist_ok=True)
-    (eng / "share" / "ball-1.json").write_text(json.dumps({"name": "ball-1", "kind": "ball"}))
-    emit("share", name="ball-1", path=str(eng / "share" / "ball-1.json"), files=4)
+    import hashlib
+
+    # The answers prepare was last given (the app passes them every time).
+    given = {}
+    for line in (eng / "calls.jsonl").read_text().splitlines():
+        c = json.loads(line)
+        if c["cmd"] in ("prepare", "run") and c["answers"]:
+            given = c["answers"]
+
+    def share_one(name, kind, paths):
+        files = []
+        for rel, data in paths.items():
+            f = rec / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            if not f.exists():
+                f.write_bytes(data)
+            b = f.read_bytes()
+            files.append({"path": rel, "bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()})
+        (eng / "share").mkdir(exist_ok=True)
+        doc = {"schemaVersion": 1, "name": name, "kind": kind,
+               "recording": {"gameId": "11111111-2222-3333-4444-555555555555"}, "engine": {"version": "fake"},
+               "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "summary": {"files": len(files)}, "files": files}
+        (eng / "share" / f"{name}.json").write_text(json.dumps(doc))
+        emit("share", name=name, path=str(eng / "share" / f"{name}.json"), files=len(files))
+
+    for q, paths in (("pitch", {"pitch/pitch.json": b"{}", "pitch/background.png": PNG}),
+                     ("kits", {"engine/crops/c0_00.jpg": PNG})):
+        a = given.get(q)
+        if a is None:
+            emit("share", name=q, path=None, reason="not answered yet")
+        elif a.get("share") is False:
+            emit("share", name=q, path=None, reason="the user chose not to share it")
+        else:
+            share_one(q, q, paths)
+    sd = eng / "labels" / "ball-1"
+    if (sd / "answers.json").exists():
+        marked = json.loads((sd / "answers.json").read_text())
+        share_one("ball-1", "ball", {"engine/labels/ball-1/answers.json": b"",
+                                     **{f"engine/labels/ball-1/images/{i}.jpg": PNG for i in sorted(marked)}})
 elif cmd == "prepare":
     for s in ("verify-footage", "sync", "pitch"):
         emit("step", step=s, status="started", log=f"engine/logs/{s}.log")

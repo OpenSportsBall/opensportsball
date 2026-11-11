@@ -54,8 +54,7 @@ class Settings extends ChangeNotifier {
   String get siteUrl => _values['siteUrl'] as String? ?? defaultSiteUrl;
 
   /// Where each game's footage and results go (~100 GB a game).
-  String get workFolder =>
-      _values['workFolder'] as String? ?? defaultWorkFolder();
+  String get workFolder => _values['workFolder'] as String? ?? defaultWorkFolder();
 
   /// The engine's launcher. Unset: the one inside the app, or $OSB_ENGINE.
   String? get enginePath => _values['enginePath'] as String?;
@@ -64,9 +63,12 @@ class Settings extends ChangeNotifier {
   /// the browser is still signed in.
   bool get chooseAccount => _values['chooseAccount'] == true;
 
-  /// Agreed to share ball labels: the frames they are made on (which show
-  /// players) and the labels. The label screens stay locked without it.
-  bool get shareLabels => _values['shareLabels'] == true;
+  /// Agreed to the sharing wording the app shows (shared/consent/share-v1.md):
+  /// what each game's share switches allow is then sent, and ball marking
+  /// is unlocked. A new wording is a new version, to be agreed again.
+  bool get sharingAgreed => _values['shareConsent'] == shareConsentVersion;
+
+  Future<void> setSharingAgreed(bool agreed) => set('shareConsent', agreed ? shareConsentVersion : null);
 
   int get outputHeight => (_values['outputHeight'] as num?)?.toInt() ?? 1080;
 
