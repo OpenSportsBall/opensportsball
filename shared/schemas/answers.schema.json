@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensportsball.dev/schemas/answers.schema.json",
+  "title": "The user's answers",
+  "description": "The answers to questions.json, kept as answers.json in the job's output folder for the engine's refit and run commands. Each check is answered on its own; `round` names the questions it answers. A pitch that is not approved, or a kit group to split, sends the job to a refit, which writes new questions for that check.",
+  "type": "object",
+  "required": ["schemaVersion", "jobId"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "type": "string" },
+    "pitch": { "$ref": "#/$defs/pitch" },
+    "kits": { "$ref": "#/$defs/kits" }
+  },
+  "$defs": {
+    "pitch": {
+      "type": "object",
+      "required": ["round", "approved"],
+      "additionalProperties": false,
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "approved": { "type": "boolean", "description": "True: the drawn lines sit on the paint. False: refit from `keypoints`." },
+        "keypoints": {
+          "type": "array",
+          "description": "Where the user put each point, in the panorama's pixels, or that they could not see it. Required when not approved.",
+          "maxItems": 100,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["id", "x", "y"],
+                "additionalProperties": false,
+                "properties": { "id": { "type": "string", "maxLength": 100 }, "x": { "type": "number" }, "y": { "type": "number" } }
+              },
+              {
+                "type": "object",
+                "required": ["id", "skipped"],
+                "additionalProperties": false,
+                "properties": { "id": { "type": "string", "maxLength": 100 }, "skipped": { "const": true } }
+              }
+            ]
+          }
+        },
+        "paint": { "type": "string", "maxLength": 100, "description": "The id of the line colour the user picked, when the question offered a choice." },
+        "answeredAt": { "type": "string", "format": "date-time" }
+      },
+      "if": { "properties": { "approved": { "const": false } } },
+      "then": { "required": ["keypoints"] }
+    },
+    "kits": {
+      "type": "object",
+      "required": ["round", "wrong", "structure"],
+      "additionalProperties": false,
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "wrong": {
+          "type": "array",
+          "description": "People the user tapped: in the wrong group, or not a player in kit.",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "required": ["groupId", "personId"],
+            "additionalProperties": false,
+            "properties": { "groupId": { "type": "string", "maxLength": 100 }, "personId": { "type": "string", "maxLength": 100 } }
+          }
+        },
+        "structure": {
+          "description": "Whether the groups match the kits.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind"],
+              "additionalProperties": false,
+              "properties": { "kind": { "const": "ok", "description": "Every kit has exactly one group." } }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "groups"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "merge", "description": "These groups are the same kit." },
+                "groups": { "type": "array", "minItems": 2, "maxItems": 20, "uniqueItems": true, "items": { "type": "string", "maxLength": 100 } }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "group"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "split", "description": "This group has two kits in it." },
+                "group": { "type": "string", "maxLength": 100 }
+              }
+            }
+          ]
+        },
+        "answeredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

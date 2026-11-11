@@ -15,7 +15,7 @@ result to YouTube.
      |  record 5-min segments, exposure / focus / white balance locked
      +-- both phones upload to S3 in the background (Wi-Fi only by default)
                          |
-              upload manifest complete -> Step Functions
+        upload complete -> "Process in the cloud" on the website
                          |
    AWS Batch on Spot GPU (scales to zero): sync -> stitch -> track -> render
                          |

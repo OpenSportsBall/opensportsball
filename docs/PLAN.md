@@ -20,7 +20,8 @@ possible to keep costs low.
   and `infra/README.md`.
 - Phase 3 (pipeline v1): the pipeline runs end to end, but locally
   (`processing/spikes/fullgame.py`, a game in ~6-11 h on a Mac), started by
-  hand. The AWS Batch job that runs it after upload is not built.
+  hand. The cloud jobs that run it are not built; their plan is in
+  [CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md).
 - Phase 4 (ball tracking): under way. A fine-tuned detector and a judge,
   retrained per new ball colour and light, drive the follow cam.
 - Phases 5 (YouTube) and 6 (hardening): not started.
@@ -35,16 +36,20 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
 | Camera | Native plugin (`app/plugins/dual_camera`) | The stock Flutter `camera` plugin can't lock exposure / white balance / focus, disable stabilization, pick the ultra-wide lens, set bitrate, or segment |
 | Phone-to-phone link | BLE | Works iPhone-to-Android with no Wi-Fi on the field; only small control messages |
 | Video sync | Audio cross-correlation in the cloud, seeded by a BLE clock estimate | BLE start commands jitter by tens of ms; audio from phones 10 cm apart gives sub-frame accuracy |
-| Backend | AWS: S3, Step Functions, Batch on Spot GPU (min 0), API Gateway + Lambda, DynamoDB, Cognito, CDK (TypeScript) | Scales to zero between games; one-command self-host |
+| Backend | AWS: S3, Batch on Spot GPU (min 0), API Gateway + Lambda, DynamoDB, Cognito, CDK (TypeScript) | Scales to zero between games; one-command self-host |
+| Cloud jobs | Started by the user from the website, not by `RecordingReady`. Two Batch jobs per game: `prepare` (minutes), then `run` (hours) once the pitch and kit checks are answered. The API submits them and a job record in DynamoDB holds the state; no Step Functions | The cloud is paid and never pushed, and the checks put a person in the middle for hours or days. Local runs write the same job record (see [CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)) |
 | License | Two repos: this one (apps / web / api / infra / shared) Apache-2.0; opensportsball-processing (processing pipeline and model training) AGPL-3.0-only; one CLA | See [LICENSING.md](LICENSING.md) |
+| Where games are processed | Free on the user's own Mac (Windows later); a paid hosted cloud later, offered alongside, not pushed | One processing engine for both (see [MAC-APP-PLAN.md](MAC-APP-PLAN.md)) |
 | Public repo | Private on GitHub ([OpenSportsBall](https://github.com/OpenSportsBall)) for now; public once CLA Assistant and the org's security settings are in place | |
 
 ## Open decisions
 
 - Default recording resolution: 4K (better ball detection) or 1080p
   (battery and heat).
-- Self-host only, or also a hosted service. Drives how much the YouTube
-  quota and audit matter.
+- Hosted service: decided as a paid cloud next to free local processing
+  (above), so the YouTube quota and audit matter (see YouTube
+  constraints). Still open: its price, and whether self-hosters get the
+  same cloud job.
 - CLA: `CLA.md` (v1.0) is final; CLA Assistant still needs connecting
   before the repos go public.
 
@@ -65,13 +70,17 @@ Open work is tracked in [BACKLOG.md](BACKLOG.md).
   from file.
 - Main uploads the manifest (`shared/schemas/manifest.schema.json`); each
   other phone uploads its own segment list, so the phones need not be
-  together when they reach Wi-Fi. Processing starts only when every
+  together when they reach Wi-Fi. Processing can start only when every
   phone's segments have arrived.
 
-## Processing (one AWS Batch GPU job, g5/g6.xlarge Spot)
+## Processing
 
 The code lives in the [opensportsball-processing](https://github.com/OpenSportsBall/opensportsball-processing) repository, with its
-findings, data layout, test methods and backlog.
+findings, data layout, test methods and backlog. One engine runs these
+stages on the user's Mac or in the cloud. In the cloud they are two AWS
+Batch jobs on a g5/g6.xlarge Spot instance, started by the user, with the
+pitch and kit checks answered on the website in between
+([CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)).
 
 1. **Sync:** cross-correlate the audio tracks for the offset; resample both
    variable-frame-rate videos to constant fps on their timestamps.
@@ -96,6 +105,13 @@ Rough cost per game: $0.50-1.50 Spot GPU, about $0.50 egress to YouTube,
 about $1/month raw storage until the lifecycle rule deletes raw footage N
 days after a successful render.
 
+## Local processing apps
+
+Processing on the user's own computer is free, Mac first and Windows
+later, with the paid cloud offered alongside, never pushed. Both run the
+same engine. The Mac app's plan, including the pitch and kit checks and
+the labels users can contribute, is in [MAC-APP-PLAN.md](MAC-APP-PLAN.md).
+
 ## YouTube constraints
 
 - `videos.insert` costs 1,600 of the default 10,000 daily quota units:
@@ -117,6 +133,8 @@ days after a successful render.
 | 3. Pipeline v1 (3-4 wk) | Sync, stitch, follow the center of play (players only) | Automatic end-to-end render |
 | 4. Ball tracking (4-6 wk, ongoing) | Fine-tune a detector on youth-game footage; Kalman ball track; blended camera target | Measurably better framing on held-out games |
 | 5. YouTube (1-2 wk) | OAuth connect, Fargate upload, notifications | Video appears on the configured channel |
+| Cloud processing | Job record and API, Batch stack, the checks on the website, the engine on CUDA (see [CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)) | A non-author's game goes from the website's button to a watched video with no one touching AWS |
+| Local apps | Mac app, then Windows, on the cloud's engine (see [MAC-APP-PLAN.md](MAC-APP-PLAN.md)) | A non-author processes a game on their own Mac |
 | 6. Hardening | Retries, Spot-interruption checkpoints at pass boundaries, cost dashboard, self-host docs | A non-author can deploy it |
 
 Phases 1 and 2 can run in parallel with Phase 3 once Phase 0 works.

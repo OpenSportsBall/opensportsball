@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensportsball.dev/schemas/questions.schema.json",
+  "title": "Questions for the user",
+  "description": "Written by the engine's prepare command (and again after a refit) as questions/questions.json in the job's output folder. The engine computes; an app or the website only draws. Every `image` is a path relative to this file's folder. Every `text` says in plain words what is being asked, so the files can be answered without the app. Points are pixels in the image they belong to, origin top left.",
+  "type": "object",
+  "required": ["schemaVersion", "jobId", "pitch", "kits"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "type": "string" },
+    "engineVersion": { "type": "string" },
+    "pitch": {
+      "type": "object",
+      "description": "The pitch check: the background panorama with the fitted pitch drawn on it. The user approves it, or moves the keypoints to where they really are.",
+      "required": ["round", "text", "image", "width", "height", "lines", "keypoints"],
+      "additionalProperties": false,
+      "properties": {
+        "round": { "type": "integer", "minimum": 1, "description": "1 for the engine's first guess; one more after each refit." },
+        "text": { "type": "string" },
+        "image": { "type": "string" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "lines": {
+          "type": "array",
+          "description": "The fitted pitch markings as polylines, to draw over the image.",
+          "items": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/point" } }
+        },
+        "keypoints": {
+          "type": "array",
+          "description": "The named points the user can move, each starting where the fit puts it.",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "x", "y"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          }
+        },
+        "paint": {
+          "type": "object",
+          "description": "Only when the pitch has lines of more than one colour: the engine's choice, to confirm or change.",
+          "required": ["text", "choice", "options"],
+          "additionalProperties": false,
+          "properties": {
+            "text": { "type": "string" },
+            "choice": { "type": "string" },
+            "options": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "required": ["id", "label"],
+                "additionalProperties": false,
+                "properties": { "id": { "type": "string" }, "label": { "type": "string" }, "image": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "kits": {
+      "type": "object",
+      "description": "The kit-group check: one card per group, each a sample of people from that group chosen at random from across the game.",
+      "required": ["round", "text", "groups", "canSplit"],
+      "additionalProperties": false,
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string" },
+        "canSplit": { "type": "boolean", "description": "False once a group has been split: the split is offered once." },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "people"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "people": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "image"],
+                  "additionalProperties": false,
+                  "properties": { "id": { "type": "string" }, "image": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "minItems": 2, "maxItems": 2 }
+  }
+}

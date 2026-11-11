@@ -1,7 +1,7 @@
 # infra
 
-AWS CDK (TypeScript) stack for Phase 2: accounts, phone linking, uploads
-and the website. License: Apache-2.0.
+AWS CDK (TypeScript) stack: accounts, phone linking, uploads, the website,
+and cloud processing on AWS Batch. License: Apache-2.0.
 
 ## What it creates
 
@@ -14,11 +14,15 @@ and the website. License: Apache-2.0.
 | S3 `Site` bucket + CloudFront | The website (`web/build`) and its `config.json` | ~none |
 | CloudFront `FootageCdn` (with a signing key) | Footage downloads with signed URLs only ("Footage downloads") | none |
 | S3 `Contributions` bucket | Results users share to improve the models, under `contributions/<id>/...` (`docs/API.md`, "Contributions") | storage only |
-| EventBridge rules → CloudWatch Logs | Record `RecordingReady` until Phase 3 consumes it, and `ContributionReady` until training does | none |
+| EventBridge rules → CloudWatch Logs | Record `RecordingReady`, so a finished upload is visible, and `ContributionReady` until training does | none |
+| VPC (public subnets, no NAT gateway, S3 gateway endpoint) | Where processing runs | none |
+| Batch: a Spot GPU compute environment (`g5.xlarge` / `g6.xlarge`, 0 to 8 vCPUs) and a Fargate one, a queue each, job definitions `prepare` / `run` / `refit` | Cloud processing ("Cloud processing" below) | none: both scale to zero |
+| ECR repository | The engine's image | cents a month |
+| EventBridge rule → `JobEvents` Lambda | Follows Batch job state changes and emails the account | none |
 
 Nothing runs between games. Footage storage is the main cost (about
-$0.023/GB-month); Phase 3 adds the rule that deletes raw footage after
-rendering.
+$0.023/GB-month). Uploads and what processing makes from them (`outputs/`)
+expire after 180 days; processing checkpoints (`work/`) after 7.
 
 The footage and contributions buckets, table and user pool are
 **retained** if the stack is deleted, so a mistaken `cdk destroy` can't
@@ -56,6 +60,9 @@ Options (pass with `-c key=value`):
 | `authCertArn` | none | ACM certificate **in us-east-1** for `authDomain` (required with `authDomain`) |
 | `footageSigningPublicKeyFile` | `footage-signing-public.pem` | Public key for footage download URLs, relative to `infra/` ("Footage downloads") |
 | `contributionRetentionDays` | none (kept until withdrawn) | Expire shared results this many days after upload; the privacy policy must say the same |
+| `engineImageTag` | `stub` | Tag of the engine image in the stack's repository ("Cloud processing") |
+| `engineCompute` | `cpu` | Where `prepare` and `run` go: `cpu` (Fargate, enough for the stub engine) or `gpu` (Spot `g5.xlarge` / `g6.xlarge`, for the real engine) |
+| `emailFrom` | none | Sender of the processing emails, e.g. `OpenSportsBall <no-reply@example.com>`; an address or domain verified in SES. None are sent without it |
 
 ### Deployment settings
 
@@ -105,6 +112,53 @@ key to `infra/footage-signing-public.pem`, which is git-ignored like
 removes the distribution (synth prints a warning). To change keys, run the
 script again and deploy straight away; URLs signed with the old key stop
 working.
+
+### Cloud processing
+
+The user starts a job from a game's page; the API submits AWS Batch jobs
+that run the engine's container (`docs/CLOUD-PROCESSING-PLAN.md`, and
+`docs/API.md` for the routes and for what the container is given and must
+write). The engine itself is in the opensportsball-processing repository.
+Until its image exists, `stub-engine/` stands in: it keeps the container's
+side of the contract with a drawn pitch, made-up kit groups and a
+3-second test-pattern video, and reads no footage.
+
+To try it end to end:
+
+1. Deploy (above). The stack's `EngineRepositoryUri` output is where the
+   image goes.
+2. Build and push the stub, signed in to the AWS account, with Docker
+   running:
+
+   ```
+   infra/scripts/push-stub-engine.sh [stack name]
+   ```
+
+3. On the website's Admin page, open your account and switch **Cloud
+   processing** on. Sign out and in, or reload, to see it.
+4. On a game with a `Ready` recording, press **Process in the cloud**. The
+   first Fargate task takes a minute or two to start; the stub then takes
+   about 20 seconds a step. Answer the two checks, and the video appears
+   on the game's page.
+
+The footage distribution ("Footage downloads") must be set up: the
+checks' pictures and the video are served through it.
+
+For the real engine, push its image to the same repository under its own
+tag and deploy with `-c engineImageTag=<tag> -c engineCompute=gpu`. That
+needs a Spot quota for G instances in the region (8 vCPUs runs two games
+at once; the GPU compute environment is capped there). Jobs log to the
+stack's `…ProcessingLogs…` log group in CloudWatch, kept a month.
+
+Costs while idle are nothing: no NAT gateway, both compute environments at
+zero. A GPU job that cannot get an instance for 12 hours is failed and its
+owner emailed, instead of waiting forever.
+
+For the emails ("check the pitch", "your video is ready", "processing
+failed"), verify a sender in SES and deploy with
+`-c emailFrom='OpenSportsBall <no-reply@example.com>'`. A new SES account
+is in the sandbox and can only send to verified addresses until AWS lifts
+that.
 
 ### Custom domain
 

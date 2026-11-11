@@ -13,12 +13,13 @@ S3 + CloudFront, and talks to the API described in
 | `/` | What OpenSportsBall is, plus **Sign in** (Cognito managed login also handles sign up). Signed-in users go to `/games`. |
 | `/callback` | Finishes the Cognito sign-in redirect. |
 | `/games` | Games, newest first, with recording count and status. |
-| `/game?id=<gameId>` | Recordings with per-phone upload progress. Refreshes every 15 s while anything is still uploading. |
+| `/game?id=<gameId>` | Recordings with per-phone upload progress, and for each ready recording its processing: **Process in the cloud** (accounts an admin has switched it on for), progress, Cancel, the link to the checks, then the video to watch and download. Refreshes every 15 s while anything is uploading, every 4 s while a machine is working. |
+| `/check?game=…&recording=…&job=…` | The two checks a cloud job waits for: the pitch (approve the drawn lines, or drag the named points and have it redrawn) and the kit groups (tap who doesn't belong; say whether groups should be merged or one split). Draws what the engine wrote; see `docs/API.md`, "Processing jobs". |
 | `/devices` | Linked phones, Unlink, and **Link a phone** (QR code, `ABCD-EFGH` code, expiry countdown; polls every 3 s until the phone shows up). |
-| `/admin` | Admins only (Cognito `admins` group; the nav link shows for them): totals, then every account with status, phones, games, recordings and storage, sortable and filterable; a row expands to the account id, phones, oldest footage, and the account's games and recordings with their size, each with a two-step **Delete** (also for footage left with no record). See `api/README.md` to add an admin. |
+| `/admin` | Admins only (Cognito `admins` group; the nav link shows for them): totals, then every account with status, phones, games, recordings and storage, sortable and filterable; a row expands to the account id, phones, the **Cloud processing** switch, oldest footage, and the account's games and recordings with their size, each with a two-step **Delete** (also for footage left with no record). See `api/README.md` to add an admin. |
 
 Not built yet (later phases): connect YouTube, default upload settings
-(privacy, title template), output downloads. Default video privacy will be
+(privacy, title template). Default video privacy will be
 unlisted or private: the footage shows minors.
 
 The game page takes the id as a query parameter, not a path segment, so
@@ -42,7 +43,11 @@ npm run dev:mock      # http://localhost:5173
   ([`src/lib/mock.ts`](src/lib/mock.ts)) behind the real API client: three
   games with recordings in every status, two linked phones. Upload progress
   moves forward every 15 s. After **Link a phone**, a "Samsung Galaxy S24"
-  links itself about 5 seconds later.
+  links itself about 5 seconds later. The oldest game has a processed
+  recording and one to process: a job there takes about 15 seconds to
+  reach the checks (a drawn pitch whose first fit is off, and kit groups
+  with one to split), a few seconds per redo, and 30 seconds to "make" a
+  test-pattern video.
 
 Mock data lives in memory, so a full page reload starts over. Any
 `config.json` with `"apiUrl": "mock"` turns mock mode on, including a built
@@ -103,7 +108,7 @@ should not be cached.
 | `npm run build` | Production build into `build/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run check` | `svelte-check` type checking |
-| `npm test` | Unit tests (vitest): API client, formatting, config, mock API |
+| `npm test` | Unit tests (vitest): API client, formatting, config, mock API, and a processing job from the button to the video |
 
 ## Layout
 
@@ -116,11 +121,13 @@ src/
     config.ts                 loads and checks /config.json
     format.ts                 bytes, dates, codes, labels
     mock.ts                   in-memory mock of the API
+    mockScene.ts, mockVideo.ts  the made-up game and video the mock's jobs show
     poll.ts                   non-overlapping polling helper
     session.svelte.ts         app-wide state (config, auth, API client)
     types.ts                  API shapes from docs/API.md
-    components/               StatusBadge, ProgressBar, ErrorBanner
-  routes/                     /, /callback, /games, /game, /devices
+    components/               StatusBadge, ProgressBar, ErrorBanner,
+                              JobPanel, PitchCheck, KitsCheck
+  routes/                     /, /callback, /games, /game, /check, /devices
 tests/                        vitest suites
 ```
 

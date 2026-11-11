@@ -36,6 +36,7 @@ describe('API', () => {
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
+      { key: 'DELETE /games/{gameId}/recordings/{recordingId}/jobs/{jobId}', auth: 'JWT' },
       { key: 'DELETE /me', auth: 'JWT' },
       { key: 'GET /admin/accounts', auth: 'JWT' },
       { key: 'DELETE /contributions/{contributionId}', auth: 'JWT' },
@@ -44,6 +45,8 @@ describe('API', () => {
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
+      { key: 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}', auth: 'JWT' },
+      { key: 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions', auth: 'JWT' },
       { key: 'GET /me', auth: 'JWT' },
       { key: 'POST /contributions', auth: 'JWT' },
       { key: 'POST /contributions/{contributionId}/complete', auth: 'JWT' },
@@ -52,12 +55,17 @@ describe('API', () => {
       { key: 'POST /games/{gameId}/grant-tickets', auth: 'JWT' },
       { key: 'POST /games/{gameId}/grants', auth: 'CUSTOM' },
       { key: 'POST /games/{gameId}/recordings/{recordingId}/downloads', auth: 'JWT' },
+      { key: 'POST /games/{gameId}/recordings/{recordingId}/jobs', auth: 'JWT' },
+      { key: 'POST /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/downloads', auth: 'JWT' },
       { key: 'POST /grant-tickets', auth: 'CUSTOM' },
       { key: 'POST /grants/lookup', auth: 'NONE' },
       { key: 'POST /grants/redeem', auth: 'NONE' },
       { key: 'POST /link-codes', auth: 'JWT' },
       { key: 'POST /uploads', auth: 'CUSTOM' },
       { key: 'POST /uploads/complete', auth: 'CUSTOM' },
+      { key: 'PUT /admin/accounts/{accountId}/cloud-processing', auth: 'JWT' },
+      { key: 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers', auth: 'JWT' },
+      { key: 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/status', auth: 'JWT' },
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/manifest', auth: 'CUSTOM' },
       { key: 'PUT /games/{gameId}/recordings/{recordingId}/report', auth: 'CUSTOM' },
     ].sort(byKey));
@@ -89,7 +97,7 @@ describe('API', () => {
     const fns = Object.values(t.findResources('AWS::Lambda::Function')).filter(
       (f) => f.Properties.Environment?.Variables?.TABLE_NAME,
     );
-    expect(fns).toHaveLength(5);
+    expect(fns).toHaveLength(6);
     for (const f of fns) {
       expect(f.Properties.Runtime).toBe('nodejs22.x');
       expect(f.Properties.Architectures).toEqual(['arm64']);
@@ -111,8 +119,11 @@ describe('storage', () => {
         LifecycleConfiguration: {
           Rules: [
             Match.objectLike({ AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } }),
-            // Only the phones' uploads: bench/ and data/ are never expired.
+            // Only the phones' uploads and what processing made from them:
+            // bench/, data/ and models/ are never expired.
             { Id: 'ExpireUploads', Prefix: 'accounts/', ExpirationInDays: 180, Status: 'Enabled' },
+            { Id: 'ExpireOutputs', Prefix: 'outputs/', ExpirationInDays: 180, Status: 'Enabled' },
+            { Id: 'ExpireWork', Prefix: 'work/', ExpirationInDays: 7, Status: 'Enabled' },
           ],
         },
       }),
@@ -154,16 +165,17 @@ describe('deleting footage', () => {
   const actions = (s: Record<string, any>) => [s.Action].flat();
   const footage = () => Object.keys(t.findResources('AWS::S3::Bucket')).find((id) => id.startsWith('Footage'))!;
 
-  it('the web Lambda may list, abort and delete under accounts/ only', () => {
+  it('the web Lambda may list, abort and delete under accounts/ and what processing made from it, only', () => {
     const st = statements('WebApi');
     const list = st.find((s) => actions(s).includes('s3:ListBucket'))!;
-    expect(list.Condition).toEqual({ StringLike: { 's3:prefix': ['accounts/*'] } });
+    expect(list.Condition).toEqual({ StringLike: { 's3:prefix': ['accounts/*', 'outputs/*', 'work/*'] } });
     expect(st.find((s) => actions(s).includes('s3:ListBucketMultipartUploads'))!.Resource).toEqual({
       'Fn::GetAtt': [footage(), 'Arn'],
     });
     const del = st.find((s) => actions(s).includes('s3:DeleteObject'))!;
     expect(actions(del).sort()).toEqual(['s3:AbortMultipartUpload', 's3:DeleteObject']);
-    expect(JSON.stringify(del.Resource)).toContain('/accounts/*');
+    for (const p of ['/accounts/*', '/outputs/*', '/work/*']) expect(JSON.stringify(del.Resource)).toContain(p);
+    expect(del.Resource).toHaveLength(3);
     expect(st.flatMap(actions).some((a) => a === 's3:DeleteBucket' || a === 's3:*')).toBe(false);
   });
 
@@ -409,5 +421,160 @@ describe('footage downloads', () => {
     );
     expect(readers).toHaveLength(1);
     expect(JSON.stringify(readers[0]!.Resource)).toContain(':parameter/TestFootage/footage-signing-key');
+  });
+});
+
+describe('cloud processing', () => {
+  const statements = (t: Template, rolePrefix: string) => {
+    const roles = Object.keys(t.findResources('AWS::IAM::Role')).filter((id) => id.startsWith(rolePrefix));
+    return Object.values(t.findResources('AWS::IAM::Policy'))
+      .filter((p) => p.Properties.Roles.some((r: { Ref: string }) => roles.includes(r.Ref)))
+      .flatMap((p) => p.Properties.PolicyDocument.Statement as Array<Record<string, any>>);
+  };
+  const actions = (s: Record<string, any>) => [s.Action].flat() as string[];
+  const defs = (t: Template) =>
+    Object.fromEntries(
+      Object.entries(t.findResources('AWS::Batch::JobDefinition')).map(([id, d]) => [id.replace(/^Processing|[0-9A-F]{8}$/g, ''), d.Properties]),
+    );
+
+  let gpu: Template;
+  beforeAll(() => {
+    const app = new cdk.App({ context: { '@aws-cdk/customresources:installLatestAwsSdkDefault': false } });
+    const stack = new OpenSportsBallStack(app, 'TestGpu', {
+      repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+      authDomainPrefix: 'osb-test',
+      engineImageTag: 'v1',
+      engineCompute: 'gpu',
+      emailFrom: 'OpenSportsBall <no-reply@example.com>',
+    });
+    gpu = Template.fromStack(stack);
+  }, 120_000);
+
+  it('costs nothing idle: no NAT gateway, and both compute environments start at zero', () => {
+    t.resourceCountIs('AWS::EC2::NatGateway', 0);
+    t.hasResourceProperties('AWS::EC2::VPCEndpoint', { VpcEndpointType: 'Gateway' });
+    t.hasResourceProperties('AWS::Batch::ComputeEnvironment', {
+      Type: 'managed',
+      ComputeResources: Match.objectLike({
+        Type: 'SPOT',
+        AllocationStrategy: 'SPOT_PRICE_CAPACITY_OPTIMIZED',
+        MinvCpus: 0,
+        MaxvCpus: 8,
+        InstanceTypes: ['g5.xlarge', 'g6.xlarge'],
+        Ec2Configuration: [{ ImageType: 'ECS_AL2023_NVIDIA' }],
+      }),
+    });
+    t.hasResourceProperties('AWS::Batch::ComputeEnvironment', {
+      ComputeResources: Match.objectLike({ Type: 'FARGATE', MaxvCpus: 8 }),
+    });
+  });
+
+  it('accepts no inbound connections', () => {
+    const groups = Object.values(t.findResources('AWS::EC2::SecurityGroup'));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.Properties.SecurityGroupIngress).toBeUndefined();
+    t.resourceCountIs('AWS::EC2::SecurityGroupIngress', 0);
+  });
+
+  it('gives the GPU instance an encrypted scratch disk', () => {
+    t.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      LaunchTemplateData: Match.objectLike({
+        BlockDeviceMappings: [
+          { DeviceName: '/dev/xvda', Ebs: { VolumeSize: 200, VolumeType: 'gp3', Encrypted: true, DeleteOnTermination: true } },
+        ],
+        MetadataOptions: Match.objectLike({ HttpTokens: 'required' }),
+      }),
+    });
+  });
+
+  it('runs the stub on Fargate by default, with a timeout per command', () => {
+    const d = defs(t);
+    expect(Object.keys(d).sort()).toEqual(['Prepare', 'Refit', 'Run']);
+    for (const [name, seconds] of [['Prepare', 3600], ['Run', 43_200], ['Refit', 900]] as const) {
+      expect(d[name].PlatformCapabilities, name).toEqual(['FARGATE']);
+      expect(d[name].Timeout).toEqual({ AttemptDurationSeconds: seconds });
+      expect(d[name].ContainerProperties.Command).toEqual([name.toLowerCase()]);
+      expect(d[name].ContainerProperties.NetworkConfiguration).toEqual({ AssignPublicIp: 'ENABLED' });
+      expect(JSON.stringify(d[name].ContainerProperties.Image)).toContain(':stub');
+    }
+  });
+
+  it('runs prepare and run on the GPU when asked, retrying only a reclaimed Spot instance', () => {
+    const d = defs(gpu);
+    for (const name of ['Prepare', 'Run']) {
+      expect(d[name].PlatformCapabilities, name).toEqual(['EC2']);
+      expect(d[name].ContainerProperties.ResourceRequirements).toEqual(
+        expect.arrayContaining([{ Type: 'GPU', Value: '1' }, { Type: 'VCPU', Value: '4' }]),
+      );
+      expect(d[name].RetryStrategy.Attempts).toBe(5);
+      expect(d[name].RetryStrategy.EvaluateOnExit).toEqual([
+        { Action: 'RETRY', OnStatusReason: 'Host EC2*' },
+        { Action: 'EXIT', OnReason: '*' },
+      ]);
+      expect(JSON.stringify(d[name].ContainerProperties.Image)).toContain(':v1');
+    }
+    expect(d.Refit.PlatformCapabilities).toEqual(['FARGATE']);
+    // Prepare and run go to the GPU queue, refits to the CPU queue.
+    const web = Object.values(gpu.findResources('AWS::Lambda::Function')).find((f) => f.Properties.Environment?.Variables?.BATCH_JOBS)!;
+    const jobs = JSON.stringify(web.Properties.Environment.Variables.BATCH_JOBS);
+    expect(jobs).toMatch(/prepare.*GpuQueue.*run.*GpuQueue.*refit.*CpuQueue/);
+  });
+
+  it('fails a job that waits too long for a machine instead of leaving it queued', () => {
+    const queues = Object.values(t.findResources('AWS::Batch::JobQueue'));
+    const limited = queues.find((q) => q.Properties.JobStateTimeLimitActions)!;
+    expect(limited.Properties.JobStateTimeLimitActions.map((a: any) => [a.Reason, a.MaxTimeSeconds, a.Action])).toEqual([
+      ['MISCONFIGURATION:JOB_RESOURCE_REQUIREMENT', 3600, 'CANCEL'],
+      ['MISCONFIGURATION:COMPUTE_ENVIRONMENT_MAX_RESOURCE', 43_200, 'CANCEL'],
+      ['CAPACITY:INSUFFICIENT_INSTANCE_CAPACITY', 43_200, 'CANCEL'],
+    ]);
+  });
+
+  it('the engine container reads footage and models, writes outputs and work, and touches only job records', () => {
+    const st = statements(t, 'ProcessingJobRole');
+    const read = st.find((s) => actions(s).length === 1 && actions(s)[0] === 's3:GetObject')!;
+    expect(JSON.stringify(read.Resource)).toMatch(/\/accounts\/\*.*\/models\/\*/);
+    const write = st.find((s) => actions(s).includes('s3:PutObject'))!;
+    expect(JSON.stringify(write.Resource)).toMatch(/\/outputs\/\*.*\/work\/\*/);
+    expect(JSON.stringify(write.Resource)).not.toContain('/accounts/');
+    const table = st.find((s) => actions(s).some((a) => a.startsWith('dynamodb:')))!;
+    expect(actions(table).sort()).toEqual(['dynamodb:GetItem', 'dynamodb:UpdateItem']);
+    expect(table.Condition).toEqual({ 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['JOB#*'] } });
+  });
+
+  it('only the web Lambda may start jobs; the four that can end one may stop it', () => {
+    const can = (action: string) =>
+      Object.entries(t.findResources('AWS::IAM::Policy'))
+        .filter(([, p]) => (p.Properties.PolicyDocument.Statement as any[]).some((s) => actions(s).includes(action)))
+        .map(([id]) => id.replace(/ServiceRoleDefaultPolicy.*$/, ''))
+        .sort();
+    expect(can('batch:SubmitJob')).toEqual(['WebApi']);
+    expect(can('batch:TerminateJob')).toEqual(['AdminApi', 'DeviceApi', 'Ingest', 'WebApi']);
+  });
+
+  it('Batch state changes on our queues reach the job events Lambda', () => {
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventPattern: {
+        source: ['aws.batch'],
+        'detail-type': ['Batch Job State Change'],
+        detail: { jobQueue: Match.anyValue(), status: ['RUNNING', 'SUCCEEDED', 'FAILED'] },
+      },
+      Targets: [Match.objectLike({ Arn: { 'Fn::GetAtt': [Match.stringLikeRegexp('^JobEvents'), 'Arn'] } })],
+    });
+  });
+
+  it('sends emails only when a sender is set', () => {
+    const env = (x: Template) =>
+      Object.values(x.findResources('AWS::Lambda::Function')).find((f) => f.Properties.Environment?.Variables?.SITE_URL)!
+        .Properties.Environment.Variables;
+    expect(env(t).EMAIL_FROM).toBeUndefined();
+    expect(statements(t, 'JobEventsServiceRole').flatMap(actions)).not.toContain('ses:SendEmail');
+    expect(env(gpu).EMAIL_FROM).toBe('OpenSportsBall <no-reply@example.com>');
+    expect(statements(gpu, 'JobEventsServiceRole').flatMap(actions)).toContain('ses:SendEmail');
+  });
+
+  it('has a repository for the engine image', () => {
+    t.resourceCountIs('AWS::ECR::Repository', 1);
+    t.hasOutput('EngineRepositoryUri', {});
   });
 });

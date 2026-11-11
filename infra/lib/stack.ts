@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Everything for Phase 2: footage bucket, DynamoDB, Cognito, the HTTP API
- * and its Lambdas, and the website on CloudFront. Nothing here runs or
- * bills between games except storage and on-demand DynamoDB.
+ * Footage bucket, DynamoDB, Cognito, the HTTP API and its Lambdas, the
+ * website on CloudFront, and cloud processing on AWS Batch
+ * (lib/processing.ts). Nothing here runs or bills between games except
+ * storage and on-demand DynamoDB.
  */
 
 import { existsSync } from 'node:fs';
@@ -30,6 +31,7 @@ import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import type { Construct } from 'constructs';
 import { siteContentSecurityPolicy } from './csp.js';
 import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js';
+import { Processing, type EngineCompute } from './processing.js';
 
 /** Where managed login sends the phone app back to (docs/API.md). */
 export const APP_LOGIN_CALLBACK = 'opensportsball://auth';
@@ -45,6 +47,11 @@ export const DESKTOP_CLI_LOGIN_CALLBACKS = DESKTOP_CLI_LOGIN_PORTS.map((p) => `h
 /** How long the phones' uploads stay in the footage bucket. The privacy
  *  policy (web/src/routes/privacy) states this number. */
 export const FOOTAGE_RETENTION_DAYS = 180;
+
+/** How long what processing made (the game video, the checks' pictures)
+ *  is kept, and its checkpoints. */
+export const OUTPUT_RETENTION_DAYS = 180;
+export const WORK_RETENTION_DAYS = 7;
 
 export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Repository root (contains api/, web/, shared/). */
@@ -73,6 +80,15 @@ export interface OpenSportsBallStackProps extends cdk.StackProps {
    *  Unset: kept until the user withdraws it or closes the account. A
    *  decision for the privacy policy (web/src/routes/privacy). */
   contributionRetentionDays?: number;
+  /** Tag of the engine image in the stack's repository (default `stub`,
+   *  the stand-in built from infra/stub-engine). */
+  engineImageTag?: string;
+  /** Where prepare and run go: `cpu` (Fargate; enough for the stub) or
+   *  `gpu` (Spot g5/g6; the real engine). Default `cpu`. */
+  engineCompute?: EngineCompute;
+  /** Verified SES sender for the processing emails, e.g.
+   *  `OpenSportsBall <no-reply@example.com>`. None are sent without it. */
+  emailFrom?: string;
 }
 
 /** The SSM SecureString parameter holding the footage URL signing private
@@ -103,11 +119,15 @@ export class OpenSportsBallStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       // The phones' uploads (accounts/) expire after 180 days, as the
-      // privacy policy says (web/src/routes/privacy). bench/ and data/,
-      // the processing repo's bench store and backups, are kept.
+      // privacy policy says (web/src/routes/privacy). What processing made
+      // from them (outputs/) and its checkpoints (work/) expire too. bench/
+      // and data/, the processing repo's bench store and backups, and
+      // models/ are kept.
       lifecycleRules: [
         { abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) },
         { id: 'ExpireUploads', prefix: 'accounts/', expiration: cdk.Duration.days(FOOTAGE_RETENTION_DAYS) },
+        { id: 'ExpireOutputs', prefix: 'outputs/', expiration: cdk.Duration.days(OUTPUT_RETENTION_DAYS) },
+        { id: 'ExpireWork', prefix: 'work/', expiration: cdk.Duration.days(WORK_RETENTION_DAYS) },
       ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
@@ -128,7 +148,8 @@ export class OpenSportsBallStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Footage downloads (a local processing app, playback) go through
+    // Footage downloads (a local processing app, playback, the checks'
+    // pictures and the game video under outputs/) go through
     // CloudFront: its first 1 TB a month is free and S3 -> CloudFront costs
     // nothing. Every request needs a URL or cookies signed by the API
     // (lib/footageUrls.ts in api/), which signs only an account's own
@@ -185,6 +206,7 @@ export class OpenSportsBallStack extends cdk.Stack {
               ? `https://${authDomain}`
               : `https://${props.authDomainPrefix}.auth.${this.region}.amazoncognito.com`,
             region: this.region,
+            footageCdnDomain: footageCdn?.distributionDomainName,
           }),
           override: true,
         },
@@ -374,6 +396,8 @@ export class OpenSportsBallStack extends cdk.Stack {
     const authFn = fn('DeviceAuthorizer', 'authorizer', 10);
     const ingestFn = fn('Ingest', 'ingest', 60);
     const adminFn = fn('AdminApi', 'admin');
+    // Batch job state changes (lib/jobs.ts in api/).
+    const jobsFn = fn('JobEvents', 'jobs', 60);
 
     table.grantReadWriteData(webFn);
     table.grantReadWriteData(deviceFn);
@@ -393,27 +417,29 @@ export class OpenSportsBallStack extends cdk.Stack {
     adminFn.addToRolePolicy(
       new iam.PolicyStatement({ actions: ['s3:ListBucketMultipartUploads'], resources: [footage.bucketArn] }),
     );
+    // Deleting takes what processing made from the footage with it.
+    const deletable = ['accounts/*', 'outputs/*', 'work/*'];
     adminFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:DeleteObject', 's3:AbortMultipartUpload'],
-        resources: [footage.arnForObjects('accounts/*')],
+        resources: deletable.map((p) => footage.arnForObjects(p)),
       }),
     );
     adminFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:ListBucket'],
         resources: [footage.bucketArn],
-        conditions: { StringLike: { 's3:prefix': ['accounts/*', 'accounts/'] } },
+        conditions: { StringLike: { 's3:prefix': [...deletable, 'accounts/'] } },
       }),
     );
     footage.grantReadWrite(deviceFn);
     // Deleting a recording or game from the website: list, abort and delete
-    // what is under accounts/ (never the bucket itself).
+    // what is under accounts/, outputs/ and work/ (never the bucket itself).
     webFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:ListBucket'],
         resources: [footage.bucketArn],
-        conditions: { StringLike: { 's3:prefix': ['accounts/*'] } },
+        conditions: { StringLike: { 's3:prefix': deletable } },
       }),
     );
     webFn.addToRolePolicy(
@@ -422,7 +448,15 @@ export class OpenSportsBallStack extends cdk.Stack {
     webFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:DeleteObject', 's3:AbortMultipartUpload'],
-        resources: [footage.arnForObjects('accounts/*')],
+        resources: deletable.map((p) => footage.arnForObjects(p)),
+      }),
+    );
+    // The checks: the engine's questions are read, the user's answers
+    // written, and the finished video looked up, all under outputs/.
+    webFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject', 's3:PutObject'],
+        resources: [footage.arnForObjects('outputs/*')],
       }),
     );
     // Contributions: the web Lambda signs their uploads, checks and stores
@@ -516,6 +550,16 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(GET, '/admin/accounts/{accountId}/games', adminIntegration, people);
     route(DELETE, '/admin/accounts/{accountId}/games/{gameId}', adminIntegration, people);
     route(DELETE, '/admin/accounts/{accountId}/games/{gameId}/recordings/{recordingId}', adminIntegration, people);
+    route(PUT, '/admin/accounts/{accountId}/cloud-processing', adminIntegration, people); // who may process in the cloud
+    // Processing jobs (docs/API.md, "Processing jobs").
+    const jobs = '/games/{gameId}/recordings/{recordingId}/jobs';
+    route(POST, jobs, webIntegration, people);
+    route(GET, `${jobs}/{jobId}`, webIntegration, people);
+    route(DELETE, `${jobs}/{jobId}`, webIntegration, people); // cancel
+    route(GET, `${jobs}/{jobId}/questions`, webIntegration, people);
+    route(PUT, `${jobs}/{jobId}/answers`, webIntegration, people);
+    route(PUT, `${jobs}/{jobId}/status`, webIntegration, people); // a job on the user's own computer
+    route(POST, `${jobs}/{jobId}/downloads`, webIntegration, people); // signed link to the game video
     route(POST, '/devices/link', deviceIntegration); // the link code is the credential
     route(POST, '/devices/unlink', deviceIntegration, phones); // a phone leaves its account
     route(POST, '/games/{gameId}/grants', deviceIntegration, phones); // Main lets its Secondary upload
@@ -527,9 +571,60 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(POST, '/uploads', deviceIntegration, phones);
     route(POST, '/uploads/complete', deviceIntegration, phones);
 
-    // --- Hand-off to processing ----------------------------------------------
+    // --- Processing ----------------------------------------------------------
 
-    // Phase 3 adds the Step Functions target. Until then, log the events so a
+    const processing = new Processing(this, 'Processing', {
+      footage,
+      table,
+      engineImageTag: props.engineImageTag ?? 'stub',
+      engineCompute: props.engineCompute ?? 'cpu',
+    });
+    // The website's API starts the jobs. It, the admin API (deletes), and
+    // the two functions that can make a recording ready a second time may
+    // stop one.
+    webFn.addEnvironment('BATCH_JOBS', JSON.stringify(processing.jobs));
+    processing.grantSubmit(webFn);
+    for (const f of [webFn, adminFn, deviceFn, ingestFn]) processing.grantTerminate(f);
+
+    // When a Batch job of ours starts or ends, the job record follows, and
+    // the account is emailed when there is something to do or to watch.
+    table.grantReadWriteData(jobsFn);
+    jobsFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['s3:GetObject'], resources: [footage.arnForObjects('outputs/*')] }),
+    );
+    jobsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        // So a missing file reads as missing, not as forbidden.
+        actions: ['s3:ListBucket'],
+        resources: [footage.bucketArn],
+        conditions: { StringLike: { 's3:prefix': ['outputs/*'] } },
+      }),
+    );
+    jobsFn.addEnvironment('USER_POOL_ID', users.userPoolId);
+    jobsFn.addEnvironment('SITE_URL', siteUrl);
+    jobsFn.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['cognito-idp:AdminGetUser'], resources: [users.userPoolArn] }),
+    );
+    if (props.emailFrom) {
+      jobsFn.addEnvironment('EMAIL_FROM', props.emailFrom);
+      jobsFn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['ses:SendEmail'],
+          resources: [this.formatArn({ service: 'ses', resource: 'identity', resourceName: '*' })],
+        }),
+      );
+    }
+    new events.Rule(this, 'BatchJobState', {
+      eventPattern: {
+        source: ['aws.batch'],
+        detailType: ['Batch Job State Change'],
+        detail: { jobQueue: processing.queues.map((q) => q.jobQueueArn), status: ['RUNNING', 'SUCCEEDED', 'FAILED'] },
+      },
+      targets: [new targets.LambdaFunction(jobsFn, { retryAttempts: 8 })],
+    });
+
+    // Nothing starts on this event: the user starts cloud processing from
+    // the website (docs/CLOUD-PROCESSING-PLAN.md). Log the events so a
     // finished upload is visible in CloudWatch.
     new events.Rule(this, 'RecordingReady', {
       eventPattern: { source: ['opensportsball'], detailType: ['RecordingReady'] },
@@ -608,5 +703,6 @@ export class OpenSportsBallStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ContributionsBucket', { value: contributions.bucketName });
     if (footageCdn) new cdk.CfnOutput(this, 'FootageCdnDomain', { value: footageCdn.distributionDomainName });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
+    new cdk.CfnOutput(this, 'EngineRepositoryUri', { value: processing.repository.repositoryUri });
   }
 }

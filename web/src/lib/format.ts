@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
-import type { RecordingStatus } from './types';
+import type { Job, RecordingStatus } from './types';
 
 /** Decimal units, matching what phones show for storage. */
 export function formatBytes(bytes: number | null | undefined): string {
@@ -109,3 +109,50 @@ export function formatCountdown(msLeft: number): string {
 export function shortId(id: string): string {
 	return id.length > 8 ? id.slice(0, 8) : id;
 }
+
+const STAGE_LABELS: Record<string, string> = {
+	sync: 'Lining up the two phones',
+	pitch: 'Finding the pitch',
+	kits: 'Sorting the kits',
+	ball: 'Finding the ball',
+	roles: 'Finding the players',
+	render: 'Making the video',
+	upload: 'Saving the video'
+};
+
+/** What a job is doing, for a person. */
+export function jobHeadline(job: Pick<Job, 'status' | 'phase' | 'where' | 'progress'>): string {
+	const local = job.where === 'local';
+	switch (job.status) {
+		case 'queued':
+			return job.phase === 'run' ? 'Waiting for a machine to make the video' : 'Waiting for a machine';
+		case 'preparing':
+			return local ? 'Getting ready on your computer' : 'Getting the game ready for your checks';
+		case 'needs_answers':
+			return local ? 'Waiting for your checks in the app' : 'Waiting for your checks';
+		case 'refitting':
+			return 'Redoing a check from your answer';
+		case 'running':
+			return local ? 'Processing on your computer' : 'Making the video';
+		case 'done':
+			return 'Video ready';
+		case 'failed':
+			return 'Processing failed';
+		case 'cancelled':
+			return 'Processing cancelled';
+	}
+}
+
+export const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
+
+/** "about 2 hours left", "about 5 minutes left"; "" when unknown. */
+export function formatEta(seconds: number | null | undefined): string {
+	if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '';
+	if (seconds < 90) return 'about a minute left';
+	if (seconds < 5400) return `about ${Math.round(seconds / 60)} minutes left`;
+	const h = Math.round(seconds / 3600);
+	return `about ${h} hour${h === 1 ? '' : 's'} left`;
+}
+
+export const jobIsActive = (job: Pick<Job, 'status'> | null | undefined) =>
+	job != null && !['done', 'failed', 'cancelled'].includes(job.status);

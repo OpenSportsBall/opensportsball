@@ -131,18 +131,22 @@ the ticket; the page still accepts them.
 ## Routes for people (Cognito token)
 
 ### `GET /me`
-→ `200 {"accountId": "...", "email": "...", "admin": false}`
+→ `200 {"accountId": "...", "email": "...", "admin": false, "cloudProcessing": false}`
 
 `admin` is true when the user is in the Cognito `admins` group (the
-website then shows its Admin page).
+website then shows its Admin page). `cloudProcessing` is true when an
+admin has switched cloud processing on for the account
+(`PUT /admin/accounts/{accountId}/cloud-processing`).
 
 ### `DELETE /me`
 Deletes the account and everything in it for good. → `204`
 
 - Unlinks every phone (their tokens stop working: `401`), revokes the
-  grant tokens and tickets the account handed out, removes everything
-  under `accounts/<accountId>/` (aborting open multipart uploads), deletes
-  every table item of the account, then the Cognito user.
+  grant tokens and tickets the account handed out, stops its processing
+  jobs, removes everything under `accounts/<accountId>/` (aborting open
+  multipart uploads) and what processing made from it
+  (`outputs/<accountId>/`, `work/<accountId>/`), deletes every table item
+  of the account and its job records, then the Cognito user.
 - Leaves one `ACCOUNT#<accountId> / CLOSED` item (the id and when), so a
   link code made before the delete answers `410 gone` and a segment that
   lands afterwards is deleted, instead of either starting the account
@@ -201,11 +205,15 @@ without a grant from Main.
           "expectedSegments": 18, "uploadedSegments": 12,
           "expectedBytes": 20000000000, "uploadedBytes": 13000000000
         }
-      ]
+      ],
+      "job": null
     }
   ]
 }
 ```
+
+`job` is the recording's newest processing job ("Processing jobs" below),
+or null when it was never processed.
 
 Before the manifest arrives, `devices` lists only phones that have
 uploaded something, with `role`, `model`, `expectedSegments` and
@@ -253,10 +261,13 @@ Deletes one recording for good. → `204`
 
 - Removes everything under
   `accounts/<accountId>/games/<gameId>/recordings/<recordingId>/` in the
-  bucket (manifest, segments, any processing output), aborting multipart
-  uploads still open there, and the recording's items: the recording and
-  its manifest, each phone's report, uploaded-file and upload-in-progress
-  records. The game and its other recordings stay.
+  bucket (manifest, segments), aborting multipart uploads still open
+  there, and the recording's items: the recording and its manifest, each
+  phone's report, uploaded-file and upload-in-progress records. The game
+  and its other recordings stay.
+- Processing goes with it: a job still running is stopped, the job records
+  are deleted, and so is everything under the matching `outputs/...` and
+  `work/...` folders (questions, answers, the game video, checkpoints).
 - Phones are refused from then on (`410 gone`, below).
 - Calling it again for a deleted recording is `204` (it finishes a delete
   that failed partway). `404 not_found`: no such recording on the account,
@@ -266,8 +277,9 @@ Deletes one recording for good. → `204`
 Deletes a game and all its recordings for good. → `204`
 
 - Removes everything under `accounts/<accountId>/games/<gameId>/`
-  (aborting open multipart uploads), every recording's items as above, the
-  game's grant records, and website tickets for it not yet redeemed.
+  (aborting open multipart uploads), every recording's items, jobs and
+  processing output as above, the game's grant records, and website
+  tickets for it not yet redeemed.
 - Grant tokens already on a Secondary are left to expire (14 days), so
   that phone is told the game was deleted (`410`) rather than that it was
   signed out (`401`).
@@ -346,6 +358,138 @@ bus: `source` `opensportsball`, `detail-type` `ContributionReady`, `detail`
 `{"accountId", "contributionId", "kind", "bucket", "prefix"}`. Deleting the
 account (`DELETE /me`) deletes everything under `contributions/<accountId>/`.
 
+## Processing jobs (Cognito token)
+
+A job is one attempt to turn a `ready` recording into the followed game
+video: in the cloud (AWS Batch), or on the user's own computer, where the
+app that runs it writes the same record. The plan is in
+[CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md); the shapes are in
+`shared/schemas/` (`job`, `questions`, `answers`, `progress`).
+
+A cloud job is two Batch jobs with the user in between:
+
+```
+queued -> preparing -> needs_answers -> queued -> running -> done
+                        ^        |
+                        +- refitting   (pitch marked, or a kit group split)
+```
+
+`failed` and `cancelled` end it from any state. `phase` (`prepare` or
+`run`) tells the two `queued` states apart. A recording has at most one
+job that has not ended.
+
+The job, as every route here returns it:
+
+```json
+{
+  "schemaVersion": 1,
+  "jobId": "...", "gameId": "...", "recordingId": "...",
+  "where": "cloud | local",
+  "status": "queued | preparing | needs_answers | refitting | running | done | failed | cancelled",
+  "phase": "prepare | run",
+  "checks": {"pitch": "open | answered", "kits": "open | answered"},
+  "progress": {"stage": "ball", "fraction": 0.4, "etaSeconds": 5400, "at": "..."},
+  "error": {"code": "footage_corrupt", "message": "..."},
+  "stale": false,
+  "engineVersion": "... | null",
+  "createdAt": "...", "updatedAt": "...", "finishedAt": "... | null"
+}
+```
+
+- `progress` and `error` are null when there is none. `error.code` is the
+  engine's own (e.g. `footage_corrupt`, `not_enough_disk`) or one of the
+  server's: `engine_failed`, `engine_no_result` (it ended without its
+  questions or video), `machine_failed` (a Spot instance was reclaimed too
+  many times, or the job could not be submitted), `no_machine` (none
+  became free in 12 hours), `timed_out`, `superseded` (below).
+- `stale` is true when the recording became `ready` again after the job
+  started: a second phone's footage arrived, and the job did not see it.
+  A job still going when that happens is cancelled with `superseded`; a
+  finished one is kept, and nothing is processed again unasked.
+
+### `POST /games/{gameId}/recordings/{recordingId}/jobs`
+Body: `{"where": "cloud"}` or `{"where": "local"}` → `201` the job.
+
+- `cloud` submits the prepare job (`status: queued`). `local` only makes
+  the record (`status: preparing`); the app then reports with
+  `PUT .../status`.
+- `403 cloud_not_enabled`: `cloud` on an account without
+  `cloudProcessing`. `503 cloud_unavailable`: this deployment has no cloud
+  processing, or Batch refused the job (the job is then `failed`).
+- `409 conflict`: the recording is not `ready`, or already has a job that
+  has not ended. `404 not_found`: no such recording on the account.
+
+### `GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}`
+→ `200` the job. `404 not_found`: no such job on that recording of the
+account.
+
+### `DELETE /games/{gameId}/recordings/{recordingId}/jobs/{jobId}`
+Cancels a job that has not ended, stopping its Batch job. → `204`.
+`409 conflict`: it has already ended.
+
+### `GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions`
+The engine's questions for the two checks, once it has written them.
+→ `200`
+
+```json
+{
+  "status": "needs_answers",
+  "checks": {"pitch": "open", "kits": "open"},
+  "expiresAt": "...",
+  "questions": { "schemaVersion": 1, "jobId": "...", "pitch": {...}, "kits": {...} }
+}
+```
+
+- `questions` is the engine's `questions/questions.json`
+  (`shared/schemas/questions.schema.json`) with a signed `imageUrl` added
+  next to every `image`, good until `expiresAt` (12 hours). An `image`
+  that points outside the questions folder gets `imageUrl: null`.
+- `409 conflict`: no questions yet. `503 downloads_unavailable`: no footage
+  distribution.
+
+### `PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers`
+Answers one check. Body: `"check": "pitch"` or `"kits"`, plus that check's
+answer from `shared/schemas/answers.schema.json`. → `200` the job.
+
+```json
+{"check": "pitch", "round": 1, "approved": true}
+{"check": "pitch", "round": 1, "approved": false,
+ "keypoints": [{"id": "near_left_corner", "x": 120.5, "y": 410}, {"id": "far_left_corner", "skipped": true}]}
+{"check": "kits", "round": 1, "wrong": [{"groupId": "g0", "personId": "p07"}], "structure": {"kind": "ok"}}
+{"check": "kits", "round": 1, "wrong": [], "structure": {"kind": "merge", "groups": ["g1", "g2"]}}
+{"check": "kits", "round": 1, "wrong": [], "structure": {"kind": "split", "group": "g2"}}
+```
+
+- `round` is the `round` of the question being answered.
+- An approved pitch, or kit groups that are `ok` or merged, close that
+  check. When both are closed the run job is submitted (`status: queued`,
+  `phase: run`).
+- A pitch that is not approved, or a group to split, submits a refit
+  (`status: refitting`). The check stays open, and the engine writes that
+  question again with the next `round`. A group can be split once
+  (`canSplit` in the questions).
+- The answers are kept as `answers.json` in the job's output folder, for
+  the engine.
+- `400 invalid_answers`: it does not match the schema, or names a point,
+  group or person the questions do not have. `409 conflict`: the job is
+  not waiting for answers, the check is already answered, or `round` is
+  not the current one (reload the questions). `403 forbidden`: a local
+  job, which is answered in its app. `503 cloud_unavailable`: the next
+  Batch job could not be submitted; the job goes back to `needs_answers`.
+
+### `PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/status`
+For the app running a local job. Body: `{"status", "progress"?, "error"?,
+"engineVersion"?}`, with `status` one of `preparing`, `needs_answers`,
+`refitting`, `running`, `done`, `failed`. → `200` the job.
+`403 forbidden`: a cloud job. `409 conflict`: the job has ended.
+
+### `POST /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/downloads`
+A signed link to the finished game video. →
+`200 {"expiresAt", "video": {"url", "bytes", "fileName": "game.mp4"}}`.
+The link works for 12 hours, range requests included (so it plays in a
+`<video>`). `409 conflict`: the job is not `done`. `404 not_found`: the
+video has expired or been deleted.
+
 ## Admin routes (Cognito token, `admins` group)
 
 A Cognito token whose `cognito:groups` includes `admins`; anyone else gets
@@ -368,6 +512,7 @@ to the group must sign in again.
       "devices": [{"deviceId", "platform", "model", "linkedAt", "lastSeenAt"}],
       "games": 3,
       "recordings": {"total": 5, "waiting_for_manifest": 1, "uploading": 2, "ready": 2},
+      "cloudProcessing": false,
       "storageBytes": 81800000000, "objectCount": 73,
       "lastUploadAt": "... | null", "oldestObjectAt": "... | null"
     }
@@ -411,6 +556,12 @@ and also footage the table has no record of. → `204`; `404 not_found`
 when there is neither a record nor footage. Each one logs an audit line
 (admin's account id, action and ids) in the admin Lambda's logs, kept for
 a month.
+
+### `PUT /admin/accounts/{accountId}/cloud-processing`
+Body: `{"enabled": true}` or `{"enabled": false}` →
+`200 {"accountId", "cloudProcessing"}`. Lets the account start cloud
+processing jobs, or stops it from starting more (jobs already running
+carry on). Logs an audit line like the deletes.
 
 ## Routes for phones
 
@@ -580,10 +731,70 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
   - `detail-type`: `RecordingReady`
   - `detail`: `{"accountId", "gameId", "recordingId", "bucket", "prefix", "manifestKey"}`
 
-  Phase 3 (processing) subscribes to this event.
+  Nothing starts on this event: the user starts cloud processing from the
+  website ("Processing jobs" above). It is only logged. When a recording
+  becomes `ready` a second time, a job still going on the first manifest
+  is cancelled before the event is published.
 - Incomplete multipart uploads are aborted after 7 days.
-- Deleting a recording or game (website routes above) removes its prefix.
-  The table keeps a small `DELETED#` marker for it so late uploads are
-  refused. A recording deleted while processing runs may get outputs
-  written back afterwards; processing should stop when the manifest is
-  gone.
+- Deleting a recording or game (website routes above) removes its prefix
+  and the matching `outputs/` and `work/` folders, and stops its jobs. The
+  table keeps a small `DELETED#` marker for it so late uploads are
+  refused. An engine that was mid-write may still put a file back
+  afterwards: it should stop when the manifest is gone, and the lifecycle
+  rules below remove what it leaves.
+- What processing writes is kept apart from the uploads, under the same
+  path below another root:
+  - `outputs/<accountId>/games/<gameId>/recordings/<recordingId>/jobs/<jobId>/`:
+    `questions/questions.json` and its images, `answers.json`, `game.mp4`.
+    Expires 180 days after it is written.
+  - `work/.../jobs/<jobId>/`: the engine's checkpoints. Expires after 7 days.
+
+## The engine's container
+
+Cloud processing runs one container image, the engine's, as AWS Batch
+jobs. This repository never contains the engine
+([LICENSING.md](LICENSING.md)): the two agree on what follows, and on the
+files in `shared/schemas/`. `infra/stub-engine/` is a stand-in that keeps
+this contract and reads no footage.
+
+The container is started with one argument, `prepare`, `refit` or `run`,
+and these variables:
+
+| Variable | Value |
+|---|---|
+| `OSB_COMMAND` | The same as the argument |
+| `OSB_JOB_ID` | The job's id |
+| `OSB_BUCKET`, `OSB_TABLE` | The footage bucket and the table |
+| `OSB_FOOTAGE_PREFIX` | `accounts/.../recordings/<recordingId>/`: `manifest.json` and the segments (read only) |
+| `OSB_OUTPUT_PREFIX` | `outputs/.../jobs/<jobId>/` (read and write) |
+| `OSB_WORK_PREFIX` | `work/.../jobs/<jobId>/` (read and write) |
+| `OSB_CHECK` | `refit` only: `pitch` or `kits`, the check to redo |
+
+Its role can read `accounts/` and `models/`, read and write `outputs/`
+and `work/`, and get and update table items whose partition key starts
+with `JOB#`. On the GPU queue it has one GPU, 4 vCPUs, 14 GB of memory and
+a 200 GB scratch disk at `/scratch`.
+
+What each command must leave behind, and how it ends:
+
+| Command | Reads | Must write under the output prefix | Time limit |
+|---|---|---|---|
+| `prepare` | the manifest and footage | `questions/questions.json` and its images | 1 hour |
+| `refit` | `answers.json`, and what it kept in `work/` | `questions/questions.json` again, with the redone check's `round` one higher | 15 minutes |
+| `run` | the footage and `answers.json` | `game.mp4` | 12 hours |
+
+- **Exit 0** when the file is written. The server then looks for the file
+  and moves the job on; exit 0 without it is `engine_no_result`.
+- **Exit non-zero** on failure. To say why, set `error` (`{"code",
+  "message"}`) on the job record first; otherwise the job fails as
+  `engine_failed`.
+- **Progress** (optional): `SET progress = {"stage", "fraction",
+  "etaSeconds", "at"}`, and `engineVersion`, on the item
+  `pk = JOB#<jobId>, sk = JOB`, with the condition `attribute_exists(pk)`
+  so a deleted job is not written back. No more than every 30 seconds.
+  The container sets nothing else on the record: `status` is the
+  server's.
+- **Spot:** on the GPU queue a reclaimed instance restarts the command, up
+  to 5 attempts. Keep checkpoints in the work prefix and resume from
+  them. Any other failure is not retried.
+- **Deleted footage:** stop when `manifest.json` is gone.

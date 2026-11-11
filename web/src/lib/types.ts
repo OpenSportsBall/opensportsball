@@ -21,6 +21,110 @@ export interface Me {
 	email: string;
 	/** In the Cognito `admins` group: may open /admin. */
 	admin?: boolean;
+	/** An admin has switched cloud processing on for this account. */
+	cloudProcessing?: boolean;
+}
+
+// --- Processing jobs (shared/schemas/job.schema.json and the others) --------
+
+export type JobStatus =
+	| 'queued'
+	| 'preparing'
+	| 'needs_answers'
+	| 'refitting'
+	| 'running'
+	| 'done'
+	| 'failed'
+	| 'cancelled';
+export type CheckName = 'pitch' | 'kits';
+
+export interface Job {
+	schemaVersion: 1;
+	jobId: string;
+	gameId: string;
+	recordingId: string;
+	where: 'cloud' | 'local';
+	status: JobStatus;
+	/** Up to the checks, or after them; tells the two `queued` states apart. */
+	phase: 'prepare' | 'run';
+	checks: Record<CheckName, 'open' | 'answered'>;
+	progress: { stage: string; fraction: number; etaSeconds?: number | null; at?: string } | null;
+	error: { code: string; message: string } | null;
+	/** The recording became ready again (a second phone) after this started. */
+	stale: boolean;
+	engineVersion: string | null;
+	createdAt: string;
+	updatedAt: string;
+	finishedAt: string | null;
+}
+
+/** A point in an image's pixels, origin top left. */
+export type Point = [number, number];
+
+export interface PitchKeypoint {
+	id: string;
+	label: string;
+	x: number;
+	y: number;
+}
+
+export interface PitchQuestion {
+	round: number;
+	text: string;
+	image: string;
+	/** Signed link to `image`; null if the engine named a file it may not. */
+	imageUrl: string | null;
+	width: number;
+	height: number;
+	lines: Point[][];
+	keypoints: PitchKeypoint[];
+	paint?: { text: string; choice: string; options: { id: string; label: string; image?: string; imageUrl?: string | null }[] };
+}
+
+export interface KitPerson {
+	id: string;
+	image: string;
+	imageUrl: string | null;
+}
+
+export interface KitsQuestion {
+	round: number;
+	text: string;
+	canSplit: boolean;
+	groups: { id: string; people: KitPerson[] }[];
+}
+
+/** GET .../jobs/{jobId}/questions */
+export interface JobQuestions {
+	status: JobStatus;
+	checks: Job['checks'];
+	expiresAt: string;
+	questions: { schemaVersion: 1; jobId: string; engineVersion?: string; pitch: PitchQuestion; kits: KitsQuestion };
+}
+
+export type PitchAnswer =
+	| { check: 'pitch'; round: number; approved: true; paint?: string }
+	| {
+			check: 'pitch';
+			round: number;
+			approved: false;
+			keypoints: ({ id: string; x: number; y: number } | { id: string; skipped: true })[];
+			paint?: string;
+	  };
+
+export type KitStructure = { kind: 'ok' } | { kind: 'merge'; groups: string[] } | { kind: 'split'; group: string };
+
+export interface KitsAnswer {
+	check: 'kits';
+	round: number;
+	wrong: { groupId: string; personId: string }[];
+	structure: KitStructure;
+}
+
+/** POST .../jobs/{jobId}/downloads */
+export interface JobVideo {
+	expiresAt: string;
+	video: { url: string; bytes: number | null; fileName: string };
 }
 
 /** GET /admin/accounts, one row per account. */
@@ -34,6 +138,8 @@ export interface AdminAccount {
 	devices: Device[];
 	games: number;
 	recordings: Record<RecordingStatus, number> & { total: number };
+	/** May start cloud processing. */
+	cloudProcessing: boolean;
 	storageBytes: number;
 	objectCount: number;
 	lastUploadAt: string | null;
@@ -158,6 +264,8 @@ export interface Recording {
 	status: RecordingStatus;
 	hasManifest: boolean;
 	devices: RecordingDevice[];
+	/** The newest processing job; null when it was never processed. */
+	job: Job | null;
 }
 
 export interface Game {

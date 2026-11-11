@@ -6,7 +6,20 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { isAdmin } from '../lib/admin.js';
-import { body, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { badRequest, body, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import {
+  answerCheck,
+  cancelJob,
+  getJob,
+  getJobView,
+  jobView,
+  latestJobs,
+  questionsView,
+  reportLocal,
+  startJob,
+  videoLink,
+} from '../lib/jobs.js';
+import { getSettings } from '../lib/settings.js';
 import { expectedDevices } from '../lib/manifest.js';
 import { deployedFootageSigner } from '../lib/footageUrls.js';
 import {
@@ -44,7 +57,12 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
     const acct = String(claims.sub);
     switch (event.routeKey) {
       case 'GET /me':
-        return json(200, { accountId: acct, email: claims.email ?? null, admin: isAdmin(claims) });
+        return json(200, {
+          accountId: acct,
+          email: claims.email ?? null,
+          admin: isAdmin(claims),
+          cloudProcessing: (await getSettings(acct)).cloudProcessing,
+        });
       case 'DELETE /me':
         await deleteAccount(acct);
         return json(204);
@@ -78,10 +96,34 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
       case 'DELETE /contributions/{contributionId}':
         await deleteContribution(acct, pathParam(event, 'contributionId'));
         return json(204);
+      case 'POST /games/{gameId}/recordings/{recordingId}/jobs': {
+        const where = body(event).where;
+        if (where !== 'cloud' && where !== 'local') throw badRequest('"where" must be "cloud" or "local".');
+        return json(201, await startJob(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'), where));
+      }
+      case 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}':
+        return json(200, await getJobView(acct, ...jobPath(event)));
+      case 'DELETE /games/{gameId}/recordings/{recordingId}/jobs/{jobId}':
+        await cancelJob(await getJob(acct, ...jobPath(event)));
+        return json(204);
+      case 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions':
+        return json(200, await questionsView(await getJob(acct, ...jobPath(event))));
+      case 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers':
+        return json(200, await answerCheck(await getJob(acct, ...jobPath(event)), body(event)));
+      case 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/status':
+        return json(200, await reportLocal(await getJob(acct, ...jobPath(event)), body(event)));
+      case 'POST /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/downloads':
+        return json(200, await videoLink(await getJob(acct, ...jobPath(event))));
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
   });
+
+const jobPath = (event: APIGatewayProxyEventV2WithJWTAuthorizer): [string, string, string] => [
+  pathParam(event, 'gameId'),
+  pathParam(event, 'recordingId'),
+  pathParam(event, 'jobId'),
+];
 
 async function listDevices(acct: string) {
   const items = await queryPrefix<DeviceItem>(acct, 'DEVICE#');
@@ -184,10 +226,11 @@ async function getGame(acct: string, gameId: string) {
   const g = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.game(acct, gameId) }));
   const game = g.Item as GameItem | undefined;
   if (!game) throw notFound('No such game.');
-  const [recordings, objects, reports] = await Promise.all([
+  const [recordings, objects, reports, jobs] = await Promise.all([
     queryPrefix<RecordingItem>(acct, `REC#${gameId}#`),
     listObjects(acct, gameId),
     listReports(acct, gameId),
+    latestJobs(acct, gameId),
   ]);
   const recs = recordings.map((r) => ({
     item: r,
@@ -210,6 +253,8 @@ async function getGame(acct: string, gameId: string) {
         objects.filter((o) => o.recordingId === r.recordingId),
         reports.filter((p) => p.recordingId === r.recordingId),
       ),
+      // The newest processing job, or null when it was never processed.
+      job: jobs.has(r.recordingId) ? jobView(jobs.get(r.recordingId)!, r) : null,
     })),
   });
 }

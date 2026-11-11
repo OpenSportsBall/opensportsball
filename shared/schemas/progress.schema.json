@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensportsball.dev/schemas/progress.schema.json",
+  "title": "Engine progress line",
+  "description": "One line of JSON the engine prints on stdout as it works. An app reads the lines from its subprocess; the cloud wrapper copies the latest into the job record. Other stdout lines are log text and are ignored.",
+  "type": "object",
+  "required": ["event"],
+  "oneOf": [
+    {
+      "required": ["event", "stage", "fraction"],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "progress" },
+        "stage": { "type": "string", "description": "What the engine is doing, e.g. sync, pitch, kits, ball, render, upload." },
+        "fraction": { "type": "number", "minimum": 0, "maximum": 1, "description": "How far through the whole command." },
+        "etaSeconds": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    {
+      "required": ["event"],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "questions", "description": "questions/questions.json is written; the command ends after this." }
+      }
+    },
+    {
+      "required": ["event", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "done" },
+        "output": { "type": "string", "description": "The game video's path, relative to the job's output folder." }
+      }
+    },
+    {
+      "required": ["event", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "event": { "const": "error" },
+        "code": { "type": "string", "description": "A stable code an app can act on, e.g. footage_corrupt, not_enough_disk." },
+        "message": { "type": "string" }
+      }
+    }
+  ]
+}

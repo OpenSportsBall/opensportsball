@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opensportsball.dev/schemas/job.schema.json",
+  "title": "Processing job",
+  "description": "One attempt to turn a recording into the followed game video, in the cloud or on the user's own computer. The API keeps this record (docs/API.md, \"Processing jobs\") and returns it to the website and the apps. A cloud job passes through queued, preparing, needs_answers, (refitting, needs_answers)*, queued, running, done. A local job is written by the app that runs it.",
+  "type": "object",
+  "required": ["schemaVersion", "jobId", "gameId", "recordingId", "where", "status", "phase", "checks", "createdAt", "updatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobId": { "type": "string" },
+    "gameId": { "type": "string" },
+    "recordingId": { "type": "string" },
+    "where": { "enum": ["cloud", "local"], "description": "cloud: AWS Batch. local: the user's own computer (the Mac app)." },
+    "status": {
+      "enum": ["queued", "preparing", "needs_answers", "refitting", "running", "done", "failed", "cancelled"],
+      "description": "queued: waiting for a machine. preparing: the engine's prepare command. needs_answers: waiting for the user to answer the checks. refitting: redoing a check from the user's answer. running: the engine's run command. done, failed and cancelled are final."
+    },
+    "phase": { "enum": ["prepare", "run"], "description": "Which half the job is in: up to the checks, or after them. Tells the two queued states apart." },
+    "checks": {
+      "type": "object",
+      "description": "The checks the user answers between prepare and run. The run starts when both are answered.",
+      "required": ["pitch", "kits"],
+      "additionalProperties": false,
+      "properties": {
+        "pitch": { "enum": ["open", "answered"] },
+        "kits": { "enum": ["open", "answered"] }
+      }
+    },
+    "progress": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/progress" }] },
+    "error": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["code", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "code": { "type": "string", "description": "The engine's error code (footage_corrupt, not_enough_disk, ...), or one of the server's: engine_failed, engine_no_result, machine_failed, no_machine, timed_out, superseded." },
+            "message": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "stale": { "type": "boolean", "description": "True when the recording became ready again after this job started (a second phone's footage arrived): the job did not see all the footage." },
+    "engineVersion": { "type": ["string", "null"], "description": "The engine that ran it, as the engine names itself (a version and commit)." },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "$defs": {
+    "progress": {
+      "type": "object",
+      "required": ["stage", "fraction"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "type": "string", "description": "What the engine is doing, e.g. sync, pitch, kits, ball, render, upload." },
+        "fraction": { "type": "number", "minimum": 0, "maximum": 1, "description": "How far through the current command (prepare or run), not the stage." },
+        "etaSeconds": { "type": ["number", "null"], "minimum": 0 },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

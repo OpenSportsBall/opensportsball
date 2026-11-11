@@ -96,6 +96,24 @@
 		return new Date(new Date(oldest).getTime() + RETENTION_DAYS * 86400_000).toISOString();
 	}
 
+	/** The account whose cloud processing switch is being saved. */
+	let switching = $state<string | null>(null);
+	let switchError = $state<unknown>(null);
+
+	async function setCloudProcessing(a: AdminAccount, enabled: boolean) {
+		switching = a.accountId;
+		switchError = null;
+		try {
+			a.cloudProcessing = (await session.api.adminSetCloudProcessing(a.accountId, enabled)).cloudProcessing;
+			// This page's own account: its game pages follow at once.
+			if (a.email !== null && a.email === session.email) session.cloudProcessing = a.cloudProcessing;
+		} catch (e) {
+			switchError = e;
+		} finally {
+			switching = null;
+		}
+	}
+
 	const STATUS_TEXT: Record<AdminAccount['status'], string> = {
 		active: 'Active',
 		disabled: 'Disabled',
@@ -251,6 +269,21 @@
 										<dt>Storage</dt>
 										<dd>
 											{formatBytes(a.storageBytes)} in {a.objectCount} files · ≈ {monthlyCost(a.storageBytes)}/month
+										</dd>
+									</div>
+									<div>
+										<dt>Cloud processing</dt>
+										<dd>
+											<label class="switch">
+												<input
+													type="checkbox"
+													checked={a.cloudProcessing}
+													disabled={switching === a.accountId || a.status === 'deleted'}
+													onchange={(e) => void setCloudProcessing(a, e.currentTarget.checked)}
+												/>
+												{a.cloudProcessing ? 'On: may process games in the cloud' : 'Off'}
+											</label>
+											{#if switchError && open === a.accountId}<ErrorBanner error={switchError} />{/if}
 										</dd>
 									</div>
 									<div>

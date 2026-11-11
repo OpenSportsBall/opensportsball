@@ -102,13 +102,16 @@ Footage and logs from these tests decide several items below.
 
 ## Phase 3: processing pipeline
 
-- [ ] GPU Spot quota: request for 8 vCPUs of G instances in `us-west-2` is
-      **pending** with AWS (filed 2026-10-06). Needed before any GPU job runs.
-- [ ] Batch GPU job (sync, calibrate, detect, camera path, render),
-      Step Functions triggered by `RecordingReady`. A recording can be
-      ready twice: Main alone, then with a Secondary that got its upload
-      permission later from the website (docs/API.md, report route). The
-      second run replaces the first.
+- [ ] On-demand GPU quota: request G instances in `us-west-2`, the
+      fallback when Spot has none (the Spot quota was granted 2026-11-10).
+- [ ] Cloud processing ([CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)).
+      Steps 1-3 (job record and API, Batch stack with a stub engine, the
+      checks on the website) are built but not deployed. Next: deploy,
+      push the stub image and take a game through it (the plan's "Left
+      from steps 1-3"), then step 4, the engine on CUDA.
+- [ ] Privacy policy: say what cloud processing keeps (the game video and
+      the checks' pictures, 180 days from when they are made, deleted with
+      the recording). Before cloud processing is on for anyone but us.
 - [ ] Lifecycle rule deleting raw footage N days after a successful render.
 
 ## Local apps (docs/MAC-APP-PLAN.md)
