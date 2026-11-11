@@ -195,7 +195,7 @@ void main() {
               'width': 3840,
               'height': 2160,
               'suggestions': [
-                {'x': 1920.0, 'y': 1080.0, 'conf': 0.7},
+                {'x': 1920.0, 'y': 1080.0, 'conf': i == 0 ? 0.7 : 0.0, 'fromPath': i == 1},
               ],
             },
         ],
@@ -218,6 +218,7 @@ void main() {
     expect(find.text('Picture 1 of 2'), findsOneWidget);
     expect(find.text('2:05 into the game'), findsOneWidget);
     expect(find.text('0 of 2 marked'), findsOneWidget);
+    expect(find.text('Ring: detected'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Next')).onPressed, isNull);
 
     // Whole picture, then a click just beside the engine's ring takes the ring.
@@ -231,6 +232,7 @@ void main() {
     await tester.tap(find.text('Next'));
     await tester.pump();
     expect(find.text('Picture 2 of 2'), findsOneWidget);
+    expect(find.text('Dashed ring: guessed'), findsOneWidget);
     await tester.tap(find.text('The ball isn’t in the picture'));
     await tester.pump();
     expect(find.text('2 of 2 marked'), findsOneWidget);
