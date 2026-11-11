@@ -174,9 +174,18 @@ Footage and logs from these tests decide several items below.
       on your Mac" and "done" to the API, so the website and phones show it and
       a game isn't processed twice.
 - [ ] A notification when the video is ready (UserNotifications).
-- [ ] After the video: ball labels and must-see moments (`engine.py label`),
-      then sharing (`engine.py share`, the share-v1 consent, `POST
-      /contributions`), and withdrawing from the app.
+- [x] The ball, while the game is processed, 2026-11-10: from the second
+      segment the app says when the engine doesn't know this ball (the
+      engine's `ball` event, `ballLow`), a Segments view lists each chunk's
+      two stages, times, logs and ball share (`status`'s `chunkDetails`),
+      and "Mark the ball" labels a ball set (`engine.py label ball`, also
+      while the game is still running): click the ball or the engine's
+      ring, or say it isn't there. Locked until sharing is agreed (a
+      setting on this Mac, not yet the share-v1 consent); the labels and
+      the share list stay in the game's folder.
+- [ ] Must-see moments (`engine.py label moments`), then sending what was
+      agreed (the share-v1 consent, `POST /contributions`), and
+      withdrawing from the app. Until then nothing marked leaves the Mac.
 - [ ] When the video is made, offer to delete the downloaded footage (~40 GB).
 - [ ] The phone app uses `osb_core` (sign-in, URL helpers) and both apps take
       the brand theme and fonts from one shared package

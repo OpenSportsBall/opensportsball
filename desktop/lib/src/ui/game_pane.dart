@@ -9,6 +9,7 @@ import 'package:osb_core/osb_core.dart';
 import '../brand.dart';
 import '../game_controller.dart';
 import '../services.dart';
+import 'ball_views.dart';
 import 'cameras_check.dart';
 import 'games_screen.dart';
 import 'kits_check.dart';
@@ -143,6 +144,7 @@ class _Body extends StatelessWidget {
             style: t.bodyMedium?.copyWith(color: c.inkMuted),
           );
     final steps = _Steps(phase: ctl.phase);
+    final segments = TextButton(onPressed: () => showSegmentDetails(context, ctl), child: const Text('Segments'));
     switch (ctl.phase) {
       case Phase.loading:
         return const Padding(
@@ -267,6 +269,9 @@ class _Body extends StatelessWidget {
               icon: const Icon(Icons.play_arrow),
               label: const Text('Process the game'),
             ),
+            // A game stopped part-way has segments to show, and may already know about its ball.
+            if (ctl.chunkDetails.isNotEmpty) ...[const SizedBox(height: 8), segments],
+            BallNotice(controller: ctl),
           ],
         );
       case Phase.running:
@@ -285,12 +290,14 @@ class _Body extends StatelessWidget {
               spacing: 12,
               children: [
                 OutlinedButton(onPressed: ctl.stop, child: const Text('Pause')),
+                segments,
                 if (ctl.stepLog != null)
                   TextButton(onPressed: () => openFile(ctl.stepLog!), child: const Text('Show the log')),
               ],
             ),
             const SizedBox(height: 8),
             Text('Paused or quit, it carries on where it was.', style: t.bodySmall?.copyWith(color: c.inkMuted)),
+            BallNotice(controller: ctl),
           ],
         );
       case Phase.paused:
@@ -303,7 +310,14 @@ class _Body extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Plug it in and processing carries on by itself.', style: t.bodyMedium?.copyWith(color: c.inkMuted)),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: ctl.stop, child: const Text('Don’t carry on by itself')),
+            Wrap(
+              spacing: 12,
+              children: [
+                OutlinedButton(onPressed: ctl.stop, child: const Text('Don’t carry on by itself')),
+                segments,
+              ],
+            ),
+            BallNotice(controller: ctl),
           ],
         );
       case Phase.done:
@@ -330,8 +344,21 @@ class _Body extends StatelessWidget {
                   icon: const Icon(Icons.folder_outlined),
                   label: const Text('Show in Finder'),
                 ),
+                if (ctl.chunkDetails.isNotEmpty) segments,
               ],
             ),
+            BallNotice(controller: ctl),
+            if (!ctl.ballLow && ctl.chunkDetails.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              Text('Help the engine follow the ball better', style: t.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Mark the ball in 50 pictures from this game. It goes into the next version of the engine.',
+                style: t.bodyMedium?.copyWith(color: c.inkMuted),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: () => showBallLabelling(context, ctl), child: const Text('Mark the ball')),
+            ],
           ],
         );
     }

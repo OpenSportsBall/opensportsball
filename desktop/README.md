@@ -191,4 +191,5 @@ OSB_DEMO_RECORDING=... OSB_ENGINE=... OSB_WORK_FOLDER=... [OSB_E2E_RUN=1 OSB_MAX
   flutter test test/e2e_test.dart    # the whole way with the real engine (slow)
 OSB_SCREENS_RECORDING=/path/to/prepared/rec OSB_SCREENS_OUT=/tmp/screens \
   flutter test test/screens_test.dart  # the screens as PNGs
+# add OSB_SCREENS_BALL_SET=/a/recording/with/engine/labels/ball-1 for the ball screens
 ```

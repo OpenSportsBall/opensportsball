@@ -55,6 +55,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
               onChanged: (v) => setState(() => _height = v ?? 1080),
             ),
             const SizedBox(height: 16),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: widget.settings.shareLabels,
+              onChanged: (v) async {
+                await widget.settings.set('shareLabels', v ? true : null);
+                if (mounted) setState(() {});
+              },
+              title: const Text('Share the ball marks I make'),
+              subtitle: const Text(
+                'The pictures you mark the ball on (frames of your games) and the marks. Off: marking is locked.',
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _engine,
               decoration: InputDecoration(
