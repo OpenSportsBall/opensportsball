@@ -74,6 +74,35 @@ OSB_WORK_FOLDER=/tmp/osb-demo OSB_MAX_CHUNKS=1 flutter run -d macos
 `OSB_DEMO_SEGMENTS` keeps the first few segments per phone; `OSB_MAX_CHUNKS`
 processes only that many chunks.
 
+## Without the window: `osb`
+
+What the app does before the engine takes over, as a command for a script
+or a model working for the user (docs/MAC-APP-PLAN.md, "Using it without
+the GUI"). It lives in `../packages/osb_core` (`bin/osb.dart`,
+`lib/src/cli.dart`):
+
+```sh
+cd ../packages/osb_core && dart compile exe bin/osb.dart -o osb
+
+osb sign-in                # opens the browser; waits for the person to sign in
+osb games                  # the account's games
+osb download <game id>     # into the folder the app uses, with a job.json
+osb-engine prepare '<that folder>/job.json'
+```
+
+Every line it prints is one JSON object with an `event`, as the engine's
+are, and `next` names the command that follows. Exit codes: 0 done, 2 a
+bad command or a game that isn't there or ready, 3 not signed in, 4 the
+server or network failed, 130 stopped. From there the engine is driven as
+opensportsball-processing's `docs/ENGINE-AGENTS.md` describes.
+
+Signing in happens in the person's browser; the command never sees the
+password, and keeps its session apart from the app's, in a file only its
+owner can read (`$OSB_SESSION_FILE`, else Application
+Support/OpenSportsBall/cli-session.json). The site's Desktop sign-in
+client must allow its callback (`http://localhost:47161-47163/callback`,
+infra's `DESKTOP_CLI_LOGIN_CALLBACKS`): deploy infra before first use.
+
 ## Releasing
 
 People install a DMG from the

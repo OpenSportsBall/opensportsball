@@ -235,7 +235,13 @@ describe('accounts and website', () => {
     t.hasResourceProperties('AWS::Cognito::UserPoolClient', {
       AllowedOAuthFlows: ['code'],
       GenerateSecret: false,
-      CallbackURLs: ['opensportsball://desktop-auth'],
+      // The Mac app's own scheme, and the `osb` command's listener on this computer.
+      CallbackURLs: [
+        'opensportsball://desktop-auth',
+        'http://localhost:47161/callback',
+        'http://localhost:47162/callback',
+        'http://localhost:47163/callback',
+      ],
       RefreshTokenValidity: 43200,
       TokenValidityUnits: Match.objectLike({ RefreshToken: 'minutes' }),
     });
