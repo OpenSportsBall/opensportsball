@@ -156,8 +156,10 @@ void main() {
     expect((last['job'] as Map)['recording'], ctl.folder!.path);
 
     final fractions = <double>[];
+    int? lowAfter;
     ctl.addListener(() {
       if (ctl.fraction != null) fractions.add(ctl.fraction!);
+      if (ctl.ballLow) lowAfter ??= ctl.ball!.byChunk.length;
     });
     await ctl.run();
     expect(ctl.phase, Phase.done);
@@ -165,10 +167,41 @@ void main() {
     expect(fractions, containsAllInOrder([0.25, 0.5, 0.75]));
     expect(File('${ctl.folder!.path}/engine/app-run.pid').existsSync(), isFalse);
 
-    // A new launch finds it done, from the folder alone.
+    // From its second chunk the engine said it doesn't know this ball.
+    expect(lowAfter, 2);
+    expect(ctl.ballLow, isTrue);
+    expect(ctl.ball!.byChunk, [31, 2, 0, 1]);
+
+    // A new launch finds it done, from the folder alone: the ball and each segment too.
     final again = controller(fakeServer());
     await again.open();
     expect(again.phase, Phase.done);
+    expect(again.ballLow, isTrue);
+    expect(again.chunkDetails, hasLength(4));
+    expect(again.chunkDetails[1].ballAimPct, 2);
+    expect(again.chunkDetails[1].follow.status, 'done');
+    expect(again.chunkDetails[1].startS, 600);
+
+    // Ball labels: the engine picks the frames, the labels go back to it, and a
+    // set begun is carried on with, not made again.
+    final set = await again.ballSet();
+    expect(set.frames.map((f) => f.id), ['b0', 'b1', 'b2']);
+    expect(File(set.frames.first.image).existsSync(), isTrue);
+    expect(set.frames.first.suggestions.single.x, 1000);
+    var now = await again.saveBallLabels(set, {'b0': const BallAt(1000, 500), 'b2': const NoBall()});
+    expect(now.labelled, 2);
+    expect(now.complete, isFalse);
+    expect((await again.ballSet()).name, 'ball-1');
+    expect((await again.ballSet()).labels['b0'], isA<BallAt>());
+    now = await again.saveBallLabels(now, {'b1': const BallUnsure()});
+    expect(now.complete, isTrue);
+    final stored = jsonDecode(File('${now.folder.path}/answers.json').readAsStringSync()) as Map;
+    expect(stored, {
+      'b0': {'status': 'ball', 'x': 1000.0, 'y': 500.0},
+      'b2': {'status': 'none'},
+      'b1': {'status': 'unsure'},
+    });
+    expect(File('${again.folder!.path}/engine/share/ball-1.json').existsSync(), isTrue);
   });
 
   test('a recording still uploading is not downloaded', () async {

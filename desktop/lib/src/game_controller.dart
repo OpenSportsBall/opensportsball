@@ -113,6 +113,17 @@ class GameController extends ChangeNotifier {
     return math.min(0.95, (runElapsedS ?? 0) / (chunks! * usualChunkSeconds));
   }
 
+  /// How the camera is doing with the ball, from the engine after each
+  /// chunk (and from its status when the game is opened).
+  BallCheck? ball;
+
+  /// The models don't know this game's ball: the video follows the play
+  /// less closely, and ball labels are offered.
+  bool get ballLow => ball?.low == true;
+
+  /// Each chunk's stages, for the details view ([loadChunkDetails]).
+  List<ChunkDetail> chunkDetails = const [];
+
   DownloadProgress? download;
   String? error;
   String? errorLog;
@@ -201,12 +212,8 @@ class GameController extends ChangeNotifier {
     }
     await _writeJob();
     final r = await Process.run(engine, ['status', _job.path]);
-    final status = (r.stdout as String)
-        .split('\n')
-        .map(EngineEvent.parse)
-        .whereType<EngineEvent>()
-        .where((e) => e.event == 'status')
-        .firstOrNull;
+    final status = statusLine(r.stdout as String);
+    if (status != null) _takeStatus(status);
     if (status == null) {
       phase = Phase.needsPrepare;
     } else if (status.output != null) {
@@ -218,6 +225,23 @@ class GameController extends ChangeNotifier {
       await _loadQuestions();
     }
     await _runChecks();
+    notifyListeners();
+  }
+
+  void _takeStatus(EngineEvent status) {
+    ball = BallCheck.of(status.raw) ?? ball;
+    chunkDetails = ChunkDetail.listOf(status.raw['chunkDetails']);
+  }
+
+  /// Asks the engine where each chunk stands (it reads its own files, so
+  /// this is fine while it is processing).
+  Future<void> loadChunkDetails() async {
+    final engine = settings.findEngine();
+    if (engine == null || folder == null || !await _job.exists()) return;
+    final r = await Process.run(engine, ['status', _job.path]);
+    final status = statusLine(r.stdout as String);
+    if (status == null) return;
+    _takeStatus(status);
     notifyListeners();
   }
 
@@ -367,9 +391,60 @@ class GameController extends ChangeNotifier {
       chunks = (e.raw['chunks'] as num?)?.toInt() ?? chunks;
       runElapsedS = e.elapsedS ?? runElapsedS;
       notifyListeners();
+    } else if (e.event == 'ball') {
+      ball = BallCheck.of(e.raw) ?? ball;
+      notifyListeners();
+      unawaited(loadChunkDetails());
     } else if (e.event == 'done' && e.output != null) {
       output = e.output;
+      ball = BallCheck.of(e.raw) ?? ball;
     }
+  }
+
+  // --- ball labels ------------------------------------------------------------
+
+  /// A short engine command beside whatever else is running (`label` and
+  /// `share` only read the game's files and write under engine/labels and
+  /// engine/share). Returns what went wrong, or null.
+  Future<String?> _sideCommand(List<String> args) async {
+    final engine = settings.findEngine();
+    if (engine == null) return 'No processing engine found. Choose it in Settings.';
+    final run = await EngineRun.start(EngineCommand.packaged(engine), args);
+    String? failure;
+    final sub = run.events.listen((e) {
+      if (e.event == 'error') failure = e.message;
+    });
+    final exit = await run.exitCode;
+    await sub.cancel();
+    if (exit == EngineExit.ok) return null;
+    return failure ?? 'The engine stopped with an error (${run.stderrTail.lastOrNull ?? exit.name}).';
+  }
+
+  /// The ball frames to label: the set already started, else a new one the
+  /// engine picks from the chunks it has been through (a minute or two).
+  /// Throws [OsbException] with what went wrong.
+  Future<BallLabelSet> ballSet() async {
+    final sets = await BallLabelSet.all(folder!);
+    if (sets.isNotEmpty && !sets.last.complete) return sets.last;
+    final failure = await _sideCommand(['label', _job.path, 'ball']);
+    if (failure != null) throw OsbException(failure);
+    final made = await BallLabelSet.all(folder!);
+    if (made.isEmpty) throw const OsbException('The engine made no frames to label.');
+    return made.last;
+  }
+
+  /// Stores [labels] with the set (the engine writes them in the formats
+  /// training reads) and lists the set's files for sharing. Returns the set
+  /// as it now stands.
+  Future<BallLabelSet> saveBallLabels(BallLabelSet set, Map<String, BallLabel> labels) async {
+    if (labels.isNotEmpty) {
+      final file = await set.writeAnswers(labels);
+      final failure =
+          await _sideCommand(['label', _job.path, '--answers', file.path]) ??
+          await _sideCommand(['share', _job.path, '--kinds', 'ball']);
+      if (failure != null) throw OsbException(failure);
+    }
+    return (await BallLabelSet.read(set.folder)) ?? set;
   }
 
   Future<void> prepare() async {

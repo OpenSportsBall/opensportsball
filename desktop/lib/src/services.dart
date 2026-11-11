@@ -64,6 +64,10 @@ class Settings extends ChangeNotifier {
   /// the browser is still signed in.
   bool get chooseAccount => _values['chooseAccount'] == true;
 
+  /// Agreed to share ball labels: the frames they are made on (which show
+  /// players) and the labels. The label screens stay locked without it.
+  bool get shareLabels => _values['shareLabels'] == true;
+
   int get outputHeight => (_values['outputHeight'] as num?)?.toInt() ?? 1080;
 
   /// For development: process only this many chunks of a game (the job's

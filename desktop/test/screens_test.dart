@@ -23,6 +23,7 @@ import 'package:osb_core/osb_core.dart';
 import 'package:osb_desktop/src/brand.dart';
 import 'package:osb_desktop/src/game_controller.dart';
 import 'package:osb_desktop/src/services.dart';
+import 'package:osb_desktop/src/ui/ball_views.dart';
 import 'package:osb_desktop/src/ui/game_pane.dart';
 
 Future<void> _loadFonts() async {
@@ -110,8 +111,10 @@ void main() {
     String name, {
     Future<void> Function()? before,
     List<String> images = const [],
+    Widget? child,
+    Size size = const Size(1020, 860),
   }) async {
-    tester.view.physicalSize = const Size(1020, 860);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final key = GlobalKey();
@@ -120,7 +123,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SizedBox(key: key)));
     await tester.runAsync(() async {
       for (final i in images) {
-        await precacheImage(FileImage(File('$rec/$i')), key.currentContext!);
+        await precacheImage(FileImage(File(i.startsWith('/') ? i : '$rec/$i')), key.currentContext!);
       }
     });
     await tester.pumpWidget(
@@ -129,7 +132,7 @@ void main() {
         theme: buildBrandTheme(Brightness.light),
         home: RepaintBoundary(
           key: key,
-          child: Scaffold(body: GamePane(controller: ctl)),
+          child: Scaffold(body: child ?? GamePane(controller: ctl)),
         ),
       ),
     );
@@ -222,4 +225,122 @@ void main() {
       ..output = '$rec/fullgame/game.mp4';
     await shoot(tester, '8-done');
   }, skip: skip != null);
+
+  // The ball: the notice from the second segment, the segments, and marking
+  // the ball on a set's frames. OSB_SCREENS_BALL_SET is a recording folder
+  // with engine/labels/ball-1 (made by `osb-engine label <job> ball`).
+  final ballRec = Platform.environment['OSB_SCREENS_BALL_SET'];
+  testWidgets('the ball', (tester) async {
+    ctl
+      ..questions = null
+      ..folder = Directory(ballRec!)
+      ..phase = Phase.running
+      ..activity = 'Processing the game'
+      ..fraction = 0.2
+      ..chunks = 10
+      ..runElapsedS = 1.9 * 3600
+      ..etaS = 7.4 * 3600
+      ..ball = const BallCheck(aimShare: 0.165, byChunk: [31, 2], low: true)
+      ..chunkDetails = [
+        const ChunkDetail(
+          chunk: 0,
+          startS: 0,
+          seconds: 600,
+          ball: ChunkStage(status: 'done', seconds: 3156, log: '/x/ball_00.log'),
+          follow: ChunkStage(status: 'done', seconds: 2710, log: '/x/follow_00.log'),
+          ballAimPct: 31,
+          ballDetectedPct: 12,
+        ),
+        const ChunkDetail(
+          chunk: 1,
+          startS: 600,
+          seconds: 600,
+          ball: ChunkStage(status: 'done', seconds: 3020, log: '/x/ball_01.log'),
+          follow: ChunkStage(status: 'done', seconds: 2480, log: '/x/follow_01.log'),
+          ballAimPct: 2,
+          ballDetectedPct: 1,
+        ),
+        ChunkDetail(
+          chunk: 2,
+          startS: 1200,
+          seconds: 600,
+          ball: const ChunkStage(status: 'done', seconds: 3105, log: '/x/ball_02.log'),
+          follow: ChunkStage(
+            status: 'running',
+            startedAt: DateTime.now().subtract(const Duration(minutes: 14)),
+            log: '/x/follow_02.log',
+          ),
+        ),
+        ChunkDetail(
+          chunk: 3,
+          startS: 1800,
+          seconds: 600,
+          ball: ChunkStage(
+            status: 'running',
+            startedAt: DateTime.now().subtract(const Duration(minutes: 14)),
+            log: '/x/ball_03.log',
+          ),
+          follow: const ChunkStage(status: 'waiting'),
+        ),
+        for (var k = 4; k < 10; k++)
+          ChunkDetail(
+            chunk: k,
+            startS: 600.0 * k,
+            seconds: k == 9 ? 512 : 600,
+            ball: const ChunkStage(status: 'waiting'),
+            follow: const ChunkStage(status: 'waiting'),
+          ),
+      ];
+    await shoot(tester, '9-ball-notice');
+    await shoot(
+      tester,
+      '10-segments',
+      child: Center(child: SegmentDetailsDialog(controller: ctl)),
+    );
+    await tester.pumpWidget(const SizedBox()); // stops the dialog's timer
+
+    // Reading the set is real file work, a step at a time between pumps.
+    Future<void> settle() async {
+      for (var i = 0; i < 12; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 40)));
+        await tester.pump();
+      }
+    }
+
+    await tester.runAsync(() => ctl.settings.set('shareLabels', null));
+    await shoot(
+      tester,
+      '11-mark-the-ball-locked',
+      child: BallLabelScreen(controller: ctl),
+      size: const Size(1280, 860),
+    );
+    late BallLabelSet set;
+    await tester.runAsync(() async {
+      await ctl.settings.set('shareLabels', true);
+      set = (await BallLabelSet.all(Directory(ballRec))).last;
+    });
+    await shoot(
+      tester,
+      '12-mark-the-ball',
+      child: BallLabelScreen(controller: ctl),
+      size: const Size(1280, 860),
+      images: [for (final f in set.frames) f.image],
+      before: () async {
+        await settle();
+      },
+    );
+    await shoot(
+      tester,
+      '13-mark-the-ball-whole',
+      child: BallLabelScreen(controller: ctl),
+      size: const Size(1280, 860),
+      images: [for (final f in set.frames) f.image],
+      before: () async {
+        await settle();
+        await tester.tap(find.text('Whole picture'));
+        await tester.pump();
+      },
+    );
+    await tester.runAsync(() => ctl.settings.set('shareLabels', null));
+  }, skip: skip != null || ballRec == null);
 }
