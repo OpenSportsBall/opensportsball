@@ -306,7 +306,9 @@ class BallLabelScreen extends StatefulWidget {
 }
 
 class _BallLabelState extends State<BallLabelScreen> {
-  /// A tap this close to a suggestion (image pixels) takes the suggestion.
+  /// A tap inside a detected ring as drawn takes the ring's centre; zoomed
+  /// out, where the ring covers more of the picture, within this many image
+  /// pixels. Zoomed in, a click beside the centre lands where it was made.
   static const _snapPx = 24.0;
   static const _saveEvery = 10;
 
@@ -442,8 +444,11 @@ class _BallLabelState extends State<BallLabelScreen> {
 
   void _tap(Offset inFrameBox, BallFrame f, double scale) {
     var x = inFrameBox.dx / scale, y = inFrameBox.dy / scale;
+    final snap = math.min(_snapPx, _Marks.ringPx / (scale * _view.value.getMaxScaleOnAxis()));
     for (final s in f.suggestions) {
-      if ((Offset(s.x, s.y) - Offset(x, y)).distance <= _snapPx) {
+      // A guessed ring is only near the ball: never pull a click onto it.
+      if (s.fromPath) continue;
+      if ((Offset(s.x, s.y) - Offset(x, y)).distance <= snap) {
         x = s.x;
         y = s.y;
         break;
@@ -549,8 +554,8 @@ class _BallLabelState extends State<BallLabelScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Click the match ball. A ring is where the engine thinks it may be: click it if it’s right. '
-                'Scroll or pinch to zoom, drag to move.',
+                'Click the match ball. A ring is where the engine saw something: click inside it if it’s on the '
+                'ball. A dashed ring is only its guess. Scroll or pinch to zoom, drag to move.',
                 style: t.bodyMedium?.copyWith(color: c.inkMuted),
               ),
               const SizedBox(height: 8),
@@ -559,6 +564,10 @@ class _BallLabelState extends State<BallLabelScreen> {
                   Text('Picture ${_at + 1} of $n', style: t.titleSmall),
                   const SizedBox(width: 12),
                   Text('${_clock(f.videoT)} into the game', style: t.bodyMedium?.copyWith(color: c.inkMuted)),
+                  if (f.suggestions.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    _RingKind(guessed: f.suggestions.any((x) => x.fromPath)),
+                  ],
                   const Spacer(),
                   Text('$marked of $n marked', style: t.bodyMedium?.copyWith(color: c.inkMuted)),
                 ],
@@ -653,7 +662,7 @@ class _BallLabelState extends State<BallLabelScreen> {
                       onSelected: (_) => _label(const NoBall()),
                     ),
                     ChoiceChip(
-                      label: const Text('Can’t tell'),
+                      label: const Text('Can’t tell / Multiple balls'),
                       selected: label is BallUnsure,
                       onSelected: (_) => _label(const BallUnsure()),
                     ),
@@ -696,20 +705,30 @@ class _Marks extends CustomPainter {
   final double scale, zoom;
   final Color suggestion, chosen;
 
+  /// A ring's radius on screen.
+  static const ringPx = 14.0;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final r = 14 / zoom, w = 2 / zoom;
+    final r = ringPx / zoom, w = 2 / zoom;
     final l = label;
     for (final s in frame.suggestions) {
       if (l is BallAt && l.x == s.x && l.y == s.y) continue;
-      canvas.drawCircle(
-        Offset(s.x, s.y) * scale,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w
-          ..color = suggestion,
-      );
+      final p = Offset(s.x, s.y) * scale;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w
+        ..color = suggestion;
+      if (s.fromPath) {
+        // Dashed: the tracker's guess, not something seen in this picture.
+        const dashes = 10;
+        final rect = Rect.fromCircle(center: p, radius: r);
+        for (var i = 0; i < dashes; i++) {
+          canvas.drawArc(rect, i * 2 * math.pi / dashes, math.pi / dashes, false, paint);
+        }
+      } else {
+        canvas.drawCircle(p, r, paint);
+      }
     }
     if (l is BallAt) {
       final p = Offset(l.x, l.y) * scale;
@@ -726,6 +745,28 @@ class _Marks extends CustomPainter {
 
   @override
   bool shouldRepaint(_Marks old) => old.frame != frame || old.label != label || old.scale != scale || old.zoom != zoom;
+}
+
+/// Says whether the picture's ring was seen by the detector or guessed.
+class _RingKind extends StatelessWidget {
+  const _RingKind({required this.guessed});
+  final bool guessed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = BrandColors.of(context);
+    final t = Theme.of(context).textTheme;
+    return Tooltip(
+      message: guessed
+          ? 'The engine didn’t see the ball in this picture. The dashed ring is where it expects the ball\n'
+                'from the pictures before and after, so it can be a little off. Click the ball itself.'
+          : 'The engine saw something here in this picture: the ball, or something that looks like it.',
+      child: Text(
+        guessed ? 'Dashed ring: guessed' : 'Ring: detected',
+        style: t.bodyMedium?.copyWith(color: guessed ? c.sunText : c.inkMuted),
+      ),
+    );
+  }
 }
 
 class _Centered extends StatelessWidget {
