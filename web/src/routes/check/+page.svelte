@@ -12,10 +12,12 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import CamerasCheck from '#lib/components/CamerasCheck.svelte';
+	import ConsentText from '#lib/components/ConsentText.svelte';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import KitsCheck from '#lib/components/KitsCheck.svelte';
 	import PitchCheck from '#lib/components/PitchCheck.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
+	import { hasAgreedToShare, rememberAgreedToShare, SHARE_CONSENT_VERSION } from '#lib/consent.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { CheckAnswer, CheckName, Job, JobQuestions } from '#lib/types.ts';
 
@@ -62,7 +64,29 @@
 		if (!destroyed && (waiting || (error && !job))) timer = setTimeout(load, WAIT_MS);
 	}
 
-	async function answer(a: CheckAnswer) {
+	/** An answer waiting on the sharing wording: put to the user before the first share. */
+	let asking = $state<CheckAnswer | null>(null);
+
+	/** Sends an answer. One that shares its result goes with the wording's
+	 *  version, after the user has agreed to it once in this browser. */
+	function answer(a: CheckAnswer) {
+		if (a.question === 'cameras' || !a.share) return send(a.question === 'cameras' ? a : { ...a, share: false });
+		if (!hasAgreedToShare()) {
+			asking = a;
+			return;
+		}
+		return send({ ...a, consentVersion: SHARE_CONSENT_VERSION });
+	}
+
+	function decide(agree: boolean) {
+		const a = asking;
+		asking = null;
+		if (!a || a.question === 'cameras') return;
+		if (agree) rememberAgreedToShare();
+		void send(agree ? { ...a, consentVersion: SHARE_CONSENT_VERSION } : { ...a, share: false });
+	}
+
+	async function send(a: CheckAnswer) {
 		if (!job) return;
 		busy = true;
 		error = null;
@@ -116,7 +140,16 @@
 			</ol>
 		{/if}
 
-		{#if job.where !== 'cloud'}
+		{#if asking}
+			<div class="card agree" role="dialog" aria-label="Share this to improve OpenSportsBall">
+				<ConsentText />
+				<div class="agree-buttons">
+					<button class="btn btn-primary" onclick={() => decide(true)}>Agree and share</button>
+					<button class="btn" onclick={() => decide(false)}>Send my answer without sharing</button>
+					<button class="btn" onclick={() => (asking = null)}>Go back</button>
+				</div>
+			</div>
+		{:else if job.where !== 'cloud'}
 			<div class="card"><p>This game is being processed on your own computer. Answer its checks in the app there.</p></div>
 		{:else if current && questions}
 			<section class="card">
@@ -228,6 +261,12 @@
 		background: var(--ok-bg);
 		border-color: var(--ok);
 		color: var(--ok);
+	}
+	.agree-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
 	}
 	.card :global(p:first-of-type) {
 		margin-top: 0;

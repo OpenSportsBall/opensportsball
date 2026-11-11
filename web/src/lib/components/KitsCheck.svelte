@@ -10,6 +10,7 @@
 	 * (merged), or one group with two kits in it (split, and shown again).
 	 * There is no "which is your team": the camera follows play.
 	 */
+	import ShareSwitch from '#lib/components/ShareSwitch.svelte';
 	import type { KitGroup, KitsAnswer, KitsQuestion } from '#lib/types.ts';
 
 	type Role = 'kit' | 'keeperOrReferee' | 'notKit';
@@ -45,6 +46,7 @@
 	let structure = $state<Structure | null>(null);
 	let merge = $state<Record<number, boolean>>({});
 	let split = $state<number | null>(null);
+	let share = $state(true);
 
 	const role = (g: KitGroup) => roles[g.component] ?? proposedRole(g);
 	const tappedIn = (g: KitGroup) => g.crops.filter((c) => tapped[c.id]).map((c) => c.id);
@@ -58,6 +60,7 @@
 		onanswer({
 			question: 'kits',
 			round: q.round,
+			share,
 			tapped: Object.fromEntries(groups.filter((g) => tappedIn(g).length).map((g) => [String(g.component), tappedIn(g)])),
 			...(structure === 'merge' ? { merge: [merged] } : {}),
 			...(structure === 'split' && split !== null ? { split } : {}),
@@ -146,6 +149,8 @@
 		{/if}
 	{/if}
 </fieldset>
+
+<ShareSwitch bind:share label="Share these groups and your answers to help improve team detection" disabled={busy} />
 
 <div class="actions">
 	<button class="btn btn-primary" onclick={send} disabled={busy || !ready}>

@@ -83,7 +83,7 @@
 	<section class="card stack">
 		<h2>Shared to improve OpenSportsBall</h2>
 		<p class="muted small">
-			Pitch maps, kit groups and labels you chose to share from the Mac app. They are kept apart from your footage and
+			Pitch maps, kit groups and labels you chose to share, from the Mac app or when checking a game here. They are kept apart from your footage and
 			aren't deleted with a game; withdraw one here and its files are deleted. See the
 			<a href={resolve('/privacy')}>privacy policy</a>.
 		</p>

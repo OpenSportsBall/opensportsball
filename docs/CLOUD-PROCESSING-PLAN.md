@@ -149,13 +149,18 @@ website against its mock and in a browser. The image builds and starts.
   `packaging/cloud/README.md`: the GPU is seen, the driver is new enough
   for the PyTorch build, hardware decode and encode work, one chunk of
   one game (`OSB_JOB_OPTIONS`), then the bench and a whole game.
-- **Models in the bucket.** The image fetches them from `models/`; they
-  are not uploaded yet.
+- **Models in the bucket.** The image fetches them from `models/`. They
+  are pinned by hash and uploaded by the engine's `build_image.sh` when it
+  pushes, so a deploy can't leave them behind; not yet pushed.
 - **The line colour question** (`lineColour`, for pitches with lines of
-  two colours) is not on the website; the engine's own choice stands.
-- **Share switches.** The website always answers `share: false`. The Mac
-  app has the switches and the approved wording; the website needs both
-  before it may offer them.
+  two colours) is left off the website (decided 2026-11-11); the engine's
+  own choice stands.
+- **Share switches** are on the website's checks (built 2026-11-11, not
+  deployed): on by default as in the Mac app, with the approved `share-v1`
+  wording to agree to before the first share. What the engine writes for
+  a shared check is filed as a contribution when the job is done. The
+  privacy policy still says sharing happens in the Mac app; it needs the
+  cloud added before this is deployed.
 - **Emails need a sender.** Set (`emailFrom`); not yet seen to arrive.
 - **The fixture is drawn, not a real game.** The stub and the website's
   mock show a made-up pitch and kit groups.

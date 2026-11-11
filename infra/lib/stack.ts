@@ -617,6 +617,11 @@ export class OpenSportsBallStack extends cdk.Stack {
         }),
       );
     }
+    // What a cloud job's user agreed to share is filed as a contribution,
+    // as the Mac app's uploads are (lib/jobShares.ts in api/).
+    jobsFn.addEnvironment('CONTRIBUTIONS_BUCKET_NAME', contributions.bucketName);
+    contributions.grantReadWrite(jobsFn, 'contributions/*');
+    defaultBus.grantPutEventsTo(jobsFn);
     new events.Rule(this, 'BatchJobState', {
       eventPattern: {
         source: ['aws.batch'],

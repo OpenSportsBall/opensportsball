@@ -50,6 +50,7 @@ local.properties
 web/.svelte-kit/
 web/build/
 web/static/config.json
+web/mock-real/
 .claude/
 
 # Deploy outputs (account-specific)

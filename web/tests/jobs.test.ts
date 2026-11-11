@@ -139,6 +139,22 @@ describe('processing a game in the cloud (mock API)', () => {
 	});
 });
 
+describe('the sharing wording', () => {
+	it('is the approved share-v1 text, word for word', async () => {
+		const { readFileSync } = await import('node:fs');
+		const { SHARE_CONSENT_TEXT, SHARE_CONSENT_VERSION, consentBlocks } = await import('../src/lib/consent.ts');
+		const approved = readFileSync(new URL(`../../shared/consent/${SHARE_CONSENT_VERSION}.md`, import.meta.url), 'utf8')
+			.split('-->')[1]
+			.trim();
+		expect(SHARE_CONSENT_TEXT.trim()).toBe(approved);
+		const blocks = consentBlocks();
+		expect(blocks[0]).toMatchObject({ kind: 'heading' });
+		expect(blocks.filter((b) => b.kind === 'bullet')).toHaveLength(8);
+		expect(blocks.at(-1)).toMatchObject({ kind: 'link', url: 'https://opensportsball.com/privacy' });
+		expect(blocks.some((b) => b.runs.some((r) => r.bold && r.text.includes('children')))).toBe(true);
+	});
+});
+
 describe('job wording', () => {
 	const job = (status: Job['status'], phase: Job['phase'] = 'prepare', where: Job['where'] = 'cloud') => ({
 		status,

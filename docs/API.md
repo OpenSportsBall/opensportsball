@@ -288,8 +288,10 @@ Deletes a game and all its recordings for good. → `204`
 ## Contributions (Cognito token)
 
 Results a user agreed to share to improve the models, made by the
-processing engine on their own computer (`engine.py share` in
-opensportsball-processing) and uploaded by the Mac app: a pitch map, kit
+processing engine (`engine.py share` in opensportsball-processing): on
+their own computer and uploaded by the Mac app through the routes below,
+or by a cloud job, filed by the server when the job is done
+("Processing jobs", answers). Either way: a pitch map, kit
 groups, a ball label set, must-see moments. Kept apart from footage (their
 own bucket), not deleted with the game they came from, deleted when the
 user withdraws them, deletes the account, or the account goes unused for 3
@@ -484,10 +486,17 @@ Answers one question. Body: `"question": "cameras"`, `"pitch"` or
   (`status: refitting`): the engine redraws and asks again with the next
   `round`. If nothing is left to ask afterwards, the run starts by itself.
 - `share` (pitch and kits: whether the user agrees to share the result to
-  improve the models) is recorded as false unless the body says true.
+  improve the models) is recorded as false unless the body says true, and
+  true needs `"consentVersion"`: the wording they agreed to
+  (`shared/consent/<version>.md`, today `share-v1`). The version is kept on
+  the job, not in the engine's answers. When the job is done, what the
+  engine wrote for the checks they shared is filed as contributions
+  ("Contributions" above): the same records, listed and withdrawn the same
+  way.
 - The answers are kept as `answers.json` in the job's output folder, as
   the engine reads them.
-- `400 invalid_answers`: it does not match the schema, names a point,
+- `400 invalid_answers`: `share` without a known `consentVersion`; it does
+  not match the schema; it names a point,
   group or person the question does not have, approves a pitch that must
   be marked first (`approveAllowed: false`), or splits a second time.
   `409 conflict`: the job is not waiting for answers, the check is already
@@ -802,11 +811,14 @@ What each command must leave behind, and how it ends:
 |---|---|---|---|
 | `prepare` | the manifest and footage | `questions/questions.json` (engine-questions) and every picture it names, at `questions/<its path>` | 1 hour |
 | `refit` | `answers.json` (engine-answers), and what it kept in `work/` | `questions/questions.json` again | 15 minutes |
-| `run` | the footage and `answers.json` | `game.mp4` (and `result.json`: the engine's done event); or `questions/questions.json` again, if it will not use an answer | 12 hours |
+| `run` | the footage and `answers.json` | `game.mp4` (and `result.json`: the engine's done event); or `questions/questions.json` again, if it will not use an answer. For each check whose answer says `share: true`: `share/<name>.json` (engine-contribution) and every file it lists at `share/files/<path>` | 12 hours |
 
 `pending` in the questions is what the server goes by: after `prepare` or
 `refit`, an empty list starts the run; after a `run` that left no video,
 a non-empty one sends the job back to the user.
+
+Every command may also leave `profile/<command>.json`: what it used of
+the machine (the real engine does; see its `cloudprofile.py`).
 
 - **Exit 0** when the file is written. The server then looks for the file
   and moves the job on; exit 0 without it is `engine_no_result`.

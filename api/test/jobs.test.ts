@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { SubmitJobCommand, TerminateJobCommand } from '@aws-sdk/client-batch';
 import { AdminDeleteUserCommand, AdminGetUserCommand } from '@aws-sdk/client-cognito-identity-provider';
-import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { PutParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
@@ -431,7 +431,7 @@ describe('processing jobs', () => {
       await writeQuestions(jobId, { splitAllowed: false });
       await event('refit', jobId, 'SUCCEEDED');
       expect((await answer(jobId, { question: 'kits', round: 1, split: 1 })).status).toBe(400);
-      const settled = await answer(jobId, { question: 'kits', round: 1, merge: [[0, 1]], keeperOrReferee: [], notKit: [], share: true });
+      const settled = await answer(jobId, { question: 'kits', round: 1, merge: [[0, 1]], keeperOrReferee: [], notKit: [], share: true, consentVersion: 'share-v1' });
       expect(settled.body).toMatchObject({ status: 'needs_answers', checks: { kits: 'answered' } });
       expect(submits()).toHaveLength(2);
       const saved = JSON.parse(
@@ -538,6 +538,79 @@ describe('processing jobs', () => {
       expect((await answer(jobId, kitsOk)).status).toBe(503);
       expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', phase: 'prepare', checks: { pitch: 'answered', kits: 'open' } });
       expect((await answer(jobId, kitsOk)).body.status).toBe('queued');
+    });
+  });
+
+  describe('sharing a result to improve the models', () => {
+    const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+    /** What the engine's container leaves for one shared result. */
+    async function engineShares(jobId: string, kind: string, files: Record<string, Buffer>) {
+      for (const [path, b] of Object.entries(files)) await put(`${outputs(jobId)}share/files/${path}`, b);
+      await put(
+        `${outputs(jobId)}share/${kind}.json`,
+        JSON.stringify({
+          schemaVersion: 1,
+          name: kind,
+          kind,
+          recording: { gameId, sessionId: recordingId, createdAt: '2026-11-05T06:07:37Z' },
+          engine: { version: 'abc1234' },
+          createdAt: '2026-11-11T12:28:07-0800',
+          summary: {},
+          files: Object.entries(files).map(([path, b]) => ({ path, bytes: b.length, sha256: sha(b) })),
+        }),
+      );
+    }
+    const shared = async () => (await callWeb(alice, 'GET /contributions')).body.contributions as any[];
+
+    it('needs the wording that was agreed to, and is off unless asked for', async () => {
+      const jobId = await prepared();
+      expect((await answer(jobId, { ...approve, share: true })).status).toBe(400);
+      expect((await answer(jobId, { ...approve, share: true, consentVersion: 'share-v0' })).status).toBe(400);
+      expect((await answer(jobId, { ...approve, share: true, consentVersion: 'share-v1' })).status).toBe(200);
+      // The consent version is the server's record, not part of the engine's answers.
+      const saved = JSON.parse(
+        await (await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: `${outputs(jobId)}answers.json` }))).Body!.transformToString(),
+      );
+      expect(saved.pitch).toEqual({ round: 1, approve: true, share: true });
+      const item = (await ddb.send(new GetCommand({ TableName: config.table, Key: keys.job(jobId) }))).Item!;
+      expect(item.shareConsent).toEqual({ pitch: 'share-v1' });
+    });
+
+    it('files what the engine wrote for the checks the user chose to share, and nothing else', async () => {
+      const jobId = await prepared();
+      await answer(jobId, { ...approve, share: true, consentVersion: 'share-v1' });
+      await answer(jobId, kitsOk); // not shared
+      const pitchFiles = { 'pitch/background.png': randomBytes(300), 'pitch/pitch.json': Buffer.from('{}') };
+      await engineShares(jobId, 'pitch', pitchFiles);
+      await engineShares(jobId, 'kits', { 'engine/crops/kits1/c0_00.jpg': randomBytes(50) });
+      await put(`${outputs(jobId)}game.mp4`);
+      await event('run', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body.status).toBe('done');
+
+      const list = await shared();
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({ kind: 'pitch', gameId, recordingId, consentVersion: 'share-v1', status: 'complete', files: 2 });
+      const prefix = `contributions/${alice}/${list[0].contributionId}/`;
+      const got = await s3.send(new GetObjectCommand({ Bucket: process.env.CONTRIBUTIONS_BUCKET_NAME!, Key: `${prefix}files/pitch/background.png` }));
+      expect(Buffer.from(await got.Body!.transformToByteArray())).toEqual(pitchFiles['pitch/background.png']);
+      // Delivered once, however often Batch repeats itself; and it can be withdrawn like any other.
+      await event('run', jobId, 'SUCCEEDED');
+      expect(await shared()).toHaveLength(1);
+      expect((await callWeb(alice, 'DELETE /contributions/{contributionId}', { path: { contributionId: list[0].contributionId } })).status).toBe(204);
+    });
+
+    it('a share that cannot be filed leaves the job done and no half-made contribution', async () => {
+      const jobId = await prepared();
+      await answer(jobId, { ...approve, share: true, consentVersion: 'share-v1' });
+      await answer(jobId, kitsOk);
+      await engineShares(jobId, 'pitch', { 'pitch/background.png': randomBytes(30) });
+      // One listed file never arrived.
+      await s3.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: `${outputs(jobId)}share/files/pitch/background.png` }));
+      await put(`${outputs(jobId)}game.mp4`);
+      await event('run', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body.status).toBe('done');
+      expect(await shared()).toEqual([]);
+      expect(emails()).toContain('Your game video is ready');
     });
   });
 

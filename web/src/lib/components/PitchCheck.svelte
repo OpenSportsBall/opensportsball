@@ -8,6 +8,7 @@
 	 * point can't be seen) and sends them for a refit. The engine works in
 	 * panorama degrees; `panorama` says how they map to the picture's pixels.
 	 */
+	import ShareSwitch from '#lib/components/ShareSwitch.svelte';
 	import type { PitchAnswer, PitchPointAnswer, PitchQuestion } from '#lib/types.ts';
 
 	let { q, busy, onanswer }: { q: PitchQuestion; busy: boolean; onanswer: (a: PitchAnswer) => void } = $props();
@@ -30,6 +31,10 @@
 		Object.entries(q.points).map(([name, p]) => ({ name, yaw: p.yaw, pitch: p.pitch, moved: false, skipped: false }))
 	);
 	let selected = $state<string | null>(null);
+	let share = $state(true);
+	/** How much wider than its frame the picture is drawn: a real panorama
+	 *  is thousands of pixels wide, and the lines have to be judged closely. */
+	let zoom = $state(1);
 	let shownWidth = $state(0);
 	let svg = $state<SVGSVGElement | null>(null);
 
@@ -78,11 +83,12 @@
 		selected = name;
 	}
 
-	const approve = () => onanswer({ question: 'pitch', round: q.round, approve: true });
+	const approve = () => onanswer({ question: 'pitch', round: q.round, approve: true, share });
 	const send = () =>
 		onanswer({
 			question: 'pitch',
 			round: q.round,
+			share,
 			points: Object.fromEntries(
 				points.map((p): [string, PitchPointAnswer] => [
 					p.name,
@@ -109,14 +115,24 @@
 	</p>
 {/if}
 
+<div class="zoom" role="group" aria-label="Zoom">
+	<span class="muted small">Zoom</span>
+	{#each [1, 2, 4] as z (z)}
+		<button type="button" class="btn btn-small" class:on={zoom === z} aria-pressed={zoom === z} onclick={() => (zoom = z)}>
+			{z}×
+		</button>
+	{/each}
+	{#if zoom > 1}<span class="muted small">Scroll the picture sideways to see the rest.</span>{/if}
+</div>
+
 <div class="frame" class:marking>
 	{#if marking && pano}
-		<div class="picture" bind:clientWidth={shownWidth}>
+		<div class="picture" bind:clientWidth={shownWidth} style:width="{zoom * 100}%">
 			<svg bind:this={svg} viewBox="0 0 {width} {height}" role="group" aria-label="The pitch, with our fitted lines and the points you can move">
 				{#if q.backgroundUrl}<image href={q.backgroundUrl} {width} {height} />{/if}
 				{#each q.lines as line, i (i)}
-					<path class="fit halo" d={d(line)} stroke-width={5 * scale} />
-					<path class="fit" d={d(line)} stroke-width={2.5 * scale} />
+					<path class="fit halo" d={d(line)} stroke-width={3 * scale} />
+					<path class="fit" d={d(line)} stroke-width={1.5 * scale} />
 				{/each}
 				{#each points as p, i (p.name)}
 					{#if !p.skipped}
@@ -145,7 +161,7 @@
 			</svg>
 		</div>
 	{:else if q.overlayUrl}
-		<img class="overlay" src={q.overlayUrl} alt="The pitch with our fitted lines drawn on it in red" />
+		<img class="overlay" style:width="{zoom * 100}%" src={q.overlayUrl} alt="The pitch with our fitted lines drawn on it in red" />
 	{/if}
 </div>
 
@@ -163,6 +179,8 @@
 		{/each}
 	</ol>
 {/if}
+
+<ShareSwitch bind:share label="Share this pitch map to help improve pitch detection" disabled={busy} />
 
 <div class="actions">
 	{#if marking}
@@ -190,6 +208,18 @@
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
 	}
+	.zoom {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem;
+		margin-bottom: 0.4rem;
+	}
+	.zoom .on {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-text);
+	}
 	.frame {
 		overflow-x: auto;
 		border-radius: var(--radius-sm);
@@ -204,6 +234,7 @@
 	.overlay {
 		display: block;
 		width: 100%;
+		max-width: none;
 		height: auto;
 	}
 	svg {

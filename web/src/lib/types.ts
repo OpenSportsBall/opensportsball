@@ -147,11 +147,20 @@ export interface JobQuestions {
 
 export type PitchPointAnswer = { yaw: number; pitch: number } | { fromFit: true } | { skipped: true };
 
-export type PitchAnswer =
-	| { question: 'pitch'; round: number; approve: true }
-	| { question: 'pitch'; round: number; points: Record<string, PitchPointAnswer> };
+/** Sharing a check's result to improve the models: `share` true needs the
+ *  consent wording's version (lib/consent.ts). */
+interface ShareChoice {
+	share?: boolean;
+	consentVersion?: string;
+}
 
-export interface KitsAnswer {
+export type PitchAnswer = ShareChoice &
+	(
+		| { question: 'pitch'; round: number; approve: true }
+		| { question: 'pitch'; round: number; points: Record<string, PitchPointAnswer> }
+	);
+
+export interface KitsAnswer extends ShareChoice {
 	question: 'kits';
 	round: number;
 	/** Per group (its component number), the crops tapped as not belonging. */

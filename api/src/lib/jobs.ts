@@ -106,6 +106,11 @@ export interface JobItem {
   batchSubmittedAt?: string;
   /** Seconds of machine time per Batch job, for cost. */
   compute: Record<string, number>;
+  /** The consent wording (shared/consent/<version>.md) the user agreed to
+   *  when they chose to share a check's result; absent when they didn't.
+   *  What the engine then writes to share is filed as a contribution
+   *  (lib/jobShares.ts). */
+  shareConsent?: Partial<Record<'pitch' | 'kits', string>>;
 }
 
 interface JobRef {
@@ -536,6 +541,10 @@ type Answer = CamerasAnswer | PitchAnswer | KitsAnswer;
 
 const invalid = (message: string) => new ApiError(400, 'invalid_answers', message);
 
+/** The consent wordings a share may be made under (shared/consent/<version>.md;
+ *  the same list as lib/contributions.ts, which files what is shared). */
+export const SHARE_CONSENT_VERSIONS = ['share-v1'] as const;
+
 /** Rules the schema can't express: the answer is to the question as it
  *  stands, and names things the question has. */
 function checkAgainstQuestions(check: Check, answer: Answer, q: Questions) {
@@ -574,7 +583,7 @@ const needsEngine = (check: Check, a: Answer) =>
  *  open. A marked pitch, a group to split or the cameras start a refit,
  *  after which the engine's questions say what is still open. */
 export async function answerCheck(job: JobItem, input: Record<string, unknown>) {
-  const { question, ...answer } = input;
+  const { question, consentVersion, ...answer } = input;
   const check = question as Check;
   if (!CHECKS.includes(check)) throw badRequest('"question" must be "cameras", "pitch" or "kits".');
   if (job.where !== 'cloud') throw forbidden('A job on your own computer is answered in its app.');
@@ -594,19 +603,30 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
   const a = answer as unknown as Answer;
   checkAgainstQuestions(check, a, q);
   // Sharing a result to improve the models is the user's own choice, made
-  // where they are asked: never by leaving a field out.
-  if (check !== 'cameras' && (a as PitchAnswer).share === undefined) (a as PitchAnswer).share = false;
+  // where they are asked: never by leaving a field out, and only with the
+  // wording they were shown.
+  let shareConsent = job.shareConsent;
+  if (check !== 'cameras') {
+    const sharing = (a as PitchAnswer).share === true;
+    if (sharing && !(SHARE_CONSENT_VERSIONS as readonly unknown[]).includes(consentVersion)) {
+      throw invalid(`Sharing needs "consentVersion": the wording that was agreed to (${SHARE_CONSENT_VERSIONS.join(', ')}).`);
+    }
+    (a as PitchAnswer).share = sharing;
+    shareConsent = { ...job.shareConsent };
+    if (sharing) shareConsent[check] = consentVersion as string;
+    else delete shareConsent[check];
+  }
 
   const refit = needsEngine(check, a);
   const checks = { ...job.checks, [check]: refit ? 'open' : 'answered' } as JobItem['checks'];
   const run = !refit && Object.values(checks).every((c) => c === 'answered');
 
   // The state first, so two answers at once can't both start a Batch job.
-  const next: Partial<JobItem> = refit
-    ? { status: 'refitting', checks }
-    : run
-      ? { status: 'queued', phase: 'run', checks }
-      : { checks };
+  const next: Partial<JobItem> = {
+    ...(refit ? { status: 'refitting' as const } : run ? { status: 'queued' as const, phase: 'run' as const } : {}),
+    checks,
+    shareConsent: shareConsent ?? {},
+  };
   if (!(await transition(job, ['needs_answers'], next, ['progress']))) {
     throw conflict('This job is not waiting for answers.');
   }
@@ -630,7 +650,12 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
     }
   } catch (e) {
     console.error('could not record the answer or start the next step', e);
-    await transition(job, ['refitting', 'queued', 'needs_answers'], { status: 'needs_answers', phase: 'prepare', checks: job.checks });
+    await transition(job, ['refitting', 'queued', 'needs_answers'], {
+      status: 'needs_answers',
+      phase: 'prepare',
+      checks: job.checks,
+      shareConsent: job.shareConsent ?? {},
+    });
     throw e instanceof ApiError ? e : new ApiError(503, 'cloud_unavailable', 'Your answer could not be saved. Try again.');
   }
   return jobView({ ...job, ...next, updatedAt: new Date().toISOString(), progress: null });

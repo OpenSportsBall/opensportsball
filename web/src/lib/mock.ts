@@ -15,6 +15,12 @@
  *   then preparing, then it waits for the checks (a made-up pitch and kit
  *   groups, lib/mockScene.ts); once both are answered it runs and ends
  *   with a short test-pattern video.
+ * - To see the checks drawn from a real game, copy a prepared recording's
+ *   `engine/questions.json` and the pictures it names (same paths) into
+ *   `web/mock-real/` (git-ignored, and served only by `npm run dev:mock`,
+ *   never built: it shows real people). Jobs then ask those questions
+ *   instead of the made-up ones. Nothing refits them; a correction comes
+ *   back as the same question.
  */
 import type {
 	AdminAccount,
@@ -784,6 +790,33 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 	/** Website tickets made so far, for POST /grants/lookup. */
 	const gameTickets = new Map<string, GameTicket>();
 
+	/** A real game's questions from web/mock-real/ (the dev server serves it), if someone put them there. */
+	let real: Promise<JobQuestions['questions'] | null> | undefined;
+	const PICTURES = new Set(['image', 'overlay', 'background', 'sheet', 'mainLeft', 'secondaryLeft']);
+	function withUrls(node: any): any {
+		if (Array.isArray(node)) return node.map(withUrls);
+		if (typeof node !== 'object' || node === null) return node;
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(node)) {
+			out[k] = k === 'panorama' ? v : withUrls(v);
+			if (PICTURES.has(k) && typeof v === 'string' && k !== 'panorama') out[`${k}Url`] = `/mock-real/${v}`;
+		}
+		return out;
+	}
+	function realQuestions() {
+		real ??= (async () => {
+			if (typeof window === 'undefined') return null;
+			try {
+				const r = await fetch('/mock-real/questions.json');
+				if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return null;
+				return withUrls(await r.json()) as JobQuestions['questions'];
+			} catch {
+				return null;
+			}
+		})();
+		return real;
+	}
+
 	return async (input, init) => {
 		const req = new Request(input, init);
 		if (latency > 0) await new Promise((r) => setTimeout(r, latency));
@@ -806,6 +839,11 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				body = undefined;
 			}
 		}
-		return route(req.method.toUpperCase(), url.pathname, body);
+		const res = route(req.method.toUpperCase(), url.pathname, body);
+		if (req.method === 'GET' && res.ok && url.pathname.endsWith('/questions')) {
+			const q = await realQuestions();
+			if (q) return json(200, { ...(await res.json()), questions: { ...q, pending: ['pitch', 'kits'] } });
+		}
+		return res;
 	};
 }
