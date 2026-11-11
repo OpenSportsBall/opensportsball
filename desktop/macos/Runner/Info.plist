@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>$(OSB_UPDATE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(OSB_UPDATE_PUBLIC_KEY)</string>
 </dict>
 </plist>

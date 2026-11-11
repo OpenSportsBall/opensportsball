@@ -159,9 +159,17 @@ Footage and logs from these tests decide several items below.
       runs it through the real engine.
 - [ ] Deploy the `Desktop` client, then sign in from the Mac app against
       the real site and process a real game end to end.
-- [ ] Put the engine in the app (`Contents/Resources/osb-engine`, a build
-      phase running packaging/mac/build_engine.sh's output), a DMG, Sparkle
-      updates, Developer ID signing and notarization (needs the certificate).
+- [x] Put the engine in the app (`Contents/Resources/osb-engine`,
+      `desktop/macos/copy_engine.sh`), 2026-11-10.
+- [x] Release tooling, 2026-11-10: `desktop/tool/release_mac.sh` signs the
+      app and every engine binary with the hardened runtime, makes the DMG,
+      notarizes it and writes the Sparkle appcast; Sparkle updates from the
+      GitHub releases (desktop/README.md "Releasing"). Tried with an Apple
+      Development certificate: the signed engine prepares a game, and a
+      0.1.0 test build updated itself to 0.1.1.
+- [ ] First public Mac release: a Developer ID Application certificate, the
+      Sparkle update key (its public half in AppInfo.xcconfig), notarize,
+      publish `mac-v0.1.0`.
 - [ ] One job record (MAC-APP-PLAN "Architecture"): the app writes "processing
       on your Mac" and "done" to the API, so the website and phones show it and
       a game isn't processed twice.
