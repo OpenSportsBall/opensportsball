@@ -515,6 +515,11 @@ describe('cloud processing', () => {
     }
     expect(d.Refit.PlatformCapabilities).toEqual(['FARGATE']);
     // Prepare and run go to the GPU queue, refits to the CPU queue.
+    for (const name of ['Prepare', 'Run']) {
+      expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_REQUIRE_GPU', Value: '1' });
+    }
+    expect(d.Refit.ContainerProperties.Environment).not.toContainEqual({ Name: 'OSB_REQUIRE_GPU', Value: '1' });
+    expect(d.Refit.ContainerProperties.EphemeralStorage).toEqual({ SizeInGiB: 100 });
     const web = Object.values(gpu.findResources('AWS::Lambda::Function')).find((f) => f.Properties.Environment?.Variables?.BATCH_JOBS)!;
     const jobs = JSON.stringify(web.Properties.Environment.Variables.BATCH_JOBS);
     expect(jobs).toMatch(/prepare.*GpuQueue.*run.*GpuQueue.*refit.*CpuQueue/);
@@ -542,13 +547,13 @@ describe('cloud processing', () => {
     expect(table.Condition).toEqual({ 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['JOB#*'] } });
   });
 
-  it('only the web Lambda may start jobs; the four that can end one may stop it', () => {
+  it('only the web and job events Lambdas may start jobs; the four that can end one may stop it', () => {
     const can = (action: string) =>
       Object.entries(t.findResources('AWS::IAM::Policy'))
         .filter(([, p]) => (p.Properties.PolicyDocument.Statement as any[]).some((s) => actions(s).includes(action)))
         .map(([id]) => id.replace(/ServiceRoleDefaultPolicy.*$/, ''))
         .sort();
-    expect(can('batch:SubmitJob')).toEqual(['WebApi']);
+    expect(can('batch:SubmitJob')).toEqual(['JobEvents', 'WebApi']);
     expect(can('batch:TerminateJob')).toEqual(['AdminApi', 'DeviceApi', 'Ingest', 'WebApi']);
   });
 

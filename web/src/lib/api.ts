@@ -11,11 +11,10 @@ import type {
 	GrantLookup,
 	Job,
 	JobQuestions,
+	CheckAnswer,
 	JobVideo,
-	KitsAnswer,
 	LinkCode,
-	Me,
-	PitchAnswer
+	Me
 } from './types';
 
 /** An API failure: HTTP status plus the `{"error","message"}` body (docs/API.md). */
@@ -141,7 +140,8 @@ export function createApiClient(opts: ApiClientOptions) {
 		cancelJob: (j: Job) => request<void>('DELETE', job(j)),
 		/** The pitch and kit checks, with links to their pictures. */
 		jobQuestions: (j: Job) => request<JobQuestions>('GET', `${job(j)}/questions`),
-		answerCheck: (j: Job, answer: PitchAnswer | KitsAnswer) => request<Job>('PUT', `${job(j)}/answers`, answer),
+		/** Answers one of the engine's questions (cameras, pitch or kits). */
+		answerCheck: (j: Job, answer: CheckAnswer) => request<Job>('PUT', `${job(j)}/answers`, answer),
 		/** A signed link to the finished game video. */
 		jobVideo: (j: Job) => request<JobVideo>('POST', `${job(j)}/downloads`),
 		/** Lets an account process in the cloud, or stops it (admins). */

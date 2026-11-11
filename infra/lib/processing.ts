@@ -202,6 +202,9 @@ export class Processing extends Construct {
         ],
         container: new batch.EcsEc2ContainerDefinition(this, `${name}Container`, {
           ...container,
+          // A g5 or g6 that came up without its GPU would otherwise grind
+          // through a game on the CPU for days: the engine stops at once.
+          environment: { ...container.environment, OSB_REQUIRE_GPU: '1' },
           command: [command],
           cpu: 4,
           // A g5.xlarge or g6.xlarge has 16 GiB; the rest is the host's.
@@ -220,7 +223,9 @@ export class Processing extends Construct {
           command: [command],
           cpu: 2,
           memory: cdk.Size.gibibytes(8),
-          ephemeralStorageSize: cdk.Size.gibibytes(40),
+          // A refit works from the pictures prepare left; if a step wants
+          // the video after all, the footage (40-50 GB) has to fit.
+          ephemeralStorageSize: cdk.Size.gibibytes(100),
           // No NAT gateway: the task pulls its image over its own address.
           assignPublicIp: true,
           fargateCpuArchitecture: ecs.CpuArchitecture.X86_64,

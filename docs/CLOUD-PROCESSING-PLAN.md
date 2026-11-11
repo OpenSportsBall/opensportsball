@@ -10,18 +10,16 @@ website. It runs the same engine as the Mac app
 
 - Built: uploads, the merged manifest, the `RecordingReady` event (logged
   only), signed footage links, deletion.
-- Built 2026-11-10, steps 1-3 below: the job record and API, the Batch
-  stack, a stub engine, and the website's job flow and checks. Tested
-  locally (API against moto, the stack by synthesis, the website against
-  its mock API). **Not deployed yet:** nothing has run in AWS.
-- Not built: the real engine in a container (step 4).
-- The engine is still the spikes (`fullgame.py` and the steps before it),
-  with `-hwaccel videotoolbox` and `h264_videotoolbox` hard-coded in
-  `follow.py` and `fullgame.py`. `osb-engine prepare / run` is the Mac
-  plan's step A, not started. CUDA has never been run: the 2-3 h per game
-  is an estimate.
-- The GPU Spot quota for G instances in `us-west-2` was granted on
-  2026-11-10 (8 vCPUs requested). There is no on-demand quota yet.
+- Steps 1-3, built and **deployed 2026-11-10** with the stub engine: the
+  job record and API, the Batch stack, the website's job flow and checks.
+  In AWS so far only a smoke test has run (the stub on Fargate with a
+  made-up job); no recording has gone through.
+- Step 4, built 2026-11-11 and **not deployed, not run on a GPU**: the
+  real engine's cloud wrapper and image (opensportsball-processing,
+  branch `cloud-engine`), and this repo moved onto the engine's own
+  question and answer formats. See "Step 4 so far".
+- The Spot quota for G instances in `us-west-2` was granted on 2026-11-10
+  (8 vCPUs requested). There is no on-demand quota yet.
 
 ## Decisions
 
@@ -99,26 +97,70 @@ Step 4 waits on the engine commands, so the Mac plan's step A is the
 critical path for a real cloud game; step B (the engine side of the
 checks) is needed before step 5.
 
-### Left from steps 1-3
+### Step 4 so far
 
-- **Deploy and try it** (`infra/README.md`, "Cloud processing"): deploy
-  the stack, push the stub image, switch cloud processing on for an
-  account on the Admin page, and take a game from the button to the
-  stub's test-pattern video. This is step 2's "done when", and the first
-  time the IAM policies, the Fargate network and the Batch events are
-  exercised for real.
-- **Emails need a sender.** They go out only when the stack has
-  `emailFrom`, an address SES has verified (and SES out of its sandbox to
-  reach other people).
-- **The fixture is drawn, not rec7.** The stub engine and the website's
-  mock show a made-up pitch and kit groups. A replay of a real run comes
-  with the engine commands (Mac plan step A).
-- **No share switches.** The Mac plan's "share this pitch map / these
-  groups" switches are left off the website until the contributions
-  backend and its privacy section exist (Mac plan step C).
-- **No alarm.** Instead of an alarm for a job waiting over an hour, the
-  GPU queue fails a job that cannot start (1 hour for a job no instance
-  fits, 12 hours without Spot capacity) and its owner is emailed. Nobody
+The engine arrived (the Mac plan's steps A, B and D) with its own
+commands and file formats, so step 4 became two things.
+
+**In opensportsball-processing** (branch `cloud-engine`):
+
+- `processing/spikes/cloud.py`, the only part of the engine that knows S3,
+  DynamoDB and Batch. It fetches the footage to the scratch disk, runs
+  `engine.py` as on a Mac, publishes the questions with their pictures or
+  `game.mp4`, and keeps the recording folder's state in the job's work
+  folder so the next command, or the next attempt after a reclaimed Spot
+  instance, carries on.
+- `engine.py prepare --answers --no-footage`: applying an answer reads the
+  pictures the first prepare left, so a refit runs on a small CPU task
+  without fetching the footage again (with it, if a step wants the video).
+- `packaging/cloud/`: the image (Ubuntu 24.04, its ffmpeg with NVENC and
+  the cuda hwaccel, pinned Linux packages; 3.6 GB), the models it expects
+  by SHA-256, and what the first GPU run has to check.
+
+**Here:**
+
+- The API passes the engine's `questions.json` through (a signed link
+  next to every picture) and takes answers in the engine's format. The
+  engine decides what is still open (`pending`); the server no longer
+  guesses. A refit that leaves nothing to ask starts the run, and a run
+  the engine won't start (it refused an answer) sends the job back to the
+  user with the engine's reason.
+- The website's checks are redone on those formats, asked as the Mac app
+  asks them: the pitch in panorama degrees, the kit groups with what each
+  group is (a kit, keepers or referee, not a kit), and the cameras
+  question for games whose views couldn't be stitched.
+- The stub engine speaks the same formats, so the deployed stack can be
+  tried end to end before a GPU is paid for.
+- The stack: the job-events function may start the run; GPU jobs carry
+  `OSB_REQUIRE_GPU=1`; refits have room for the footage.
+
+Tested locally only: the wrapper against a local S3 and DynamoDB with a
+stand-in engine, the API against moto, the stack by synthesis, the
+website against its mock and in a browser. The image builds and starts.
+
+### Left
+
+- **Deploy this step** (the API, website and stack changes, and the stub
+  image rebuilt in the new formats). Until then the deployed website and
+  stub still use the first formats and work together.
+- **A recording through the stub**, from the website's button to the
+  test-pattern video: still not done.
+- **The first GPU run**, in the order in opensportsball-processing's
+  `packaging/cloud/README.md`: the GPU is seen, the driver is new enough
+  for the PyTorch build, hardware decode and encode work, one chunk of
+  one game (`OSB_JOB_OPTIONS`), then the bench and a whole game.
+- **Models in the bucket.** The image fetches them from `models/`; they
+  are not uploaded yet.
+- **The line colour question** (`lineColour`, for pitches with lines of
+  two colours) is not on the website; the engine's own choice stands.
+- **Share switches.** The website always answers `share: false`. The Mac
+  app has the switches and the approved wording; the website needs both
+  before it may offer them.
+- **Emails need a sender.** Set (`emailFrom`); not yet seen to arrive.
+- **The fixture is drawn, not a real game.** The stub and the website's
+  mock show a made-up pitch and kit groups.
+- **No alarm.** A GPU job that cannot start fails after 1 hour (no
+  instance fits) or 12 (no Spot capacity) and its owner is emailed. Nobody
   is told on our side; that comes with the admin page of jobs (step 6).
 - **The privacy policy** says nothing yet about the rendered video or the
   checks' pictures (kept 180 days from when they are made). It needs that
@@ -126,15 +168,32 @@ checks) is needed before step 5.
 
 ## Cost
 
-Per game, to be measured in step 4: 2-3 h of one `g5.xlarge` or
-`g6.xlarge` on Spot at roughly $0.30-0.45 an hour, so about $1-1.50, or
-$2-3 on demand. The scratch disk is cents. Nothing runs between games: no
-NAT gateway, Batch at zero instances, the image in ECR (a few GB, cents a
-month).
+Not measured: nothing has run on a GPU. What the first runs can cost at
+most, from the stack's own limits. Spot prices are what AWS quoted in
+us-west-2 on 2026-11-11: `g5.xlarge` (one A10G, 24 GB) $0.56-0.64 an hour,
+`g6.xlarge` (one L4, 24 GB) $0.45-0.75 depending on the zone. They move;
+on-demand is about $1.01 and $0.80 (from memory, not checked):
 
-Guards: 8 vCPUs maximum, job timeouts, 5 attempts, and a billing alarm.
-Each job records its instance time so cost per game is known from the
-first run.
+| Run | Machine time | About |
+|---|---|---|
+| One chunk of one game (`maxChunks: 1`), with prepare | Under an hour of one `g5.xlarge` / `g6.xlarge` | $0.45-0.75 on Spot, about $1 on demand |
+| A whole game, if the 2-3 h estimate holds | 2-3 h | $1-2.25 on Spot |
+| A whole game at the job's time limit | 12 h (the `run` timeout), 13 with prepare | $6-10 on Spot, $10-13 on demand |
+| A refit | Minutes of Fargate (2 vCPU, 8 GB) | Cents |
+
+Also: the 200 GB scratch disk is about 2 cents an hour while an instance
+is up; a finished game's video is ~22 GB in S3 (about $0.50 a month until
+it expires); checkpoints are up to ~11 GB for 7 days. Footage moves
+between S3 and the instance in the same region, free.
+
+Nothing runs between games: no NAT gateway, both compute environments at
+zero, the image in ECR (3.6 GB, about 36 cents a month).
+
+Guards: at most 8 vCPUs (two instances), job timeouts (1 h, 12 h, 15 min),
+5 attempts and only for a reclaimed Spot instance, a job that came up
+without its GPU stops at once, and a queued job that can't get a machine
+is cancelled. There is no billing alarm yet. Each job records its machine
+time, so cost per game is known from the first run.
 
 ## Risks
 
@@ -142,15 +201,23 @@ first run.
   should carry over; the detector on a 24 GB A10G or L4 may need smaller
   batches or fp16 to reach the estimate. If a game takes 5 h instead of
   2-3, the cost doubles but the design holds.
+- **The Mac runs the detectors in Core ML; the cloud runs them in
+  PyTorch.** They gave the same detections on the Mac bench, but the GPU
+  result has to be benched on its own before a cloud video is trusted to
+  match a local one.
+- **The PyTorch build wants a recent NVIDIA driver** (CUDA 13). If the ECS
+  GPU image's driver is older, the image needs a CUDA 12 build pinned.
 - **Refit wait.** Marking the pitch or splitting a kit group means a
-  container start (1-2 minutes for a multi-GB image) before the user sees
-  the result, against seconds on the Mac. If that is too slow, build a
-  small CPU-only image for refits.
+  Fargate task pulling a 3.6 GB image (a few minutes, to be measured)
+  before the user sees the result, against seconds on the Mac. If that is
+  too slow, build a small CPU-only image for refits: they need no PyTorch
+  CUDA libraries.
 - **Spot capacity.** A queued job can wait when no G instances are on
   offer. The alarm tells us; an admin can resubmit to on-demand.
 - **Two UIs for the checks.** The website and the Mac app each draw the
-  pitch and kit checks. The question files carry the geometry and the
-  images so both only draw, but changes to the checks land twice.
+  engine's questions. Both only draw, and both read the same files, but
+  changes to the checks land twice (the line colour question is already
+  on the Mac only).
 
 ## Open questions
 

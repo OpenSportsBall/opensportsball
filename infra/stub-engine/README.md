@@ -6,16 +6,19 @@ engine is in the opensportsball-processing repository (AGPL-3.0-only);
 nothing here comes from it.
 
 It keeps the container's side of the contract in `docs/API.md` ("The
-engine's container"): started with `prepare`, `refit` or `run` and the
-`OSB_*` variables, it writes `questions/questions.json` and its pictures,
-or `game.mp4`, under the job's output folder, reports progress on the job
-record, and exits 0, or non-zero with an error on the record. It reads no
-footage; it only checks the manifest is there.
+engine's container"), in the real engine's formats: started with
+`prepare`, `refit` or `run` and the `OSB_*` variables, it writes
+`questions/questions.json` (engine-questions) and its pictures, applies
+`answers.json` (engine-answers), writes `game.mp4`, reports progress on
+the job record, and exits 0, or non-zero with an error on the record. Like
+the real engine it asks the kit question again, with the reason, when an
+answer leaves fewer than two kit groups. It reads no footage; it only
+checks the manifest is there, and it never asks the cameras question.
 
 | File | What |
 |---|---|
 | `stub.mjs` | The three commands |
-| `scene.mjs` | The made-up game: a drawn pitch whose first fit is off at one end, and three kit groups, one of them two kits mixed |
+| `scene.mjs` | The made-up game: a drawn pitch whose first fit is off at one end, and five kit groups, one of them two kits mixed |
 | `video.mjs` | A 3-second test pattern, standing in for the game video |
 
 Build and push it with `../scripts/push-stub-engine.sh` (see

@@ -144,10 +144,14 @@ To try it end to end:
 The footage distribution ("Footage downloads") must be set up: the
 checks' pictures and the video are served through it.
 
-For the real engine, push its image to the same repository under its own
-tag and deploy with `-c engineImageTag=<tag> -c engineCompute=gpu`. That
-needs a Spot quota for G instances in the region (8 vCPUs runs two games
-at once; the GPU compute environment is capped there). Jobs log to the
+For the real engine, build and push its image from the
+opensportsball-processing repository (`packaging/cloud/build_image.sh
+<tag> <EngineRepositoryUri>`), upload its models to the footage bucket's
+`models/` prefix (that repository's `packaging/cloud/README.md`), and
+deploy with `-c engineImageTag=<tag> -c engineCompute=gpu`. `prepare` and
+`run` then go to the GPU queue; refits stay on Fargate. That needs a Spot
+quota for G instances in the region (8 vCPUs runs two games at once; the
+GPU compute environment is capped there). Jobs log to the
 stack's `…ProcessingLogs…` log group in CloudWatch, kept a month.
 
 Costs while idle are nothing: no NAT gateway, both compute environments at

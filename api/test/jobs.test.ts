@@ -29,36 +29,67 @@ const BATCH_JOBS = {
   refit: { queue: 'cpu-queue', definition: 'refit-def' },
 };
 
-const QUESTIONS = (jobId: string, round = 1, canSplit = true) => ({
+/** The engine's questions.json (shared/schemas/engine-questions.schema.json), cut down. */
+const QUESTIONS = (o: { pitchRound?: number; splitAllowed?: boolean; pending?: string[]; approveAllowed?: boolean; cameras?: boolean } = {}) => ({
   schemaVersion: 1,
-  jobId,
-  engineVersion: 'stub 0',
-  pitch: {
-    round,
-    text: 'Do the drawn lines sit on the painted lines?',
-    image: 'pitch.jpg',
-    width: 2000,
-    height: 600,
-    lines: [
-      [
-        [100, 400],
-        [1900, 400],
-      ],
-    ],
-    keypoints: [
-      { id: 'near_left_corner', label: 'Near left corner', x: 100, y: 400 },
-      { id: 'near_right_corner', label: 'Near right corner', x: 1900, y: 400 },
-    ],
-  },
-  kits: {
-    round: 1,
-    text: 'Tap anyone in the wrong group.',
-    canSplit,
-    groups: [
-      { id: 'g0', people: [{ id: 'p0', image: 'kits/g0/p0.jpg' }, { id: 'p1', image: '../../../secret.jpg' }] },
-      { id: 'g1', people: [{ id: 'p0', image: 'kits/g1/p0.jpg' }] },
-    ],
-  },
+  recording: '.',
+  pending: o.pending ?? ['pitch', 'kits'],
+  ...(o.cameras
+    ? {
+        cameras: {
+          round: 1,
+          status: (o.pending ?? []).includes('cameras') ? 'pending' : 'answered',
+          panoramas: { mainLeft: 'engine/cameras/main_left.jpg', secondaryLeft: 'engine/cameras/secondary_left.jpg' },
+        },
+      }
+    : {}),
+  ...((o.pending ?? []).includes('cameras')
+    ? {}
+    : {
+        pitch: {
+          round: o.pitchRound ?? 1,
+          status: 'pending',
+          background: 'pitch/background.png',
+          overlay: 'pitch/overlay.jpg',
+          panorama: { image: 'background.png', degPerPx: 0.1, yawRange: [-100, 100], pitchRange: [-20, 40] },
+          fit: { lengthM: 100, widthM: 60 },
+          lines: [
+            [
+              [-80, 20],
+              [80, 20],
+            ],
+          ],
+          points: {
+            'left corner flag': {
+              yaw: -80,
+              pitch: 20,
+              closeup: { image: 'engine/closeups/1/left.jpg', width: 900, height: 600, fit: [450, 300], degPerPx: 0.01, yaw0: -84.5, pitch0: 17 },
+            },
+            'right corner flag': { yaw: 80, pitch: 20 },
+          },
+          ...(o.approveAllowed === false ? { approveAllowed: false } : {}),
+        },
+        kits: {
+          round: 1,
+          status: 'pending',
+          k: 8,
+          splitAllowed: o.splitAllowed ?? true,
+          groups: [
+            {
+              component: 0,
+              people: 40,
+              perMoment: 10.5,
+              proposed: 'A',
+              crops: [
+                { id: 'c0_00', image: 'engine/crops/kits1/c0_00.jpg' },
+                { id: 'c0_01', image: '../../../secret.jpg' },
+              ],
+              sheet: 'engine/crops/kits1/sheet0.jpg',
+            },
+            { component: 1, people: 30, perMoment: 8, proposed: 'B', crops: [{ id: 'c1_00', image: 'engine/crops/kits1/c1_00.jpg' }] },
+          ],
+        },
+      }),
 });
 
 async function setCloud(accountId: string, enabled: unknown, groups = '[admins]') {
@@ -133,13 +164,15 @@ describe('processing jobs', () => {
   async function prepared() {
     const jobId = (await start()).body.jobId as string;
     await event('prepare', jobId, 'RUNNING');
-    await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS(jobId)));
+    await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS()));
     await event('prepare', jobId, 'SUCCEEDED');
     return jobId;
   }
 
-  const approve = { check: 'pitch', round: 1, approved: true };
-  const kitsOk = { check: 'kits', round: 1, wrong: [{ groupId: 'g0', personId: 'p1' }], structure: { kind: 'ok' } };
+  const approve = { question: 'pitch', round: 1, approve: true };
+  const kitsOk = { question: 'kits', round: 1, tapped: { '0': ['c0_01'] } };
+  const writeQuestions = (jobId: string, o?: Parameters<typeof QUESTIONS>[0]) =>
+    put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS(o)));
 
   beforeAll(async () => {
     const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -286,7 +319,7 @@ describe('processing jobs', () => {
     await event('prepare', jobId, 'RUNNING');
     expect((await get(jobId)).body.status).toBe('preparing');
     // The container may report how far it is.
-    await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS(jobId)));
+    await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS()));
     await event('prepare', jobId, 'SUCCEEDED');
     expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', phase: 'prepare' });
     expect(emails()).toEqual(['Check the pitch for your game']);
@@ -300,10 +333,17 @@ describe('processing jobs', () => {
     const q = await questions();
     expect(q.status).toBe(200);
     expect(q.body.checks).toEqual({ pitch: 'open', kits: 'open' });
-    expect(q.body.questions.pitch.imageUrl.startsWith(`https://${CDN}/${outputs(jobId)}questions/pitch.jpg?`)).toBe(true);
-    expect(q.body.questions.kits.groups[0].people[0].imageUrl).toContain('/questions/kits/g0/p0.jpg?');
+    // Every picture the engine names gets a signed link next to it.
+    const pitch = q.body.questions.pitch;
+    expect(pitch.overlayUrl.startsWith(`https://${CDN}/${outputs(jobId)}questions/pitch/overlay.jpg?`)).toBe(true);
+    expect(pitch.backgroundUrl).toContain('/questions/pitch/background.png?');
+    expect(pitch.points['left corner flag'].closeup.imageUrl).toContain('/questions/engine/closeups/1/left.jpg?');
+    expect(pitch.panorama).toEqual({ image: 'background.png', degPerPx: 0.1, yawRange: [-100, 100], pitchRange: [-20, 40] });
+    const [g0] = q.body.questions.kits.groups;
+    expect(g0.sheetUrl).toContain('/questions/engine/crops/kits1/sheet0.jpg?');
+    expect(g0.crops[0].imageUrl).toContain('/questions/engine/crops/kits1/c0_00.jpg?');
     // The engine's files can't point outside their folder.
-    expect(q.body.questions.kits.groups[0].people[1].imageUrl).toBeNull();
+    expect(g0.crops[1].imageUrl).toBeNull();
 
     const a1 = await answer(jobId, approve);
     expect(a1.status).toBe(200);
@@ -318,11 +358,11 @@ describe('processing jobs', () => {
     const saved = JSON.parse(
       await (await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: `${outputs(jobId)}answers.json` }))).Body!.transformToString(),
     );
-    expect(saved).toMatchObject({
-      schemaVersion: 1,
-      jobId,
-      pitch: { round: 1, approved: true, answeredAt: expect.any(String) },
-      kits: { round: 1, wrong: [{ groupId: 'g0', personId: 'p1' }], structure: { kind: 'ok' } },
+    // The engine's answers.json, as its prepare and run read it. Sharing is
+    // off unless the user said so.
+    expect(saved).toEqual({
+      pitch: { round: 1, approve: true, share: false },
+      kits: { round: 1, tapped: { '0': ['c0_01'] }, share: false },
     });
     expect((await answer(jobId, kitsOk)).status).toBe(409);
 
@@ -355,21 +395,25 @@ describe('processing jobs', () => {
   });
 
   describe('answers', () => {
+    const marked = {
+      question: 'pitch',
+      round: 1,
+      points: { 'left corner flag': { yaw: -79.2, pitch: 21 }, 'right corner flag': { skipped: true } },
+    };
+
     it('a marked pitch is refitted and asked again', async () => {
       const jobId = await prepared();
-      const marked = {
-        check: 'pitch',
-        round: 1,
-        approved: false,
-        keypoints: [{ id: 'near_left_corner', x: 120, y: 410 }, { id: 'near_right_corner', skipped: true }],
-      };
       const r = await answer(jobId, marked);
       expect(r.body).toMatchObject({ status: 'refitting', checks: { pitch: 'open', kits: 'open' } });
-      expect(submits()[1]).toMatchObject({ jobName: `osb-refit-${jobId}`, jobQueue: 'cpu-queue', jobDefinition: 'refit-def' });
-      expect(submits()[1]!.containerOverrides!.environment).toContainEqual({ name: 'OSB_CHECK', value: 'pitch' });
+      expect(submits()[1]).toMatchObject({
+        jobName: `osb-refit-${jobId}`,
+        jobQueue: 'cpu-queue',
+        jobDefinition: 'refit-def',
+        containerOverrides: { command: ['refit'] },
+      });
       expect((await answer(jobId, approve)).status).toBe(409);
 
-      await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS(jobId, 2)));
+      await writeQuestions(jobId, { pitchRound: 2 });
       await event('refit', jobId, 'SUCCEEDED');
       expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open', kits: 'open' } });
       // One email per game, not per refit.
@@ -380,25 +424,86 @@ describe('processing jobs', () => {
       expect((await answer(jobId, { ...approve, round: 2 })).body.checks.pitch).toBe('answered');
     });
 
-    it('a kit group to split is refitted; merging is not', async () => {
+    it('a kit group to split is refitted, once; merging and marking keepers is not', async () => {
       const jobId = await prepared();
-      const split = await answer(jobId, { check: 'kits', round: 1, wrong: [], structure: { kind: 'split', group: 'g1' } });
+      const split = await answer(jobId, { question: 'kits', round: 1, split: 1 });
       expect(split.body).toMatchObject({ status: 'refitting', checks: { kits: 'open' } });
-      expect(submits()[1]!.containerOverrides!.environment).toContainEqual({ name: 'OSB_CHECK', value: 'kits' });
-      await put(`${outputs(jobId)}questions/questions.json`, JSON.stringify(QUESTIONS(jobId, 1, false)));
+      await writeQuestions(jobId, { splitAllowed: false });
       await event('refit', jobId, 'SUCCEEDED');
-      const again = await answer(jobId, { check: 'kits', round: 1, wrong: [], structure: { kind: 'split', group: 'g1' } });
-      expect(again.status).toBe(400);
-      const merged = await answer(jobId, { check: 'kits', round: 1, wrong: [], structure: { kind: 'merge', groups: ['g0', 'g1'] } });
-      expect(merged.body).toMatchObject({ status: 'needs_answers', checks: { kits: 'answered' } });
+      expect((await answer(jobId, { question: 'kits', round: 1, split: 1 })).status).toBe(400);
+      const settled = await answer(jobId, { question: 'kits', round: 1, merge: [[0, 1]], keeperOrReferee: [], notKit: [], share: true });
+      expect(settled.body).toMatchObject({ status: 'needs_answers', checks: { kits: 'answered' } });
       expect(submits()).toHaveLength(2);
+      const saved = JSON.parse(
+        await (await s3.send(new GetObjectCommand({ Bucket: config.bucket, Key: `${outputs(jobId)}answers.json` }))).Body!.transformToString(),
+      );
+      expect(saved.kits).toEqual({ round: 1, merge: [[0, 1]], keeperOrReferee: [], notKit: [], share: true });
+    });
+
+    it('the engine says what is still open after a refit, and the run starts when nothing is', async () => {
+      const jobId = await prepared();
+      await answer(jobId, kitsOk);
+      await answer(jobId, marked);
+      // The refit applied both answers: the kits are settled, the pitch is asked again.
+      await writeQuestions(jobId, { pitchRound: 2, pending: ['pitch'] });
+      await event('refit', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open', kits: 'answered' } });
+
+      await answer(jobId, { ...marked, round: 2 });
+      // This time the engine is content with the pitch as marked.
+      await writeQuestions(jobId, { pitchRound: 3, pending: [] });
+      await event('refit', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body).toMatchObject({ status: 'queued', phase: 'run', checks: { pitch: 'answered', kits: 'answered' } });
+      expect(submits().at(-1)).toMatchObject({ jobName: `osb-run-${jobId}`, containerOverrides: { command: ['run'] } });
+    });
+
+    it('goes back to waiting when the engine refuses an answer as the run starts', async () => {
+      const jobId = await prepared();
+      await answer(jobId, approve);
+      expect((await answer(jobId, kitsOk)).body.status).toBe('queued');
+      await event('run', jobId, 'RUNNING');
+      // The engine applied the answers, would not take the kits (too few
+      // groups left), wrote its questions again and stopped.
+      await new Promise((r) => setTimeout(r, 1100));
+      await writeQuestions(jobId, { pending: ['kits'] });
+      await event('run', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body).toMatchObject({
+        status: 'needs_answers',
+        phase: 'prepare',
+        checks: { pitch: 'answered', kits: 'open' },
+        error: null,
+      });
+      expect((await answer(jobId, kitsOk)).body).toMatchObject({ status: 'queued', phase: 'run' });
+    });
+
+    it('asks which phone is on the left first, when the views could not be stitched', async () => {
+      const jobId = (await start()).body.jobId as string;
+      await writeQuestions(jobId, { cameras: true, pending: ['cameras'] });
+      await event('prepare', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', checks: { cameras: 'open', pitch: 'open', kits: 'open' } });
+      const q = await callWeb(alice, 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions', { path: jobPath(jobId) });
+      expect(q.body.questions.cameras.panoramas.mainLeftUrl).toContain('/questions/engine/cameras/main_left.jpg?');
+      // The other two aren't asked yet.
+      expect((await answer(jobId, approve)).status).toBe(409);
+      expect((await answer(jobId, { question: 'cameras', round: 1, leftPhone: 'both' })).status).toBe(400);
+
+      const r = await answer(jobId, { question: 'cameras', round: 1, leftPhone: 'secondary' });
+      expect(r.body).toMatchObject({ status: 'refitting', checks: { cameras: 'open' } });
+      // Cameras built from the pitch: it has to be marked before it can be approved.
+      await writeQuestions(jobId, { cameras: true, approveAllowed: false });
+      await event('refit', jobId, 'SUCCEEDED');
+      expect((await get(jobId)).body.checks).toEqual({ cameras: 'answered', pitch: 'open', kits: 'open' });
+      const refused = await answer(jobId, approve);
+      expect(refused.status).toBe(400);
+      expect(refused.body.message).toMatch(/marked/);
+      expect((await answer(jobId, marked)).body.status).toBe('refitting');
     });
 
     it('fails a refit that wrote no new questions', async () => {
       const jobId = await prepared();
       // Batch's clock, a second later than the questions the prepare wrote.
       await new Promise((r) => setTimeout(r, 1100));
-      await answer(jobId, { check: 'pitch', round: 1, approved: false, keypoints: [] });
+      await answer(jobId, marked);
       await event('refit', jobId, 'SUCCEEDED');
       expect((await get(jobId)).body).toMatchObject({ status: 'failed', error: { code: 'engine_no_result' } });
     });
@@ -406,18 +511,22 @@ describe('processing jobs', () => {
     it('refuses answers that do not fit the questions', async () => {
       const jobId = await prepared();
       const bad = [
-        { check: 'ball' },
-        { check: 'pitch', round: 1 },
-        { check: 'pitch', round: 1, approved: false },
-        { check: 'pitch', round: 1, approved: false, keypoints: [{ id: 'centre_spot', x: 1, y: 1 }] },
-        { check: 'pitch', round: 1, approved: false, keypoints: [{ id: 'near_left_corner', x: 1, y: 1 }, { id: 'near_left_corner', skipped: true }] },
-        { check: 'pitch', round: 1, approved: true, paint: 'yellow' },
-        { check: 'kits', round: 1, wrong: [{ groupId: 'g1', personId: 'p1' }], structure: { kind: 'ok' } },
-        { check: 'kits', round: 1, wrong: [], structure: { kind: 'merge', groups: ['g0'] } },
-        { check: 'kits', round: 1, wrong: [], structure: { kind: 'split', group: 'g9' } },
-        { check: 'kits', round: 1, wrong: [], structure: { kind: 'ok' }, extra: 1 },
+        { question: 'ball' },
+        { question: 'pitch' },
+        { question: 'pitch', round: 1 },
+        { question: 'pitch', round: 1, approve: false },
+        { question: 'pitch', round: 1, points: { 'centre spot': { yaw: 1, pitch: 1 } } },
+        { question: 'pitch', round: 1, points: { 'left corner flag': { yaw: 1 } } },
+        { question: 'pitch', round: 1, approve: true, colour: 'yellow' },
+        { question: 'kits', round: 1, tapped: { '1': ['c0_00'] } },
+        { question: 'kits', round: 1, tapped: { '0': 'c0_00' } },
+        { question: 'kits', round: 1, merge: [[0, 9]] },
+        { question: 'kits', round: 1, split: 9 },
+        { question: 'kits', round: 1, notKit: [4] },
       ];
       for (const b of bad) expect((await answer(jobId, b)).status, JSON.stringify(b)).toBe(400);
+      // No cameras question was asked.
+      expect((await answer(jobId, { question: 'cameras', round: 1, leftPhone: 'main' })).status).toBe(409);
       expect((await get(jobId)).body).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open', kits: 'open' } });
       expect(submits()).toHaveLength(1);
     });

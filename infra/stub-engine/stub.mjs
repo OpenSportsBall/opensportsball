@@ -4,10 +4,11 @@
 // A stand-in for the engine's container, so cloud processing can be
 // deployed and tried end to end before the real engine exists. It keeps
 // the container's side of the contract (docs/API.md, "The engine's
-// container"): it reads the job from OSB_* variables, writes
-// questions/questions.json or game.mp4 under the output prefix, reports
-// progress on the job record, and exits 0 or non-zero. It reads no
-// footage beyond checking the manifest is there.
+// container"), in the real engine's formats: it reads the job from OSB_*
+// variables, writes questions/questions.json (engine-questions) or
+// game.mp4 under the output prefix, applies answers.json (engine-answers),
+// reports progress on the job record, and exits 0 or non-zero. It reads
+// no footage beyond checking the manifest is there.
 //
 //   node stub.mjs prepare | refit | run
 //
@@ -17,7 +18,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { FIRST_FIT, FIRST_GROUPS, HEIGHT, WIDTH, keypoints, kitFiles, pitchLines, pitchSvg, splitGroup } from './scene.mjs';
+import { FIRST_FIT, FIRST_GROUPS, PANORAMA, kitFiles, linesPx, pitchSvg, splitGroup, toDeg, toPx } from './scene.mjs';
 import { VIDEO_BASE64 } from './video.mjs';
 
 const ENGINE_VERSION = 'stub-engine 0.1.0';
@@ -109,72 +110,118 @@ async function pretend(stages, from = 0, checkpoint) {
   }
 }
 
-const PITCH_TEXT =
-  'This is the pitch with our best guess at its lines drawn on it. Do the drawn lines sit on the painted lines? ' +
-  'If not, put each named point where it really is, or say you cannot see it.';
-const KITS_TEXT =
-  'Each group should be one kit. Mark anyone who is in the wrong group or is not a player in kit. ' +
-  'Then say whether every kit has exactly one group, two groups are the same kit, or one group has two kits in it.';
+const ASK_PITCH =
+  'This is the empty pitch with our fitted lines drawn in red. Do the red lines sit on the painted lines? ' +
+  'If not, give each named point where it really is, or say it cannot be seen.';
+const ASK_KITS =
+  'Each group should be one kit and every kit one group. Name anyone in the wrong group, then say whether ' +
+  'groups are the same kit, one group holds two kits, and which groups are keepers, the referee or not a kit.';
 
-async function writeQuestions({ pitchPoints, pitchRound, groups, kitsRound, canSplit }) {
-  const kits = kitFiles(groups);
-  await put(`${out}questions/pitch.svg`, pitchSvg());
+const pending = (st) => ['pitch', 'kits'].filter((n) => st[n].status === 'pending');
+
+/** questions.json as the real engine writes it, and its pictures, at the
+ *  paths it names them by. */
+async function writeQuestions(st) {
+  const kits = kitFiles(st.kits.groups, st.kits.round);
+  await put(`${out}questions/pitch/background.svg`, pitchSvg());
+  await put(`${out}questions/pitch/overlay.svg`, pitchSvg(st.pitch.points));
   await Promise.all(kits.files.map((f) => put(`${out}questions/${f.path}`, f.body)));
   await put(
     `${out}questions/questions.json`,
     JSON.stringify({
       schemaVersion: 1,
-      jobId,
-      engineVersion: ENGINE_VERSION,
+      recording: '.',
+      pending: pending(st),
       pitch: {
-        round: pitchRound,
-        text: PITCH_TEXT,
-        image: 'pitch.svg',
-        width: WIDTH,
-        height: HEIGHT,
-        lines: pitchLines(pitchPoints),
-        keypoints: keypoints(pitchPoints),
+        round: st.pitch.round,
+        status: st.pitch.status,
+        background: 'pitch/background.svg',
+        overlay: 'pitch/overlay.svg',
+        panorama: PANORAMA,
+        fit: { lengthM: 100, widthM: 64, cameraHeightM: 3, fittedWith: st.pitch.round > 1 ? 'lines+taps' : 'lines' },
+        lines: linesPx(st.pitch.points).map((l) => l.map((p) => [toDeg(p).yaw, toDeg(p).pitch])),
+        goals: [],
+        points: Object.fromEntries(Object.entries(st.pitch.points).map(([name, p]) => [name, toDeg(p)])),
+        ask: ASK_PITCH,
       },
-      kits: { round: kitsRound, text: KITS_TEXT, canSplit, groups: kits.groups },
+      kits: {
+        round: st.kits.round,
+        status: st.kits.status,
+        k: st.kits.groups.length,
+        splitAllowed: st.kits.splitAllowed,
+        groups: kits.groups,
+        ask: ASK_KITS,
+        ...(st.kits.problem ? { problem: st.kits.problem } : {}),
+      },
     }),
   );
-  // What the next refit starts from.
-  await put(`${work}state.json`, JSON.stringify({ pitchPoints, pitchRound, groups, kitsRound, canSplit }));
-  say({ event: 'questions' });
+  // What the next command starts from.
+  await put(`${work}state.json`, JSON.stringify(st));
+  say({ event: 'questions', pending: pending(st) });
 }
+
+/** Applies answers.json as the engine's prepare does: an answer to an
+ *  earlier round is ignored. */
+function applyAnswers(st, answers) {
+  const a = answers?.pitch;
+  if (a && a.round === st.pitch.round && st.pitch.status === 'pending') {
+    if (a.approve) st.pitch.status = 'approved';
+    else if (a.points) {
+      // The "refit": the lines go through the points the user placed.
+      for (const [name, p] of Object.entries(a.points)) {
+        if (typeof p.yaw === 'number' && st.pitch.points[name]) st.pitch.points[name] = toPx(p);
+      }
+      st.pitch.round += 1;
+    }
+  }
+  const k = answers?.kits;
+  if (k && k.round === st.kits.round && st.kits.status === 'pending') {
+    delete st.kits.problem;
+    const out = new Set([...(k.keeperOrReferee ?? []), ...(k.notKit ?? [])]);
+    const merged = (k.merge ?? []).reduce((n, set) => n + set.length - 1, 0);
+    if (k.split != null && st.kits.splitAllowed) {
+      st.kits.groups = splitGroup(st.kits.groups, k.split);
+      st.kits.splitAllowed = false;
+      st.kits.round += 1;
+    } else if (k.keeperOrReferee && st.kits.groups.length - out.size - merged < 2) {
+      st.kits.round += 1;
+      st.kits.problem = 'fewer than two kit groups left: merge fewer, or mark fewer as not a kit';
+    } else st.kits.status = 'answered';
+  }
+}
+
+const loadState = async () => (await getJson(`${work}state.json`)) ?? null;
 
 async function prepare() {
   await requireManifest();
   await pretend(['sync', 'pitch', 'kits']);
-  await writeQuestions({ pitchPoints: FIRST_FIT, pitchRound: 1, groups: FIRST_GROUPS, kitsRound: 1, canSplit: true });
+  await writeQuestions({
+    pitch: { round: 1, status: 'pending', points: FIRST_FIT },
+    kits: { round: 1, status: 'pending', groups: FIRST_GROUPS, splitAllowed: true },
+  });
 }
 
 async function refit() {
-  const check = env('OSB_CHECK');
-  const state = await getJson(`${work}state.json`);
+  const st = await loadState();
   const answers = await getJson(`${out}answers.json`);
-  if (!state || !answers?.[check]) throw new EngineError('nothing_to_refit', 'There is no answer to refit from.');
-  await progress(check, 0.5);
+  if (!st || !answers) throw new EngineError('nothing_to_refit', 'There is no answer to apply.');
+  await progress('pitch', 0.5);
   await sleep(Math.min(seconds, 5));
-  if (check === 'pitch') {
-    // The "refit": the lines go through the points the user placed.
-    for (const k of answers.pitch.keypoints ?? []) {
-      if (!k.skipped && state.pitchPoints[k.id]) state.pitchPoints[k.id] = [k.x, k.y];
-    }
-    state.pitchRound += 1;
-  } else {
-    const s = answers.kits.structure;
-    if (s.kind === 'split') {
-      state.groups = splitGroup(state.groups, s.group);
-      state.canSplit = false;
-    }
-    state.kitsRound += 1;
-  }
-  await writeQuestions(state);
+  applyAnswers(st, answers);
+  await writeQuestions(st);
 }
 
 async function run() {
   await requireManifest();
+  const st = await loadState();
+  if (!st) throw new EngineError('needs_answers', 'The run was started before the game was prepared.');
+  applyAnswers(st, await getJson(`${out}answers.json`));
+  if (pending(st).length) {
+    // An answer the engine can't use: ask again instead of making the video.
+    await writeQuestions(st);
+    return;
+  }
+  await put(`${work}state.json`, JSON.stringify(st));
   // Resume where a reclaimed Spot instance left off.
   const done = (await getJson(`${work}checkpoint.json`))?.fraction ?? 0;
   if (done > 0) console.log(`resuming from ${Math.round(done * 100)}%`);
@@ -183,6 +230,7 @@ async function run() {
   });
   await requireManifest();
   await put(`${out}game.mp4`, Buffer.from(VIDEO_BASE64, 'base64'));
+  await put(`${out}result.json`, JSON.stringify({ event: 'done', output: 'game.mp4', ballAimShare: 0.5, ballLow: false }));
   await progress('upload', 1, 0);
   say({ event: 'done', output: 'game.mp4' });
 }

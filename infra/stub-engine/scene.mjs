@@ -1,72 +1,71 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// A made-up game for the stub engine: a drawn pitch whose first "fit" is
-// visibly off at the right-hand end, and three kit groups, one of them two
-// kits mixed together. Enough for the website's checks to have something
-// to approve, correct, split and merge. No footage is read.
+// A made-up game for the stub engine, in the real engine's formats
+// (shared/schemas/engine-questions.schema.json): a drawn pitch whose first
+// "fit" is visibly off at the right-hand end, and kit groups, one of them
+// two kits mixed together. Enough for the website's checks to have
+// something to approve, correct, split and merge. No footage is read.
 
 export const WIDTH = 2000;
 export const HEIGHT = 600;
+/** The picture's pixels and panorama degrees, as the engine describes its background. */
+export const PANORAMA = { image: 'background.svg', degPerPx: 0.1, yawRange: [-100, 100], pitchRange: [-20, 40] };
 
-/** Where the painted pitch really is in the picture. */
+export const toDeg = ([x, y]) => ({
+  yaw: Math.round((PANORAMA.yawRange[0] + x * PANORAMA.degPerPx) * 1000) / 1000,
+  pitch: Math.round((PANORAMA.pitchRange[0] + y * PANORAMA.degPerPx) * 1000) / 1000,
+});
+export const toPx = ({ yaw, pitch }) => [
+  (yaw - PANORAMA.yawRange[0]) / PANORAMA.degPerPx,
+  (pitch - PANORAMA.pitchRange[0]) / PANORAMA.degPerPx,
+];
+
+/** Where the painted pitch really is in the picture, in pixels. */
 export const TRUE_POINTS = {
-  near_left_corner: [150, 520],
-  near_right_corner: [1850, 520],
-  far_left_corner: [520, 250],
-  far_right_corner: [1480, 250],
-  halfway_near: [1000, 520],
-  halfway_far: [1000, 250],
-};
-
-const LABELS = {
-  near_left_corner: 'Near left corner',
-  near_right_corner: 'Near right corner',
-  far_left_corner: 'Far left corner',
-  far_right_corner: 'Far right corner',
-  halfway_near: 'Halfway line, near side',
-  halfway_far: 'Halfway line, far side',
+  'left corner flag': [150, 520],
+  'right corner flag': [1850, 520],
+  'far left corner flag': [520, 250],
+  'far right corner flag': [1480, 250],
+  'halfway near end': [1000, 520],
+  'halfway far end': [1000, 250],
 };
 
 /** The first guess: right at the left end, off at the right. */
 export const FIRST_FIT = {
   ...TRUE_POINTS,
-  near_right_corner: [1905, 536],
-  far_right_corner: [1552, 228],
-  halfway_far: [1022, 242],
+  'right corner flag': [1905, 536],
+  'far right corner flag': [1552, 228],
+  'halfway far end': [1022, 242],
 };
 
-const line = (pts, a, b) => [pts[a], pts[b]];
+const MARKINGS = [
+  ['left corner flag', 'right corner flag'],
+  ['far left corner flag', 'far right corner flag'],
+  ['left corner flag', 'far left corner flag'],
+  ['right corner flag', 'far right corner flag'],
+  ['halfway near end', 'halfway far end'],
+];
 
-/** The pitch markings to draw for a set of points. */
-export function pitchLines(pts) {
-  return [
-    line(pts, 'near_left_corner', 'near_right_corner'),
-    line(pts, 'far_left_corner', 'far_right_corner'),
-    line(pts, 'near_left_corner', 'far_left_corner'),
-    line(pts, 'near_right_corner', 'far_right_corner'),
-    line(pts, 'halfway_near', 'halfway_far'),
-  ];
-}
-
-export const keypoints = (pts) => Object.entries(pts).map(([id, [x, y]]) => ({ id, label: LABELS[id], x, y }));
+/** The pitch markings for a set of points, as polylines in pixels. */
+export const linesPx = (pts) => MARKINGS.map(([a, b]) => [pts[a], pts[b]]);
 
 const path = (pts) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+const stroke = (lines, colour, width) =>
+  lines.map((l) => `<path d="${path(l)}" stroke="${colour}" stroke-width="${width}" fill="none" stroke-linecap="round"/>`).join('');
 
-/** The "background panorama": sky, turf and the painted lines. */
-export function pitchSvg() {
-  const t = TRUE_POINTS;
-  const paint = pitchLines(t)
-    .map((l) => `<path d="${path(l)}" stroke="#f4f4ec" stroke-width="5" fill="none" stroke-linecap="round"/>`)
-    .join('');
+/** The "background panorama" (sky, turf, the painted lines), and with
+ *  `fit` the overlay: the same with the fitted pitch drawn on in red. */
+export function pitchSvg(fit) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}">
 <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9cc3e6"/><stop offset="1" stop-color="#dbe9f4"/></linearGradient>
 <linearGradient id="turf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8a45"/><stop offset="1" stop-color="#2f6f37"/></linearGradient></defs>
 <rect width="${WIDTH}" height="200" fill="url(#sky)"/>
 <rect y="170" width="${WIDTH}" height="40" fill="#3c5a3a"/>
 <rect y="200" width="${WIDTH}" height="400" fill="url(#turf)"/>
-${paint}
+${stroke(linesPx(TRUE_POINTS), '#f4f4ec', 5)}
 <ellipse cx="1000" cy="372" rx="150" ry="52" stroke="#f4f4ec" stroke-width="5" fill="none"/>
+${fit ? stroke(linesPx(fit), '#e0261c', 4) : ''}
 <text x="24" y="44" font-family="sans-serif" font-size="28" fill="#1d3b5a">Stub engine: a drawn pitch, not footage</text>
 </svg>`;
 }
@@ -77,6 +76,7 @@ const KITS = {
   green: ['#1b8a3a', '#f4f4ec'],
   orange: ['#ef7d1a', '#ef7d1a'],
   yellow: ['#f2c61f', '#222222'],
+  grey: ['#8a8f98', '#8a8f98'],
 };
 
 /** One person crop: a figure in a kit on turf. */
@@ -95,39 +95,42 @@ export function personSvg(kit, n) {
 }
 
 const PEOPLE = 12;
+const group = (kits, people, perMoment, proposed) => ({ kits, people, perMoment, proposed });
+const all = (kit) => Array.from({ length: PEOPLE }, () => kit);
 
-/** The first grouping: blue with one red player in it, red with the
- *  referee in it, and one group that is two kits (green and orange). */
+/** The first grouping: blue with one red player in it, red, one group
+ *  that is two kits (green and orange), the keepers and referee in yellow,
+ *  and people in grey who aren't players. */
 export const FIRST_GROUPS = [
-  { id: 'g0', kits: Array.from({ length: PEOPLE }, (_, i) => (i === 7 ? 'red' : 'blue')) },
-  { id: 'g1', kits: Array.from({ length: PEOPLE }, (_, i) => (i === 3 ? 'yellow' : 'red')) },
-  { id: 'g2', kits: Array.from({ length: PEOPLE }, (_, i) => (i % 2 ? 'orange' : 'green')) },
+  group(all('blue').map((k, i) => (i === 7 ? 'red' : k)), 412, 10.6, 'A'),
+  group(all('red'), 388, 9.8, 'B'),
+  group(all('green').map((k, i) => (i % 2 ? 'orange' : k)), 97, 2.4, 'other'),
+  group(all('yellow'), 61, 1.6, 'keeperOrReferee'),
+  group(all('grey'), 33, 0.7, 'other'),
 ];
 
-/** [group] split into its two kits. */
-export function splitGroup(groups, id) {
-  return groups.flatMap((g) => {
-    if (g.id !== id) return [g];
+/** Group [component] split into its two kits; the rest keep their places. */
+export function splitGroup(groups, component) {
+  return groups.flatMap((g, c) => {
     const kinds = [...new Set(g.kits)];
-    if (kinds.length < 2) return [g];
-    return kinds.slice(0, 2).map((kind, i) => ({
-      id: `${g.id}${'ab'[i]}`,
-      kits: Array.from({ length: PEOPLE }, () => kind),
-    }));
+    if (c !== component || kinds.length < 2) return [g];
+    return kinds.slice(0, 2).map((kind) => group(all(kind), Math.round(g.people / 2), g.perMoment / 2, 'other'));
   });
 }
 
-const personId = (i) => `p${String(i).padStart(2, '0')}`;
-
-/** The kit groups as questions.json lists them, and the files to write. */
-export function kitFiles(groups) {
+/** The kit groups as questions.json lists them, and the pictures to write. */
+export function kitFiles(groups, round) {
   const files = [];
-  const listed = groups.map((g) => ({
-    id: g.id,
-    people: g.kits.map((kit, i) => {
-      const image = `kits/${g.id}/${personId(i)}.svg`;
-      files.push({ path: image, body: personSvg(kit, i) });
-      return { id: personId(i), image };
+  const listed = groups.map((g, c) => ({
+    component: c,
+    people: g.people,
+    perMoment: g.perMoment,
+    proposed: g.proposed,
+    crops: g.kits.map((kit, n) => {
+      const id = `c${c}_${String(n).padStart(2, '0')}`;
+      const image = `engine/crops/kits${round}/${id}.svg`;
+      files.push({ path: image, body: personSvg(kit, n) });
+      return { id, image };
     }),
   }));
   return { groups: listed, files };

@@ -2,93 +2,117 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	/**
-	 * The kit-group check: one card per group the engine made, each a sample
-	 * of people. The user taps anyone who doesn't belong, then says whether
-	 * the groups match the kits: one group per kit, two groups that are the
-	 * same kit (merged), or one group with two kits in it (split, and shown
-	 * again).
+	 * The kit-group check, from the engine's own question (engine-questions),
+	 * asked the way the Mac app asks it: one card per group, each a sample
+	 * of people. The user taps anyone who doesn't belong, says what each
+	 * group is (a kit, the keepers or referee, not a kit), then whether the
+	 * groups match the kits: one group per kit, groups that are the same kit
+	 * (merged), or one group with two kits in it (split, and shown again).
+	 * There is no "which is your team": the camera follows play.
 	 */
-	import type { KitsAnswer, KitsQuestion, KitStructure } from '#lib/types.ts';
+	import type { KitGroup, KitsAnswer, KitsQuestion } from '#lib/types.ts';
+
+	type Role = 'kit' | 'keeperOrReferee' | 'notKit';
+	type Structure = 'ok' | 'merge' | 'split';
 
 	let {
 		q,
 		busy,
-		marked = [],
+		marked = {},
 		onanswer
 	}: {
 		q: KitsQuestion;
 		busy: boolean;
 		/** People already tapped before a split, so they needn't be tapped again. */
-		marked?: KitsAnswer['wrong'];
+		marked?: Record<string, string[]>;
 		onanswer: (a: KitsAnswer) => void;
 	} = $props();
 
-	const key = (groupId: string, personId: string) => `${groupId}/${personId}`;
-	// Only those still in the same group: a split group's people are new.
+	// The page makes a new one of these for each round.
 	// svelte-ignore state_referenced_locally
-	let wrong = $state<Record<string, boolean>>(
+	const groups = [...q.groups].sort((a, b) => b.people - a.people);
+	const name = (g: KitGroup) => `Group ${groups.indexOf(g) + 1}`;
+	const proposedRole = (g: KitGroup): Role => (g.proposed === 'A' || g.proposed === 'B' ? 'kit' : g.proposed === 'keeperOrReferee' ? 'keeperOrReferee' : 'notKit');
+
+	// Only crops still shown in the same group: a split group's people are new.
+	// svelte-ignore state_referenced_locally
+	let tapped = $state<Record<string, boolean>>(
 		Object.fromEntries(
-			marked
-				.filter((w) => q.groups.some((g) => g.id === w.groupId && g.people.some((p) => p.id === w.personId)))
-				.map((w) => [key(w.groupId, w.personId), true])
+			groups.flatMap((g) => (marked[String(g.component)] ?? []).filter((id) => g.crops.some((c) => c.id === id)).map((id) => [id, true]))
 		)
 	);
-	let kind = $state<KitStructure['kind'] | null>(null);
-	let merge = $state<Record<string, boolean>>({});
-	let split = $state<string | null>(null);
+	let roles = $state<Record<number, Role>>({});
+	let structure = $state<Structure | null>(null);
+	let merge = $state<Record<number, boolean>>({});
+	let split = $state<number | null>(null);
 
-	const groupName = (i: number) => `Group ${i + 1}`;
-	const wrongCount = (groupId: string) => Object.entries(wrong).filter(([k, v]) => v && k.startsWith(`${groupId}/`)).length;
-	const merged = $derived(q.groups.filter((g) => merge[g.id]).map((g) => g.id));
-
-	const structure = $derived<KitStructure | null>(
-		kind === 'ok'
-			? { kind: 'ok' }
-			: kind === 'merge' && merged.length >= 2
-				? { kind: 'merge', groups: merged }
-				: kind === 'split' && split
-					? { kind: 'split', group: split }
-					: null
-	);
+	const role = (g: KitGroup) => roles[g.component] ?? proposedRole(g);
+	const tappedIn = (g: KitGroup) => g.crops.filter((c) => tapped[c.id]).map((c) => c.id);
+	const merged = $derived(groups.filter((g) => merge[g.component]).map((g) => g.component));
+	const ready = $derived(structure === 'ok' || (structure === 'merge' && merged.length >= 2) || (structure === 'split' && split !== null));
 
 	function send() {
-		if (!structure) return;
+		if (!ready) return;
+		const changedRoles = Object.keys(roles).length > 0;
+		const notKit = groups.filter((g) => role(g) === 'notKit').map((g) => g.component);
 		onanswer({
-			check: 'kits',
+			question: 'kits',
 			round: q.round,
-			wrong: q.groups.flatMap((g) =>
-				g.people.filter((p) => wrong[key(g.id, p.id)]).map((p) => ({ groupId: g.id, personId: p.id }))
-			),
-			structure
+			tapped: Object.fromEntries(groups.filter((g) => tappedIn(g).length).map((g) => [String(g.component), tappedIn(g)])),
+			...(structure === 'merge' ? { merge: [merged] } : {}),
+			...(structure === 'split' && split !== null ? { split } : {}),
+			// Only when changed: otherwise the engine keeps its own guess.
+			...(changedRoles
+				? { keeperOrReferee: groups.filter((g) => role(g) === 'keeperOrReferee').map((g) => g.component), notKit }
+				: {})
 		});
 	}
 </script>
 
+{#if q.problem}<p class="problem">We couldn't use that answer: {q.problem}.</p>{/if}
+
 <p>
-	We sorted the people on the pitch into groups by kit. <strong>Tap anyone who is in the wrong group</strong>, or who
-	isn't a player in kit (a referee, a coach, someone watching).
+	We sorted the people on the pitch into groups by what they wear. <strong>Tap anyone who is in the wrong group</strong>.
+	Then check what each group is.
 </p>
 
 <div class="groups">
-	{#each q.groups as g, i (g.id)}
+	{#each groups as g (g.component)}
 		<section class="group">
-			<h3>
-				{groupName(i)}
-				{#if wrongCount(g.id)}<span class="muted small">· {wrongCount(g.id)} marked</span>{/if}
-			</h3>
+			<div class="group-head">
+				<h3>
+					{name(g)}
+					{#if tappedIn(g).length}<span class="muted small">· {tappedIn(g).length} marked</span>{/if}
+				</h3>
+				<fieldset class="role" disabled={busy}>
+					<legend class="sr-only">What {name(g)} is</legend>
+					{#each [['kit', 'A kit'], ['keeperOrReferee', 'Keepers or referee'], ['notKit', 'Not a kit']] as [value, text] (value)}
+						<label class:on={role(g) === value}>
+							<input
+								type="radio"
+								name="role-{g.component}"
+								{value}
+								checked={role(g) === value}
+								onchange={() => (roles[g.component] = value as Role)}
+							/>
+							{text}
+						</label>
+					{/each}
+				</fieldset>
+			</div>
 			<div class="people">
-				{#each g.people as p, n (p.id)}
+				{#each g.crops as c, n (c.id)}
 					<button
 						type="button"
 						class="person"
-						class:wrong={wrong[key(g.id, p.id)]}
-						aria-pressed={wrong[key(g.id, p.id)] === true}
-						aria-label="{groupName(i)}, person {n + 1}{wrong[key(g.id, p.id)] ? ', marked as not belonging' : ''}"
+						class:wrong={tapped[c.id]}
+						aria-pressed={tapped[c.id] === true}
+						aria-label="{name(g)}, person {n + 1}{tapped[c.id] ? ', marked as not belonging' : ''}"
 						disabled={busy}
-						onclick={() => (wrong[key(g.id, p.id)] = !wrong[key(g.id, p.id)])}
+						onclick={() => (tapped[c.id] = !tapped[c.id])}
 					>
-						{#if p.imageUrl}<img src={p.imageUrl} alt="" loading="lazy" />{/if}
-						{#if wrong[key(g.id, p.id)]}<span class="cross" aria-hidden="true">✕</span>{/if}
+						{#if c.imageUrl}<img src={c.imageUrl} alt="" loading="lazy" />{/if}
+						{#if tapped[c.id]}<span class="cross" aria-hidden="true">✕</span>{/if}
 					</button>
 				{/each}
 			</div>
@@ -98,39 +122,45 @@
 
 <fieldset class="structure" disabled={busy}>
 	<legend>Now, looking at the groups as a whole:</legend>
-	<label><input type="radio" name="structure" value="ok" bind:group={kind} /> Every kit has exactly one group</label>
+	<label><input type="radio" name="structure" value="ok" bind:group={structure} /> Every kit has exactly one group</label>
 
-	<label><input type="radio" name="structure" value="merge" bind:group={kind} /> Two groups are the same kit</label>
-	{#if kind === 'merge'}
+	<label><input type="radio" name="structure" value="merge" bind:group={structure} /> Some groups are the same kit</label>
+	{#if structure === 'merge'}
 		<div class="pick" role="group" aria-label="Which groups are the same kit?">
-			{#each q.groups as g, i (g.id)}
-				<label><input type="checkbox" bind:checked={merge[g.id]} /> {groupName(i)}</label>
+			{#each groups as g (g.component)}
+				<label><input type="checkbox" bind:checked={merge[g.component]} /> {name(g)}</label>
 			{/each}
 			{#if merged.length < 2}<span class="muted small">Pick the groups that are the same kit.</span>{/if}
 		</div>
 	{/if}
 
-	{#if q.canSplit}
-		<label><input type="radio" name="structure" value="split" bind:group={kind} /> One group has two kits in it</label>
-		{#if kind === 'split'}
+	{#if q.splitAllowed}
+		<label><input type="radio" name="structure" value="split" bind:group={structure} /> One group has two kits in it</label>
+		{#if structure === 'split'}
 			<div class="pick" role="group" aria-label="Which group has two kits in it?">
-				{#each q.groups as g, i (g.id)}
-					<label><input type="radio" name="split" value={g.id} bind:group={split} /> {groupName(i)}</label>
+				{#each groups as g (g.component)}
+					<label><input type="radio" name="split" value={g.component} bind:group={split} /> {name(g)}</label>
 				{/each}
-				<span class="muted small">We'll split it and show you the groups again.</span>
+				<span class="muted small">We'll sort the groups again and show you.</span>
 			</div>
 		{/if}
 	{/if}
 </fieldset>
 
 <div class="actions">
-	<button class="btn btn-primary" onclick={send} disabled={busy || !structure}>
-		{busy ? 'Saving…' : kind === 'split' ? 'Split that group' : 'Done'}
+	<button class="btn btn-primary" onclick={send} disabled={busy || !ready}>
+		{busy ? 'Saving…' : structure === 'split' ? 'Split that group' : 'Done'}
 	</button>
-	{#if !kind}<span class="muted small">Answer the question above first.</span>{/if}
+	{#if !structure}<span class="muted small">Answer the question above first.</span>{/if}
 </div>
 
 <style>
+	.problem {
+		background: var(--danger-bg);
+		color: var(--danger);
+		border-radius: 8px;
+		padding: 0.5rem 0.75rem;
+	}
 	.groups {
 		display: grid;
 		gap: 0.9rem;
@@ -141,9 +171,55 @@
 		padding: 0.6rem 0.75rem 0.75rem;
 		background: var(--surface-2);
 	}
+	.group-head {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.4rem 1rem;
+		margin-bottom: 0.5rem;
+	}
 	h3 {
-		margin: 0 0 0.5rem;
+		margin: 0;
 		font-size: 1rem;
+	}
+	.role {
+		display: flex;
+		flex-wrap: wrap;
+		border: 0;
+		margin: 0;
+		padding: 0;
+		gap: 0.25rem;
+	}
+	.role label {
+		font-size: 0.85rem;
+		padding: 0.2rem 0.6rem;
+		border: 1px solid var(--border-strong);
+		border-radius: 999px;
+		background: var(--surface);
+		cursor: pointer;
+	}
+	.role label.on {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
+	}
+	.role input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.role label:focus-within {
+		outline: 2px solid var(--focus);
+		outline-offset: 2px;
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
 	}
 	.people {
 		display: grid;

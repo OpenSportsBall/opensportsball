@@ -2,56 +2,67 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	/**
-	 * The pitch check: the engine's picture of the pitch with its fitted
-	 * lines drawn on it. The user approves it, or drags the named points to
-	 * where they really are (or says a point can't be seen) and sends them
-	 * for a refit. Everything is in the picture's own pixels.
+	 * The pitch check, from the engine's own question (engine-questions):
+	 * the empty pitch with the fitted lines drawn on it. The user approves
+	 * it, or drags the named points to where they really are (or says a
+	 * point can't be seen) and sends them for a refit. The engine works in
+	 * panorama degrees; `panorama` says how they map to the picture's pixels.
 	 */
-	import type { PitchAnswer, PitchQuestion } from '#lib/types.ts';
+	import type { PitchAnswer, PitchPointAnswer, PitchQuestion } from '#lib/types.ts';
 
 	let { q, busy, onanswer }: { q: PitchQuestion; busy: boolean; onanswer: (a: PitchAnswer) => void } = $props();
 
-	let marking = $state(false);
-	// Each question (round) starts from the engine's points: the page makes
-	// a new one of these for each round.
+	// The page makes a new one of these for each round, so the question's
+	// values are read once.
 	// svelte-ignore state_referenced_locally
-	let points = $state(q.keypoints.map((k) => ({ ...k, skipped: false })));
+	const pano = q.panorama ?? null;
+	const width = pano ? (pano.yawRange[1] - pano.yawRange[0]) / pano.degPerPx : 0;
+	const height = pano ? (pano.pitchRange[1] - pano.pitchRange[0]) / pano.degPerPx : 0;
+	const x = (yaw: number) => (yaw - pano!.yawRange[0]) / pano!.degPerPx;
+	const y = (pitch: number) => (pitch - pano!.pitchRange[0]) / pano!.degPerPx;
+	const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+	// svelte-ignore state_referenced_locally
+	const mustMark = q.approveAllowed === false;
+	let marking = $state(mustMark && pano !== null);
+	// svelte-ignore state_referenced_locally
+	let points = $state(
+		Object.entries(q.points).map(([name, p]) => ({ name, yaw: p.yaw, pitch: p.pitch, moved: false, skipped: false }))
+	);
 	let selected = $state<string | null>(null);
-	// svelte-ignore state_referenced_locally
-	let paint = $state(q.paint?.choice);
 	let shownWidth = $state(0);
 	let svg = $state<SVGSVGElement | null>(null);
 
 	/** Picture pixels per screen pixel, so handles stay a finger wide. */
-	const scale = $derived(shownWidth > 0 ? q.width / shownWidth : 2);
-	const d = (line: [number, number][]) => line.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
-	const moved = $derived(points.some((p, i) => p.skipped || p.x !== q.keypoints[i].x || p.y !== q.keypoints[i].y));
+	const scale = $derived(shownWidth > 0 && width > 0 ? width / shownWidth : 2);
+	const d = (line: [number, number][]) => line.map(([yaw, pitch], i) => `${i ? 'L' : 'M'}${x(yaw)} ${y(pitch)}`).join(' ');
+	const changed = $derived(points.some((p) => p.moved || p.skipped));
+	const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+	const label = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
 
-	const clamp = (v: number, max: number) => Math.min(max, Math.max(0, v));
-
-	function toPicture(e: PointerEvent): [number, number] {
-		const m = svg!.getScreenCTM()!.inverse();
-		const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m);
-		return [clamp(p.x, q.width), clamp(p.y, q.height)];
+	function place(p: (typeof points)[number], px: number, py: number) {
+		p.yaw = round3(pano!.yawRange[0] + clamp(px, 0, width) * pano!.degPerPx);
+		p.pitch = round3(pano!.pitchRange[0] + clamp(py, 0, height) * pano!.degPerPx);
+		p.moved = true;
+		p.skipped = false;
 	}
 
 	let dragging = $state<string | null>(null);
 
-	function down(e: PointerEvent, id: string) {
+	function down(e: PointerEvent, name: string) {
 		if (busy) return;
-		selected = dragging = id;
+		selected = dragging = name;
 		(e.currentTarget as Element).setPointerCapture(e.pointerId);
 		e.preventDefault();
 	}
 
-	function move(e: PointerEvent, id: string) {
-		if (dragging !== id) return;
-		const p = points.find((k) => k.id === id)!;
-		[p.x, p.y] = toPicture(e).map((v) => Math.round(v * 10) / 10) as [number, number];
-		p.skipped = false;
+	function move(e: PointerEvent, name: string) {
+		if (dragging !== name) return;
+		const at = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg!.getScreenCTM()!.inverse());
+		place(points.find((k) => k.name === name)!, at.x, at.y);
 	}
 
-	function key(e: KeyboardEvent, id: string) {
+	function key(e: KeyboardEvent, name: string) {
 		const step = (e.shiftKey ? 10 : 1) * scale;
 		const delta: Record<string, [number, number]> = {
 			ArrowLeft: [-step, 0],
@@ -62,61 +73,67 @@
 		const by = delta[e.key];
 		if (!by || busy) return;
 		e.preventDefault();
-		const p = points.find((k) => k.id === id)!;
-		p.x = Math.round(clamp(p.x + by[0], q.width) * 10) / 10;
-		p.y = Math.round(clamp(p.y + by[1], q.height) * 10) / 10;
-		p.skipped = false;
-		selected = id;
+		const p = points.find((k) => k.name === name)!;
+		place(p, x(p.yaw) + by[0], y(p.pitch) + by[1]);
+		selected = name;
 	}
 
-	const approve = () => onanswer({ check: 'pitch', round: q.round, approved: true, ...(paint ? { paint } : {}) });
+	const approve = () => onanswer({ question: 'pitch', round: q.round, approve: true });
 	const send = () =>
 		onanswer({
-			check: 'pitch',
+			question: 'pitch',
 			round: q.round,
-			approved: false,
-			keypoints: points.map((p) => (p.skipped ? { id: p.id, skipped: true as const } : { id: p.id, x: p.x, y: p.y })),
-			...(paint ? { paint } : {})
+			points: Object.fromEntries(
+				points.map((p): [string, PitchPointAnswer] => [
+					p.name,
+					p.skipped ? { skipped: true } : p.moved ? { yaw: p.yaw, pitch: p.pitch } : { fromFit: true }
+				])
+			)
 		});
 </script>
 
+{#if q.problem}<p class="problem">{label(q.problem)}.</p>{/if}
+
 <p>
 	{#if marking}
-		Drag each numbered point to where it really is on the pitch. If you can't see one, tick <strong>Can't see it</strong>.
+		Drag each numbered point to where it really is on the pitch. Leave the ones that are already right. If you can't
+		see one, tick <strong>Can't see it</strong>.
 	{:else}
-		Here is the pitch with our best guess at its lines drawn in yellow. Do the yellow lines sit on the painted lines?
+		Here is the pitch with our best guess at its lines drawn in red. Do the red lines sit on the painted lines?
 	{/if}
 </p>
+{#if mustMark}
+	<p class="muted small">
+		The two phones' views couldn't be matched up for this game, so the lines are only roughly placed until you mark
+		the points.
+	</p>
+{/if}
 
 <div class="frame" class:marking>
-	<div class="picture" bind:clientWidth={shownWidth}>
-		<svg
-			bind:this={svg}
-			viewBox="0 0 {q.width} {q.height}"
-			role="group"
-			aria-label="The pitch, with our fitted lines{marking ? ' and the points you can move' : ''}"
-		>
-			{#if q.imageUrl}<image href={q.imageUrl} width={q.width} height={q.height} />{/if}
-			{#each q.lines as line, i (i)}
-				<path class="fit halo" d={d(line)} stroke-width={5 * scale} />
-				<path class="fit" class:faded={marking} d={d(line)} stroke-width={2.5 * scale} />
-			{/each}
-			{#if marking}
-				{#each points as p, i (p.id)}
+	{#if marking && pano}
+		<div class="picture" bind:clientWidth={shownWidth}>
+			<svg bind:this={svg} viewBox="0 0 {width} {height}" role="group" aria-label="The pitch, with our fitted lines and the points you can move">
+				{#if q.backgroundUrl}<image href={q.backgroundUrl} {width} {height} />{/if}
+				{#each q.lines as line, i (i)}
+					<path class="fit halo" d={d(line)} stroke-width={5 * scale} />
+					<path class="fit" d={d(line)} stroke-width={2.5 * scale} />
+				{/each}
+				{#each points as p, i (p.name)}
 					{#if !p.skipped}
 						<g
 							class="handle"
-							class:selected={selected === p.id}
-							transform="translate({p.x} {p.y})"
+							class:selected={selected === p.name}
+							class:moved={p.moved}
+							transform="translate({x(p.yaw)} {y(p.pitch)})"
 							role="button"
 							tabindex="0"
-							aria-label="{p.label}: drag, or move with the arrow keys"
-							onpointerdown={(e) => down(e, p.id)}
-							onpointermove={(e) => move(e, p.id)}
+							aria-label="{label(p.name)}: drag, or move with the arrow keys"
+							onpointerdown={(e) => down(e, p.name)}
+							onpointermove={(e) => move(e, p.name)}
 							onpointerup={() => (dragging = null)}
 							onpointercancel={() => (dragging = null)}
-							onkeydown={(e) => key(e, p.id)}
-							onfocus={() => (selected = p.id)}
+							onkeydown={(e) => key(e, p.name)}
+							onfocus={() => (selected = p.name)}
 						>
 							<circle class="grab" r={22 * scale} />
 							<circle class="ring" r={11 * scale} stroke-width={2.5 * scale} />
@@ -125,17 +142,20 @@
 						</g>
 					{/if}
 				{/each}
-			{/if}
-		</svg>
-	</div>
+			</svg>
+		</div>
+	{:else if q.overlayUrl}
+		<img class="overlay" src={q.overlayUrl} alt="The pitch with our fitted lines drawn on it in red" />
+	{/if}
 </div>
 
 {#if marking}
 	<p class="muted small swipe">Swipe the picture sideways to reach the rest of the pitch.</p>
 	<ol class="points">
-		{#each points as p (p.id)}
-			<li class:selected={selected === p.id}>
-				<button type="button" class="name" onclick={() => (selected = p.id)}>{p.label}</button>
+		{#each points as p (p.name)}
+			<li class:selected={selected === p.name}>
+				<button type="button" class="name" onclick={() => (selected = p.name)}>{label(p.name)}</button>
+				{#if p.moved && !p.skipped}<span class="muted small">moved</span>{/if}
 				<label class="small">
 					<input type="checkbox" bind:checked={p.skipped} disabled={busy} /> Can't see it
 				</label>
@@ -144,31 +164,32 @@
 	</ol>
 {/if}
 
-{#if q.paint}
-	<fieldset class="paint">
-		<legend>{q.paint.text}</legend>
-		{#each q.paint.options as o (o.id)}
-			<label><input type="radio" name="paint" value={o.id} bind:group={paint} disabled={busy} /> {o.label}</label>
-		{/each}
-	</fieldset>
-{/if}
-
 <div class="actions">
 	{#if marking}
-		<button class="btn btn-primary" onclick={send} disabled={busy || !moved}>
+		<button class="btn btn-primary" onclick={send} disabled={busy || !changed}>
 			{busy ? 'Sending…' : 'Use these points'}
 		</button>
-		<button class="btn" onclick={() => (marking = false)} disabled={busy}>Back</button>
-		{#if !moved}<span class="muted small">Move a point first.</span>{/if}
+		{#if !mustMark}<button class="btn" onclick={() => (marking = false)} disabled={busy}>Back</button>{/if}
+		{#if !changed}<span class="muted small">Move a point first.</span>{/if}
 	{:else}
-		<button class="btn btn-primary" onclick={approve} disabled={busy}>
-			{busy ? 'Saving…' : 'Yes, the lines are right'}
-		</button>
-		<button class="btn" onclick={() => (marking = true)} disabled={busy}>No, let me fix them</button>
+		{#if !mustMark}
+			<button class="btn btn-primary" onclick={approve} disabled={busy}>
+				{busy ? 'Saving…' : 'Yes, the lines are right'}
+			</button>
+		{/if}
+		{#if pano}
+			<button class="btn" onclick={() => (marking = true)} disabled={busy}>No, let me fix them</button>
+		{/if}
 	{/if}
 </div>
 
 <style>
+	.problem {
+		background: var(--danger-bg);
+		color: var(--danger);
+		border-radius: 8px;
+		padding: 0.5rem 0.75rem;
+	}
 	.frame {
 		overflow-x: auto;
 		border-radius: var(--radius-sm);
@@ -179,23 +200,24 @@
 	.frame.marking .picture {
 		min-width: 720px;
 	}
-	svg {
+	svg,
+	.overlay {
 		display: block;
 		width: 100%;
 		height: auto;
+	}
+	svg {
 		touch-action: pan-x pan-y;
 	}
 	.fit {
 		fill: none;
-		stroke: #ffd21f;
+		stroke: #ff5a4d;
 		stroke-linecap: round;
+		stroke-dasharray: 2 3;
 	}
 	.fit.halo {
 		stroke: rgb(0 0 0 / 45%);
-	}
-	.fit.faded {
-		stroke-dasharray: 2 3;
-		opacity: 0.75;
+		stroke-dasharray: none;
 	}
 	.handle {
 		cursor: grab;
@@ -215,6 +237,9 @@
 	}
 	.dot {
 		fill: #d6301f;
+	}
+	.handle.moved .ring {
+		stroke: #7fd4ff;
 	}
 	.handle.selected .ring,
 	.handle:focus-visible .ring {
@@ -264,15 +289,10 @@
 		border: 0;
 		padding: 0;
 		cursor: pointer;
-		margin-right: 0.75rem;
+		margin-right: 0.5rem;
 	}
-	.paint {
-		margin: 0.75rem 0 0;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem 1.25rem;
+	.points label {
+		margin-left: 0.5rem;
 	}
 	.actions {
 		display: flex;

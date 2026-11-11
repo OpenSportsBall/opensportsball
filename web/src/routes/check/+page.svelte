@@ -3,18 +3,21 @@
 <script lang="ts">
 	/**
 	 * The two checks a cloud job waits for between getting a game ready and
-	 * making its video: the pitch, then the kit groups. The engine wrote the
-	 * questions; this page only draws them and sends back the answers.
+	 * making its video: the pitch, then the kit groups (and first, when the
+	 * phones' views couldn't be matched up, which phone is on the left). The
+	 * engine wrote the questions and decides what is still open; this page
+	 * only draws them and sends back the answers.
 	 */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import CamerasCheck from '#lib/components/CamerasCheck.svelte';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
 	import KitsCheck from '#lib/components/KitsCheck.svelte';
 	import PitchCheck from '#lib/components/PitchCheck.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import { session } from '#lib/session.svelte.ts';
-	import type { CheckName, Job, JobQuestions, KitsAnswer, PitchAnswer } from '#lib/types.ts';
+	import type { CheckAnswer, CheckName, Job, JobQuestions } from '#lib/types.ts';
 
 	const WAIT_MS = 2_000;
 
@@ -30,13 +33,15 @@
 	/** The check being redone, to say what we are waiting for. */
 	let redoing = $state<CheckName | null>(null);
 	/** Who was tapped before a group was split, kept for when the groups come back. */
-	let marked = $state<KitsAnswer['wrong']>([]);
+	let marked = $state<Record<string, string[]>>({});
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let destroyed = false;
 
 	/** The check to show: the pitch first, then the kits. */
 	const current = $derived<CheckName | null>(
-		job?.status !== 'needs_answers' ? null : job.checks.pitch === 'open' ? 'pitch' : job.checks.kits === 'open' ? 'kits' : null
+		job?.status !== 'needs_answers'
+			? null
+			: ((['cameras', 'pitch', 'kits'] as const).find((c) => job?.checks[c] === 'open' && questions?.[c]) ?? null)
 	);
 	const waiting = $derived(job?.phase === 'prepare' && ['queued', 'preparing', 'refitting'].includes(job.status));
 
@@ -57,14 +62,14 @@
 		if (!destroyed && (waiting || (error && !job))) timer = setTimeout(load, WAIT_MS);
 	}
 
-	async function answer(a: PitchAnswer | KitsAnswer) {
+	async function answer(a: CheckAnswer) {
 		if (!job) return;
 		busy = true;
 		error = null;
 		try {
 			const next = await session.api.answerCheck(job, a);
-			if (next.status === 'refitting') redoing = a.check;
-			if (a.check === 'kits') marked = a.wrong;
+			if (next.status === 'refitting') redoing = a.question;
+			if (a.question === 'kits') marked = a.tapped ?? {};
 			job = next;
 			await load();
 			window.scrollTo({ top: 0 });
@@ -115,14 +120,17 @@
 			<div class="card"><p>This game is being processed on your own computer. Answer its checks in the app there.</p></div>
 		{:else if current && questions}
 			<section class="card">
-				{#if current === 'pitch'}
+				{#if current === 'cameras' && questions.cameras}
+					<h2>Which way round are the phones?</h2>
+					<CamerasCheck q={questions.cameras} {busy} onanswer={answer} />
+				{:else if current === 'pitch' && questions.pitch}
 					<h2>Did we find the pitch?</h2>
 					{#key questions.pitch.round}
 						<PitchCheck q={questions.pitch} {busy} onanswer={answer} />
 					{/key}
-				{:else}
+				{:else if questions.kits}
 					<h2>Did we sort the kits?</h2>
-					{#key `${questions.kits.round}/${questions.kits.groups.length}`}
+					{#key questions.kits.round}
 						<KitsCheck q={questions.kits} {busy} {marked} onanswer={answer} />
 					{/key}
 				{/if}
@@ -133,7 +141,9 @@
 					{#if job.status !== 'refitting'}
 						Getting the game ready
 					{:else if redoing === 'kits'}
-						Splitting that group
+						Sorting the groups again
+					{:else if redoing === 'cameras'}
+						Lining up the two phones
 					{:else}
 						Redrawing the pitch from your points
 					{/if}

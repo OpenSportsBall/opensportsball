@@ -363,15 +363,17 @@ account (`DELETE /me`) deletes everything under `contributions/<accountId>/`.
 A job is one attempt to turn a `ready` recording into the followed game
 video: in the cloud (AWS Batch), or on the user's own computer, where the
 app that runs it writes the same record. The plan is in
-[CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md); the shapes are in
-`shared/schemas/` (`job`, `questions`, `answers`, `progress`).
+[CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md). The job's shape is
+`shared/schemas/job.schema.json`; the questions and answers are the
+engine's own files (`engine-questions`, `engine-answers`), the ones the
+Mac app draws, passed through.
 
 A cloud job is two Batch jobs with the user in between:
 
 ```
 queued -> preparing -> needs_answers -> queued -> running -> done
                         ^        |
-                        +- refitting   (pitch marked, or a kit group split)
+                        +- refitting   (the engine works on an answer and asks again)
 ```
 
 `failed` and `cancelled` end it from any state. `phase` (`prepare` or
@@ -387,7 +389,7 @@ The job, as every route here returns it:
   "where": "cloud | local",
   "status": "queued | preparing | needs_answers | refitting | running | done | failed | cancelled",
   "phase": "prepare | run",
-  "checks": {"pitch": "open | answered", "kits": "open | answered"},
+  "checks": {"cameras": "open | answered", "pitch": "open | answered", "kits": "open | answered"},
   "progress": {"stage": "ball", "fraction": 0.4, "etaSeconds": 5400, "at": "..."},
   "error": {"code": "footage_corrupt", "message": "..."},
   "stale": false,
@@ -396,6 +398,11 @@ The job, as every route here returns it:
 }
 ```
 
+- `checks` are the engine's questions and whether each is still open.
+  `cameras` is there only when the engine asked it (the two phones' views
+  couldn't be stitched), and is answered before the other two. The engine
+  decides what is open: after each prepare or refit the server reads
+  `pending` from its questions.
 - `progress` and `error` are null when there is none. `error.code` is the
   engine's own (e.g. `footage_corrupt`, `not_enough_disk`) or one of the
   server's: `engine_failed`, `engine_no_result` (it ended without its
@@ -428,54 +435,66 @@ Cancels a job that has not ended, stopping its Batch job. → `204`.
 `409 conflict`: it has already ended.
 
 ### `GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions`
-The engine's questions for the two checks, once it has written them.
-→ `200`
+The engine's questions, once it has written them. → `200`
 
 ```json
 {
   "status": "needs_answers",
   "checks": {"pitch": "open", "kits": "open"},
   "expiresAt": "...",
-  "questions": { "schemaVersion": 1, "jobId": "...", "pitch": {...}, "kits": {...} }
+  "questions": { "schemaVersion": 1, "pending": ["pitch", "kits"], "pitch": {...}, "kits": {...} }
 }
 ```
 
-- `questions` is the engine's `questions/questions.json`
-  (`shared/schemas/questions.schema.json`) with a signed `imageUrl` added
-  next to every `image`, good until `expiresAt` (12 hours). An `image`
-  that points outside the questions folder gets `imageUrl: null`.
+- `questions` is the engine's `questions.json`
+  (`shared/schemas/engine-questions.schema.json`), unchanged except that
+  every field naming a picture (`image`, `overlay`, `background`, `sheet`,
+  `mainLeft`, `secondaryLeft`) gets a signed link next to it: `imageUrl`,
+  `overlayUrl` and so on, good until `expiresAt` (12 hours). A path that
+  points outside the questions folder gets null.
+- Angles are panorama degrees. `pitch.panorama` says how they map to the
+  background picture's pixels.
 - `409 conflict`: no questions yet. `503 downloads_unavailable`: no footage
   distribution.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers`
-Answers one check. Body: `"check": "pitch"` or `"kits"`, plus that check's
-answer from `shared/schemas/answers.schema.json`. → `200` the job.
+Answers one question. Body: `"question": "cameras"`, `"pitch"` or
+`"kits"`, plus that question's answer from
+`shared/schemas/engine-answers.schema.json`. → `200` the job.
 
 ```json
-{"check": "pitch", "round": 1, "approved": true}
-{"check": "pitch", "round": 1, "approved": false,
- "keypoints": [{"id": "near_left_corner", "x": 120.5, "y": 410}, {"id": "far_left_corner", "skipped": true}]}
-{"check": "kits", "round": 1, "wrong": [{"groupId": "g0", "personId": "p07"}], "structure": {"kind": "ok"}}
-{"check": "kits", "round": 1, "wrong": [], "structure": {"kind": "merge", "groups": ["g1", "g2"]}}
-{"check": "kits", "round": 1, "wrong": [], "structure": {"kind": "split", "group": "g2"}}
+{"question": "pitch", "round": 1, "approve": true}
+{"question": "pitch", "round": 1,
+ "points": {"left corner flag": {"yaw": -79.2, "pitch": 21.0},
+            "right corner flag": {"skipped": true}, "halfway far end": {"fromFit": true}}}
+{"question": "kits", "round": 1, "tapped": {"0": ["c0_07"]}}
+{"question": "kits", "round": 1, "merge": [[0, 7], [1, 2]], "keeperOrReferee": [5, 6], "notKit": [3, 4]}
+{"question": "kits", "round": 1, "split": 3}
+{"question": "cameras", "round": 1, "leftPhone": "secondary"}
 ```
 
 - `round` is the `round` of the question being answered.
-- An approved pitch, or kit groups that are `ok` or merged, close that
-  check. When both are closed the run job is submitted (`status: queued`,
-  `phase: run`).
-- A pitch that is not approved, or a group to split, submits a refit
-  (`status: refitting`). The check stays open, and the engine writes that
-  question again with the next `round`. A group can be split once
-  (`canSplit` in the questions).
-- The answers are kept as `answers.json` in the job's output folder, for
-  the engine.
-- `400 invalid_answers`: it does not match the schema, or names a point,
-  group or person the questions do not have. `409 conflict`: the job is
-  not waiting for answers, the check is already answered, or `round` is
-  not the current one (reload the questions). `403 forbidden`: a local
-  job, which is answered in its app. `503 cloud_unavailable`: the next
-  Batch job could not be submitted; the job goes back to `needs_answers`.
+- An approved pitch, or kit groups without a split, close that check
+  here. When none is open the run job is submitted (`status: queued`,
+  `phase: run`), and the engine applies the answers before it starts. If
+  it will not use one (for example fewer than two kit groups are left),
+  it writes its questions again with the reason in `problem`, and the job
+  returns to `needs_answers`.
+- Pitch points, a group to split, or the cameras submit a refit
+  (`status: refitting`): the engine redraws and asks again with the next
+  `round`. If nothing is left to ask afterwards, the run starts by itself.
+- `share` (pitch and kits: whether the user agrees to share the result to
+  improve the models) is recorded as false unless the body says true.
+- The answers are kept as `answers.json` in the job's output folder, as
+  the engine reads them.
+- `400 invalid_answers`: it does not match the schema, names a point,
+  group or person the question does not have, approves a pitch that must
+  be marked first (`approveAllowed: false`), or splits a second time.
+  `409 conflict`: the job is not waiting for answers, the check is already
+  answered or not asked yet, or `round` is not the current one (reload the
+  questions). `403 forbidden`: a local job, which is answered in its app.
+  `503 cloud_unavailable`: the next Batch job could not be submitted; the
+  job goes back to `needs_answers`.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/status`
 For the app running a local job. Body: `{"status", "progress"?, "error"?,
@@ -754,8 +773,10 @@ Body: `{"gameId", "recordingId", "fileName", "uploadId", "parts": [{"partNumber"
 Cloud processing runs one container image, the engine's, as AWS Batch
 jobs. This repository never contains the engine
 ([LICENSING.md](LICENSING.md)): the two agree on what follows, and on the
-files in `shared/schemas/`. `infra/stub-engine/` is a stand-in that keeps
-this contract and reads no footage.
+`engine-*` files in `shared/schemas/`. The real one is
+opensportsball-processing's `processing/spikes/cloud.py` and
+`packaging/cloud/`; `infra/stub-engine/` is a stand-in that keeps the same
+contract and reads no footage.
 
 The container is started with one argument, `prepare`, `refit` or `run`,
 and these variables:
@@ -768,7 +789,7 @@ and these variables:
 | `OSB_FOOTAGE_PREFIX` | `accounts/.../recordings/<recordingId>/`: `manifest.json` and the segments (read only) |
 | `OSB_OUTPUT_PREFIX` | `outputs/.../jobs/<jobId>/` (read and write) |
 | `OSB_WORK_PREFIX` | `work/.../jobs/<jobId>/` (read and write) |
-| `OSB_CHECK` | `refit` only: `pitch` or `kits`, the check to redo |
+| `OSB_REQUIRE_GPU` | `1` on the GPU queue: stop at once (`no_gpu`) rather than work without one |
 
 Its role can read `accounts/` and `models/`, read and write `outputs/`
 and `work/`, and get and update table items whose partition key starts
@@ -779,9 +800,13 @@ What each command must leave behind, and how it ends:
 
 | Command | Reads | Must write under the output prefix | Time limit |
 |---|---|---|---|
-| `prepare` | the manifest and footage | `questions/questions.json` and its images | 1 hour |
-| `refit` | `answers.json`, and what it kept in `work/` | `questions/questions.json` again, with the redone check's `round` one higher | 15 minutes |
-| `run` | the footage and `answers.json` | `game.mp4` | 12 hours |
+| `prepare` | the manifest and footage | `questions/questions.json` (engine-questions) and every picture it names, at `questions/<its path>` | 1 hour |
+| `refit` | `answers.json` (engine-answers), and what it kept in `work/` | `questions/questions.json` again | 15 minutes |
+| `run` | the footage and `answers.json` | `game.mp4` (and `result.json`: the engine's done event); or `questions/questions.json` again, if it will not use an answer | 12 hours |
+
+`pending` in the questions is what the server goes by: after `prepare` or
+`refit`, an empty list starts the run; after a `run` that left no video,
+a non-empty one sends the job back to the user.
 
 - **Exit 0** when the file is written. The server then looks for the file
   and moves the job on; exit 0 without it is `engine_no_result`.

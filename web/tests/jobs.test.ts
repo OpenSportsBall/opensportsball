@@ -47,46 +47,61 @@ describe('processing a game in the cloud (mock API)', () => {
 		expect(job.status).toBe('needs_answers');
 		expect((await api.getGame(GAME)).recordings.find((r) => r.recordingId === FRESH)!.job!.status).toBe('needs_answers');
 
-		// The pitch: the first fit is off, so the points are moved and it is asked again.
+		// The pitch: the first fit is off, so a point is moved and it is asked again.
 		let q = (await api.jobQuestions(job)).questions;
-		expect(q.pitch.round).toBe(1);
-		expect(q.pitch.imageUrl).toMatch(/^data:image\/svg\+xml,/);
-		expect(q.pitch.lines.length).toBeGreaterThan(3);
-		const corner = q.pitch.keypoints.find((k) => k.id === 'far_right_corner')!;
+		expect(q.pending).toEqual(['pitch', 'kits']);
+		let pitch = q.pitch!;
+		expect(pitch.round).toBe(1);
+		expect(pitch.overlayUrl).toMatch(/^data:image\/svg\+xml,/);
+		expect(pitch.backgroundUrl).toMatch(/^data:image\/svg\+xml,/);
+		expect(pitch.panorama).toMatchObject({ degPerPx: 0.1, yawRange: [-100, 100] });
+		expect(pitch.lines.length).toBeGreaterThan(3);
+		// The engine works in panorama degrees: the far right corner really is at pixel (1480, 250).
+		const corner = { yaw: -100 + 1480 * 0.1, pitch: -20 + 250 * 0.1 };
+		expect(pitch.points['far right corner flag']).not.toEqual(corner);
 		job = await api.answerCheck(job, {
-			check: 'pitch',
+			question: 'pitch',
 			round: 1,
-			approved: false,
-			keypoints: [{ id: corner.id, x: 1480, y: 250 }, { id: 'halfway_far', skipped: true }]
+			points: { 'far right corner flag': corner, 'halfway far end': { skipped: true }, 'left corner flag': { fromFit: true } }
 		});
 		expect(job.status).toBe('refitting');
-		await expect(api.answerCheck(job, { check: 'pitch', round: 1, approved: true })).rejects.toSatisfy(refuses(409));
+		await expect(api.answerCheck(job, { question: 'pitch', round: 1, approve: true })).rejects.toSatisfy(refuses(409));
 		advance(MOCK_JOB_MS.refit);
 		job = await reload(job);
 		expect(job).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open', kits: 'open' } });
 		q = (await api.jobQuestions(job)).questions;
-		expect(q.pitch.round).toBe(2);
-		expect(q.pitch.keypoints.find((k) => k.id === corner.id)).toMatchObject({ x: 1480, y: 250 });
+		pitch = q.pitch!;
+		expect(pitch.round).toBe(2);
+		expect(pitch.points['far right corner flag']).toEqual(corner);
 		// An answer to the old drawing is refused; the new one is approved.
-		await expect(api.answerCheck(job, { check: 'pitch', round: 1, approved: true })).rejects.toSatisfy(refuses(409));
-		job = await api.answerCheck(job, { check: 'pitch', round: 2, approved: true });
+		await expect(api.answerCheck(job, { question: 'pitch', round: 1, approve: true })).rejects.toSatisfy(refuses(409));
+		job = await api.answerCheck(job, { question: 'pitch', round: 2, approve: true });
 		expect(job).toMatchObject({ status: 'needs_answers', checks: { pitch: 'answered', kits: 'open' } });
 
 		// The kits: one group is two kits, so it is split and shown again, once.
-		expect(q.kits.groups.map((g) => g.id)).toEqual(['g0', 'g1', 'g2']);
-		expect(q.kits.groups[0].people[0].imageUrl).toMatch(/^data:image\/svg\+xml,/);
-		job = await api.answerCheck(job, { check: 'kits', round: 1, wrong: [], structure: { kind: 'split', group: 'g2' } });
+		let kits = q.kits!;
+		expect(kits.groups.map((g) => [g.component, g.proposed])).toEqual([
+			[0, 'A'],
+			[1, 'B'],
+			[2, 'other'],
+			[3, 'keeperOrReferee'],
+			[4, 'other']
+		]);
+		expect(kits.groups[0].crops[0]).toMatchObject({ id: 'c0_00', imageUrl: expect.stringMatching(/^data:image\/svg\+xml,/) });
+		job = await api.answerCheck(job, { question: 'kits', round: 1, split: 2 });
 		expect(job.status).toBe('refitting');
 		advance(MOCK_JOB_MS.refit);
 		job = await reload(job);
-		q = (await api.jobQuestions(job)).questions;
-		expect(q.kits).toMatchObject({ round: 2, canSplit: false });
-		expect(q.kits.groups.map((g) => g.id)).toEqual(['g0', 'g1', 'g2a', 'g2b']);
+		kits = (await api.jobQuestions(job)).questions.kits!;
+		expect(kits).toMatchObject({ round: 2, splitAllowed: false });
+		expect(kits.groups).toHaveLength(6);
+		await expect(api.answerCheck(job, { question: 'kits', round: 2, split: 0 })).rejects.toSatisfy(refuses(400));
 		job = await api.answerCheck(job, {
-			check: 'kits',
+			question: 'kits',
 			round: 2,
-			wrong: [{ groupId: 'g0', personId: 'p07' }, { groupId: 'g1', personId: 'p03' }],
-			structure: { kind: 'ok' }
+			tapped: { '0': ['c0_07'] },
+			keeperOrReferee: [4],
+			notKit: [5]
 		});
 		expect(job).toMatchObject({ status: 'queued', phase: 'run', checks: { pitch: 'answered', kits: 'answered' } });
 

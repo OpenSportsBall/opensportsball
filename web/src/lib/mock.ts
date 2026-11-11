@@ -35,7 +35,7 @@ import type {
 	RecordingDevice,
 	RecordingStatus
 } from './types';
-import { firstFit, firstGroups, kitsQuestion, pitchQuestion, splitGroup, type KitGroup, type PitchPoints } from './mockScene';
+import { applyAnswer, firstChecks, kitsQuestion, pendingChecks, pitchQuestion, type MockChecks } from './mockScene';
 import { VIDEO_BASE64 } from './mockVideo';
 
 /** How long a mock job spends in each state. */
@@ -74,11 +74,8 @@ interface MockJob {
 	/** When its current status began. */
 	since: number;
 	hasQuestions: boolean;
-	pitchPoints: PitchPoints;
-	pitchRound: number;
-	groups: KitGroup[];
-	kitsRound: number;
-	canSplit: boolean;
+	/** Where the "engine" has got to with the checks. */
+	engine: MockChecks;
 }
 
 interface MockGame {
@@ -218,11 +215,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			},
 			since: at,
 			hasQuestions: false,
-			pitchPoints: firstFit(),
-			pitchRound: 1,
-			groups: firstGroups(),
-			kitsRound: 1,
-			canSplit: true
+			engine: firstChecks()
 		};
 		jobs.push(j);
 		return j;
@@ -609,35 +602,25 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				expiresAt: iso(now() + 12 * 3600_000),
 				questions: {
 					schemaVersion: 1,
-					jobId: j.jobId,
-					engineVersion: j.engineVersion ?? undefined,
-					pitch: pitchQuestion(m.pitchPoints, m.pitchRound),
-					kits: kitsQuestion(m.groups, m.kitsRound, m.canSplit)
+					pending: pendingChecks(m.engine),
+					pitch: pitchQuestion(m.engine),
+					kits: kitsQuestion(m.engine)
 				}
 			};
 			return json(200, q);
 		}
 		if (method === 'PUT' && action === 'answers') {
-			const check = body?.check as 'pitch' | 'kits';
-			if (check !== 'pitch' && check !== 'kits') return fail(400, 'bad_request', '"check" must be "pitch" or "kits".');
+			const check = body?.question as 'pitch' | 'kits';
+			if (check !== 'pitch' && check !== 'kits') return fail(400, 'bad_request', '"question" must be "cameras", "pitch" or "kits".');
 			if (j.status !== 'needs_answers') return fail(409, 'conflict', 'This job is not waiting for answers.');
 			if (j.checks[check] !== 'open') return fail(409, 'conflict', 'This check is already answered.');
-			const round = check === 'pitch' ? m.pitchRound : m.kitsRound;
-			if (body.round !== round) {
+			if (body.round !== m.engine[check].round) {
 				return fail(409, 'conflict', 'These questions have changed since you opened them. Reload and answer again.');
 			}
-			let refit = false;
-			if (check === 'pitch' && body.approved === false) {
-				for (const k of body.keypoints ?? []) if (!k.skipped && m.pitchPoints[k.id]) m.pitchPoints[k.id] = [k.x, k.y];
-				m.pitchRound++;
-				refit = true;
-			} else if (check === 'kits' && body.structure?.kind === 'split') {
-				if (!m.canSplit) return fail(400, 'invalid_answers', 'A group can only be split once.');
-				m.groups = splitGroup(m.groups, body.structure.group);
-				m.canSplit = false;
-				m.kitsRound++;
-				refit = true;
+			if (check === 'kits' && body.split != null && !m.engine.kits.splitAllowed) {
+				return fail(400, 'invalid_answers', 'A group can only be split once.');
 			}
+			const refit = applyAnswer(m.engine, body);
 			m.since = now();
 			j.updatedAt = iso(now());
 			if (refit) j.status = 'refitting';

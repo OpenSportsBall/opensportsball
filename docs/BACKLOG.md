@@ -105,10 +105,11 @@ Footage and logs from these tests decide several items below.
 - [ ] On-demand GPU quota: request G instances in `us-west-2`, the
       fallback when Spot has none (the Spot quota was granted 2026-11-10).
 - [ ] Cloud processing ([CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)).
-      Steps 1-3 (job record and API, Batch stack with a stub engine, the
-      checks on the website) are built but not deployed. Next: deploy,
-      push the stub image and take a game through it (the plan's "Left
-      from steps 1-3"), then step 4, the engine on CUDA.
+      Steps 1-3 are deployed with the stub engine. Step 4 (the real
+      engine's wrapper and image, and the engine's own question and answer
+      formats here) is built and tested locally, not deployed and not run
+      on a GPU. Next: the plan's "Left" list, starting with a recording
+      through the stub and a one-chunk GPU run.
 - [ ] Privacy policy: say what cloud processing keeps (the game video and
       the checks' pictures, 180 days from when they are made, deleted with
       the recording). Before cloud processing is on for anyone but us.

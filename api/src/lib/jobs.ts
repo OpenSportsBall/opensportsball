@@ -10,7 +10,17 @@
  *
  *   queued -> preparing -> needs_answers -> queued -> running -> done
  *                           ^        |
- *                           +- refitting (pitch marked, or a kit group split)
+ *                           +- refitting (an answer the engine has to work on:
+ *                              the pitch marked, a kit group split, the cameras)
+ *
+ * The questions and answers are the engine's own files
+ * (shared/schemas/engine-questions and engine-answers, the ones the Mac
+ * app draws): this server passes them through. The engine decides what is
+ * still to ask: `pending` in its questions.json. An answer that needs no
+ * work (the pitch approved, the kit groups settled) only closes the check
+ * here; the run starts when nothing is open, and the engine applies the
+ * answers first. If it then refuses one, it writes its questions again and
+ * the job goes back to waiting.
  *
  * The API submits the Batch jobs and owns the record. The engine's
  * container only writes files under the job's output folder and, if it
@@ -29,7 +39,7 @@ import { GetObjectCommand, HeadObjectCommand, NotFound, NoSuchKey, PutObjectComm
 import { DeleteCommand, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsModule from 'ajv-formats';
-import answersSchema from '../../../shared/schemas/answers.schema.json' with { type: 'json' };
+import answersSchema from '../../../shared/schemas/engine-answers.schema.json' with { type: 'json' };
 import { deployedFootageSigner } from './footageUrls.js';
 import { ApiError, badRequest, conflict, forbidden, notFound } from './http.js';
 import type { RecordingItem } from './recordings.js';
@@ -48,7 +58,10 @@ export type JobStatus =
   | 'failed'
   | 'cancelled';
 export type Command = 'prepare' | 'run' | 'refit';
-export type Check = 'pitch' | 'kits';
+/** The engine's questions. `cameras` is asked only when the phones' views
+ *  couldn't be stitched, and then before the other two. */
+export type Check = 'cameras' | 'pitch' | 'kits';
+const CHECKS: Check[] = ['cameras', 'pitch', 'kits'];
 export type Where = 'cloud' | 'local';
 
 const FINAL: JobStatus[] = ['done', 'failed', 'cancelled'];
@@ -77,7 +90,7 @@ export interface JobItem {
   where: Where;
   status: JobStatus;
   phase: 'prepare' | 'run';
-  checks: Record<Check, 'open' | 'answered'>;
+  checks: Partial<Record<Check, 'open' | 'answered'>>;
   progress?: JobProgress | null;
   error?: JobError | null;
   engineVersion?: string | null;
@@ -398,12 +411,12 @@ export async function deleteJobs(acct: string, skPrefix: string) {
 
 // --- Questions and answers ---------------------------------------------------
 
-const questionsKey = (job: JobItem) =>
-  `${jobPrefix('outputs', job.accountId, job.gameId, job.recordingId, job.jobId)}questions/questions.json`;
-const answersKey = (job: JobItem) =>
-  `${jobPrefix('outputs', job.accountId, job.gameId, job.recordingId, job.jobId)}answers.json`;
-export const videoKey = (job: JobItem) =>
-  `${jobPrefix('outputs', job.accountId, job.gameId, job.recordingId, job.jobId)}game.mp4`;
+const outputKey = (job: JobItem, name: string) =>
+  `${jobPrefix('outputs', job.accountId, job.gameId, job.recordingId, job.jobId)}${name}`;
+/** The engine's questions.json; every picture it names is next to it, at its path. */
+const questionsKey = (job: JobItem) => outputKey(job, 'questions/questions.json');
+const answersKey = (job: JobItem) => outputKey(job, 'answers.json');
+export const videoKey = (job: JobItem) => outputKey(job, 'game.mp4');
 
 const isMissing = (e: unknown) =>
   e instanceof NoSuchKey || e instanceof NotFound || (e as { name?: string })?.name === 'NoSuchKey' || (e as { name?: string })?.name === 'NotFound';
@@ -427,31 +440,55 @@ async function head(key: string) {
   }
 }
 
+/** What this server reads of the engine's questions.json
+ *  (shared/schemas/engine-questions.schema.json). */
 interface Questions {
-  pitch: { round: number; keypoints: { id: string }[]; paint?: { options: { id: string }[] } };
-  kits: { round: number; canSplit: boolean; groups: { id: string; people: { id: string }[] }[] };
+  pending: Check[];
+  cameras?: { round: number; status: string };
+  pitch?: { round: number; status: string; approveAllowed?: boolean; points: Record<string, unknown> };
+  kits?: { round: number; status: string; splitAllowed: boolean; groups: { component: number; crops: { id: string }[] }[] };
   [k: string]: unknown;
 }
 
-/** Adds a signed `imageUrl` next to every `image` (a path relative to the
- *  questions folder). The engine's files are not trusted with where they
- *  point: a path that leaves the folder is dropped. */
-function withImageUrls(node: unknown, sign: (relative: string) => string): unknown {
-  if (Array.isArray(node)) return node.map((n) => withImageUrls(n, sign));
+/** The checks as the engine left them: open while it lists the question as pending. */
+function checksFrom(q: Questions): JobItem['checks'] {
+  const checks: JobItem['checks'] = {};
+  for (const c of CHECKS) if (q[c]) checks[c] = q.pending.includes(c) ? 'open' : 'answered';
+  if (q.pending.includes('cameras')) {
+    // Asked alone; the other two follow once the cameras are known.
+    checks.pitch = 'open';
+    checks.kits = 'open';
+  }
+  return checks;
+}
+
+/** The fields of the questions that name a picture, relative to the recording. */
+const PICTURE_KEYS = new Set(['image', 'overlay', 'background', 'sheet', 'mainLeft', 'secondaryLeft']);
+
+/** Adds a signed `<field>Url` next to every picture the questions name.
+ *  The engine's files are not trusted with where they point: a path that
+ *  leaves the folder gets null. `panorama` describes the background's
+ *  pixels and names no file of its own. */
+function withPictureUrls(node: unknown, sign: (relative: string) => string): unknown {
+  if (Array.isArray(node)) return node.map((n) => withPictureUrls(n, sign));
   if (typeof node !== 'object' || node === null) return node;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(node)) {
-    out[k] = withImageUrls(v, sign);
-    if (k === 'image' && typeof v === 'string') {
+    if (k === 'panorama') {
+      out[k] = v;
+      continue;
+    }
+    out[k] = withPictureUrls(v, sign);
+    if (PICTURE_KEYS.has(k) && typeof v === 'string') {
       const safe = v.length > 0 && !v.startsWith('/') && !v.split('/').some((part) => part === '..' || part === '');
-      out.imageUrl = safe ? sign(v) : null;
+      out[`${k}Url`] = safe ? sign(v) : null;
     }
   }
   return out;
 }
 
-/** The engine's questions with links to their images, and which checks are
- *  still open. 409 before the engine has written any. */
+/** The engine's questions with links to their pictures, and which checks
+ *  are still open. 409 before the engine has written any. */
 export async function questionsView(job: JobItem) {
   const q = await readJson<Questions>(questionsKey(job));
   if (!q) throw conflict('This job has no questions yet.');
@@ -462,7 +499,7 @@ export async function questionsView(job: JobItem) {
     status: job.status,
     checks: job.checks,
     expiresAt: expiresAt.toISOString(),
-    questions: withImageUrls(q, (relative) => signer.url(dir + relative, expiresAt)),
+    questions: withPictureUrls(q, (relative) => signer.url(dir + relative, expiresAt)),
   };
 }
 
@@ -472,57 +509,74 @@ const addFormats = ((addFormatsModule as unknown as { default?: unknown }).defau
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 ajv.addSchema(answersSchema);
-const validators = {
-  pitch: ajv.getSchema(`${answersSchema.$id}#/$defs/pitch`)!,
-  kits: ajv.getSchema(`${answersSchema.$id}#/$defs/kits`)!,
-};
+const validators = Object.fromEntries(
+  CHECKS.map((c) => [c, ajv.getSchema(`${answersSchema.$id}#/properties/${c}`)!]),
+) as Record<Check, NonNullable<ReturnType<typeof ajv.getSchema>>>;
 
+interface CamerasAnswer {
+  round: number;
+  leftPhone: 'main' | 'secondary';
+}
 interface PitchAnswer {
   round: number;
-  approved: boolean;
-  keypoints?: { id: string }[];
-  paint?: string;
+  approve?: true;
+  points?: Record<string, unknown>;
+  share?: boolean;
 }
 interface KitsAnswer {
   round: number;
-  wrong: { groupId: string; personId: string }[];
-  structure: { kind: 'ok' } | { kind: 'merge'; groups: string[] } | { kind: 'split'; group: string };
+  tapped?: Record<string, string[]>;
+  merge?: number[][];
+  split?: number | null;
+  keeperOrReferee?: number[];
+  notKit?: number[];
+  share?: boolean;
 }
+type Answer = CamerasAnswer | PitchAnswer | KitsAnswer;
 
 const invalid = (message: string) => new ApiError(400, 'invalid_answers', message);
 
-/** Rules the schema can't express: the answer names things the questions have. */
-function checkAgainstQuestions(check: Check, answer: PitchAnswer | KitsAnswer, q: Questions) {
-  if (answer.round !== q[check].round) {
+/** Rules the schema can't express: the answer is to the question as it
+ *  stands, and names things the question has. */
+function checkAgainstQuestions(check: Check, answer: Answer, q: Questions) {
+  const asked = q[check] as { round: number } | undefined;
+  if (!asked || !q.pending.includes(check) || answer.round !== asked.round) {
     throw conflict('These questions have changed since you opened them. Reload and answer again.');
   }
   if (check === 'pitch') {
     const a = answer as PitchAnswer;
-    const known = new Set(q.pitch.keypoints.map((k) => k.id));
-    const ids = (a.keypoints ?? []).map((k) => k.id);
-    if (ids.some((id) => !known.has(id))) throw invalid('An answer names a pitch point the questions do not have.');
-    if (new Set(ids).size !== ids.length) throw invalid('A pitch point is answered twice.');
-    if (a.paint !== undefined && !q.pitch.paint?.options.some((o) => o.id === a.paint)) {
-      throw invalid('That line colour is not one of the choices.');
+    if (a.approve && q.pitch!.approveAllowed === false) {
+      throw invalid('The pitch has to be marked before it can be approved: the cameras are fitted from the marked points.');
     }
-    return;
+    const unknown = Object.keys(a.points ?? {}).filter((name) => !(name in q.pitch!.points));
+    if (unknown.length) throw invalid(`The question has no pitch point called "${unknown[0]}".`);
+  } else if (check === 'kits') {
+    const a = answer as KitsAnswer;
+    const crops = new Map(q.kits!.groups.map((g) => [g.component, new Set(g.crops.map((c) => c.id))]));
+    const named = [...(a.merge ?? []).flat(), ...(a.keeperOrReferee ?? []), ...(a.notKit ?? []), ...(a.split != null ? [a.split] : [])];
+    if (named.some((c) => !crops.has(c))) throw invalid('An answer names a kit group the question does not have.');
+    for (const [group, ids] of Object.entries(a.tapped ?? {})) {
+      const have = crops.get(Number(group));
+      if (!have || ids.some((id) => !have.has(id))) throw invalid('An answer names a person the question does not have.');
+    }
+    if (a.split != null && !q.kits!.splitAllowed) throw invalid('A group can only be split once.');
   }
-  const a = answer as KitsAnswer;
-  const people = new Map(q.kits.groups.map((g) => [g.id, new Set(g.people.map((p) => p.id))]));
-  if (a.wrong.some((w) => !people.get(w.groupId)?.has(w.personId))) {
-    throw invalid('An answer names a person the questions do not have.');
-  }
-  const named = a.structure.kind === 'merge' ? a.structure.groups : a.structure.kind === 'split' ? [a.structure.group] : [];
-  if (named.some((g) => !people.has(g))) throw invalid('An answer names a kit group the questions do not have.');
-  if (a.structure.kind === 'split' && !q.kits.canSplit) throw invalid('A group can only be split once.');
 }
 
-/** Records the answer to one check. An approved pitch or settled kit groups
- *  close the check, and the run starts when both are closed. A marked pitch
- *  or a group to split starts a refit, which asks that check again. */
+/** Whether the engine has to work on an answer before anything else can be
+ *  asked: it draws the pitch or the groups again from it. */
+const needsEngine = (check: Check, a: Answer) =>
+  check === 'cameras' || (check === 'pitch' && !(a as PitchAnswer).approve) || (check === 'kits' && (a as KitsAnswer).split != null);
+
+/** Records the answer to one question (body: `question`, plus that
+ *  question's answer from engine-answers.schema.json). An approved pitch
+ *  or settled kit groups close the check, and the run starts when none is
+ *  open. A marked pitch, a group to split or the cameras start a refit,
+ *  after which the engine's questions say what is still open. */
 export async function answerCheck(job: JobItem, input: Record<string, unknown>) {
-  const { check, ...answer } = input;
-  if (check !== 'pitch' && check !== 'kits') throw badRequest('"check" must be "pitch" or "kits".');
+  const { question, ...answer } = input;
+  const check = question as Check;
+  if (!CHECKS.includes(check)) throw badRequest('"question" must be "cameras", "pitch" or "kits".');
   if (job.where !== 'cloud') throw forbidden('A job on your own computer is answered in its app.');
   if (job.status !== 'needs_answers') throw conflict('This job is not waiting for answers.');
   if (job.checks[check] !== 'open') throw conflict('This check is already answered.');
@@ -537,12 +591,15 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
   }
   const q = await readJson<Questions>(questionsKey(job));
   if (!q) throw conflict('This job has no questions yet.');
-  const a = answer as unknown as PitchAnswer | KitsAnswer;
+  const a = answer as unknown as Answer;
   checkAgainstQuestions(check, a, q);
+  // Sharing a result to improve the models is the user's own choice, made
+  // where they are asked: never by leaving a field out.
+  if (check !== 'cameras' && (a as PitchAnswer).share === undefined) (a as PitchAnswer).share = false;
 
-  const refit = check === 'pitch' ? !(a as PitchAnswer).approved : (a as KitsAnswer).structure.kind === 'split';
+  const refit = needsEngine(check, a);
   const checks = { ...job.checks, [check]: refit ? 'open' : 'answered' } as JobItem['checks'];
-  const run = !refit && checks.pitch === 'answered' && checks.kits === 'answered';
+  const run = !refit && Object.values(checks).every((c) => c === 'answered');
 
   // The state first, so two answers at once can't both start a Batch job.
   const next: Partial<JobItem> = refit
@@ -556,8 +613,8 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
 
   try {
     const now = new Date().toISOString();
-    const answers = (await readJson<Record<string, unknown>>(answersKey(job))) ?? { schemaVersion: 1, jobId: job.jobId };
-    answers[check] = { ...a, answeredAt: now };
+    const answers = (await readJson<Record<string, unknown>>(answersKey(job))) ?? {};
+    answers[check] = a;
     await s3.send(
       new PutObjectCommand({
         Bucket: config.bucket,
@@ -568,7 +625,7 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
     );
     if (refit || run) {
       const command: Command = refit ? 'refit' : 'run';
-      const batchJobId = await submit(job, command, refit ? { OSB_CHECK: check } : {});
+      const batchJobId = await submit(job, command);
       await transition(job, [refit ? 'refitting' : 'queued'], { batchJobId, batchCommand: command, batchSubmittedAt: now });
     }
   } catch (e) {
@@ -647,6 +704,23 @@ export interface BatchStateChange {
 
 export type JobEvent = { job: JobItem; kind: 'check' | 'done' | 'failed' };
 
+/** Nothing is left to ask after a prepare or a refit: the run starts. */
+async function startRun(job: JobItem, checks: JobItem['checks']): Promise<JobEvent | null> {
+  const now = new Date().toISOString();
+  if (!(await transition(job, ['queued', 'preparing', 'refitting'], { status: 'queued', phase: 'run', checks }, ['progress']))) {
+    return null;
+  }
+  try {
+    const batchJobId = await submit(job, 'run');
+    await transition(job, ['queued'], { batchJobId, batchCommand: 'run', batchSubmittedAt: now });
+    return null;
+  } catch (e) {
+    console.error('could not submit the run', e);
+    const error = { code: 'machine_failed', message: 'The video could not be started. Try again.' };
+    return (await finish(job, 'failed', error)) ? { job: { ...job, error }, kind: 'failed' } : null;
+  }
+}
+
 /** Follows a Batch job of ours: started, or ended with what it left in S3.
  *  Returns what the user should hear about, if anything. Safe to run twice
  *  for the same event. */
@@ -681,15 +755,26 @@ export async function onBatchStateChange(d: BatchStateChange): Promise<JobEvent 
   if (isFinal(job.status)) return null;
 
   if (d.status === 'SUCCEEDED') {
-    if (command === 'run') {
-      if (await head(videoKey(job))) return (await finish(job, 'done')) ? { job, kind: 'done' } : null;
-    } else {
-      const q = await head(questionsKey(job));
-      // A refit has to have written its questions again.
-      const fresh =
-        q && (command === 'prepare' || !job.batchSubmittedAt || (q.LastModified?.getTime() ?? 0) >= Math.floor(Date.parse(job.batchSubmittedAt) / 1000) * 1000);
-      if (fresh) {
-        const moved = await transition(job, ['queued', 'preparing', 'refitting'], { status: 'needs_answers' }, ['progress']);
+    if (command === 'run' && (await head(videoKey(job)))) {
+      return (await finish(job, 'done')) ? { job, kind: 'done' } : null;
+    }
+    // prepare, a refit, or a run the engine would not start (it refused an
+    // answer): its questions, written by this Batch job, say what is open.
+    const written = await head(questionsKey(job));
+    const fresh =
+      written &&
+      (command === 'prepare' || !job.batchSubmittedAt || (written.LastModified?.getTime() ?? 0) >= Math.floor(Date.parse(job.batchSubmittedAt) / 1000) * 1000);
+    const q = fresh ? await readJson<Questions>(questionsKey(job)) : undefined;
+    if (q && Array.isArray(q.pending)) {
+      const checks = checksFrom(q);
+      if (q.pending.length === 0 && command !== 'run') return startRun(job, checks);
+      if (q.pending.length > 0) {
+        const moved = await transition(
+          job,
+          ['queued', 'preparing', 'refitting', 'running'],
+          { status: 'needs_answers', phase: 'prepare', checks },
+          ['progress'],
+        );
         return moved && command === 'prepare' ? { job, kind: 'check' } : null;
       }
     }

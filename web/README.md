@@ -14,7 +14,7 @@ S3 + CloudFront, and talks to the API described in
 | `/callback` | Finishes the Cognito sign-in redirect. |
 | `/games` | Games, newest first, with recording count and status. |
 | `/game?id=<gameId>` | Recordings with per-phone upload progress, and for each ready recording its processing: **Process in the cloud** (accounts an admin has switched it on for), progress, Cancel, the link to the checks, then the video to watch and download. Refreshes every 15 s while anything is uploading, every 4 s while a machine is working. |
-| `/check?game=…&recording=…&job=…` | The two checks a cloud job waits for: the pitch (approve the drawn lines, or drag the named points and have it redrawn) and the kit groups (tap who doesn't belong; say whether groups should be merged or one split). Draws what the engine wrote; see `docs/API.md`, "Processing jobs". |
+| `/check?game=…&recording=…&job=…` | The questions a cloud job waits for, drawn from the engine's own files as the Mac app draws them: the pitch (approve the drawn lines, or drag the named points and have it redrawn), the kit groups (tap who doesn't belong; say what each group is and whether groups should be merged or one split), and, when the phones' views couldn't be matched up, which phone is on the left. See `docs/API.md`, "Processing jobs". |
 | `/devices` | Linked phones, Unlink, and **Link a phone** (QR code, `ABCD-EFGH` code, expiry countdown; polls every 3 s until the phone shows up). |
 | `/admin` | Admins only (Cognito `admins` group; the nav link shows for them): totals, then every account with status, phones, games, recordings and storage, sortable and filterable; a row expands to the account id, phones, the **Cloud processing** switch, oldest footage, and the account's games and recordings with their size, each with a two-step **Delete** (also for footage left with no record). See `api/README.md` to add an admin. |
 
@@ -126,7 +126,7 @@ src/
     session.svelte.ts         app-wide state (config, auth, API client)
     types.ts                  API shapes from docs/API.md
     components/               StatusBadge, ProgressBar, ErrorBanner,
-                              JobPanel, PitchCheck, KitsCheck
+                              JobPanel, PitchCheck, KitsCheck, CamerasCheck
   routes/                     /, /callback, /games, /game, /check, /devices
 tests/                        vitest suites
 ```

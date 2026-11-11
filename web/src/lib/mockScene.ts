@@ -2,96 +2,73 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Mock mode only (lib/mock.ts): the made-up game the checks are shown for.
- * The same scene the stub engine writes (infra/stub-engine/scene.mjs): a
- * drawn pitch whose first "fit" is off at the right-hand end, and three kit
- * groups, one of them two kits mixed together. Pictures are data URLs.
+ * Mock mode only (lib/mock.ts): the made-up game the checks are shown for,
+ * in the engine's formats. The same scene the stub engine writes
+ * (infra/stub-engine/scene.mjs): a drawn pitch whose first "fit" is off at
+ * the right-hand end, and kit groups, one of them two kits mixed together.
+ * Pictures are data URLs.
  */
-import type { KitsQuestion, PitchKeypoint, PitchQuestion, Point } from './types';
+import type { KitGroup, KitsAnswer, KitsQuestion, Panorama, PitchAnswer, PitchQuestion } from './types';
 
-export const WIDTH = 2000;
-export const HEIGHT = 600;
+const WIDTH = 2000;
+const HEIGHT = 600;
+const PANORAMA: Panorama = { image: 'background.svg', degPerPx: 0.1, yawRange: [-100, 100], pitchRange: [-20, 40] };
 
-export type PitchPoints = Record<string, Point>;
-
-const TRUE_POINTS: PitchPoints = {
-	near_left_corner: [150, 520],
-	near_right_corner: [1850, 520],
-	far_left_corner: [520, 250],
-	far_right_corner: [1480, 250],
-	halfway_near: [1000, 520],
-	halfway_far: [1000, 250]
-};
-
-const LABELS: Record<string, string> = {
-	near_left_corner: 'Near left corner',
-	near_right_corner: 'Near right corner',
-	far_left_corner: 'Far left corner',
-	far_right_corner: 'Far right corner',
-	halfway_near: 'Halfway line, near side',
-	halfway_far: 'Halfway line, far side'
-};
-
-/** The first guess: right at the left end, off at the right. */
-export const firstFit = (): PitchPoints => ({
-	...structuredClone(TRUE_POINTS),
-	near_right_corner: [1905, 536],
-	far_right_corner: [1552, 228],
-	halfway_far: [1022, 242]
+type Px = [number, number];
+const toDeg = ([x, y]: Px) => ({
+	yaw: Math.round((PANORAMA.yawRange[0] + x * PANORAMA.degPerPx) * 1000) / 1000,
+	pitch: Math.round((PANORAMA.pitchRange[0] + y * PANORAMA.degPerPx) * 1000) / 1000
 });
+const toPx = (p: { yaw: number; pitch: number }): Px => [
+	(p.yaw - PANORAMA.yawRange[0]) / PANORAMA.degPerPx,
+	(p.pitch - PANORAMA.pitchRange[0]) / PANORAMA.degPerPx
+];
 
-function pitchLines(p: PitchPoints): Point[][] {
-	return [
-		[p.near_left_corner, p.near_right_corner],
-		[p.far_left_corner, p.far_right_corner],
-		[p.near_left_corner, p.far_left_corner],
-		[p.near_right_corner, p.far_right_corner],
-		[p.halfway_near, p.halfway_far]
-	];
-}
+const TRUE_POINTS: Record<string, Px> = {
+	'left corner flag': [150, 520],
+	'right corner flag': [1850, 520],
+	'far left corner flag': [520, 250],
+	'far right corner flag': [1480, 250],
+	'halfway near end': [1000, 520],
+	'halfway far end': [1000, 250]
+};
+
+const MARKINGS = [
+	['left corner flag', 'right corner flag'],
+	['far left corner flag', 'far right corner flag'],
+	['left corner flag', 'far left corner flag'],
+	['right corner flag', 'far right corner flag'],
+	['halfway near end', 'halfway far end']
+];
+const linesPx = (pts: Record<string, Px>): Px[][] => MARKINGS.map(([a, b]) => [pts[a], pts[b]]);
 
 const dataUrl = (svg: string) => `data:image/svg+xml,${encodeURIComponent(svg)}`;
-const path = (pts: Point[]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+const path = (pts: Px[]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+const stroke = (lines: Px[][], colour: string, width: number) =>
+	lines.map((l) => `<path d="${path(l)}" stroke="${colour}" stroke-width="${width}" fill="none" stroke-linecap="round"/>`).join('');
 
-function pitchSvg(): string {
-	const paint = pitchLines(TRUE_POINTS)
-		.map((l) => `<path d="${path(l)}" stroke="#f4f4ec" stroke-width="5" fill="none" stroke-linecap="round"/>`)
-		.join('');
+function pitchSvg(fit?: Record<string, Px>): string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}">
 <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9cc3e6"/><stop offset="1" stop-color="#dbe9f4"/></linearGradient>
 <linearGradient id="turf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f8a45"/><stop offset="1" stop-color="#2f6f37"/></linearGradient></defs>
 <rect width="${WIDTH}" height="200" fill="url(#sky)"/>
 <rect y="170" width="${WIDTH}" height="40" fill="#3c5a3a"/>
 <rect y="200" width="${WIDTH}" height="400" fill="url(#turf)"/>
-${paint}
+${stroke(linesPx(TRUE_POINTS), '#f4f4ec', 5)}
 <ellipse cx="1000" cy="372" rx="150" ry="52" stroke="#f4f4ec" stroke-width="5" fill="none"/>
+${fit ? stroke(linesPx(fit), '#e0261c', 4) : ''}
 <text x="24" y="44" font-family="sans-serif" font-size="28" fill="#1d3b5a">Mock data: a drawn pitch, not footage</text>
 </svg>`;
 }
 
-export function pitchQuestion(points: PitchPoints, round: number): PitchQuestion {
-	const keypoints: PitchKeypoint[] = Object.entries(points).map(([id, [x, y]]) => ({ id, label: LABELS[id], x, y }));
-	return {
-		round,
-		text:
-			'This is the pitch with our best guess at its lines drawn on it. Do the drawn lines sit on the painted lines? ' +
-			'If not, put each named point where it really is, or say you cannot see it.',
-		image: 'pitch.svg',
-		imageUrl: dataUrl(pitchSvg()),
-		width: WIDTH,
-		height: HEIGHT,
-		lines: pitchLines(points),
-		keypoints
-	};
-}
-
-type Kit = 'blue' | 'red' | 'green' | 'orange' | 'yellow';
+type Kit = 'blue' | 'red' | 'green' | 'orange' | 'yellow' | 'grey';
 const KITS: Record<Kit, [string, string]> = {
 	blue: ['#1f5fbf', '#1f5fbf'],
 	red: ['#c62828', '#c62828'],
 	green: ['#1b8a3a', '#f4f4ec'],
 	orange: ['#ef7d1a', '#ef7d1a'],
-	yellow: ['#f2c61f', '#222222']
+	yellow: ['#f2c61f', '#222222'],
+	grey: ['#8a8f98', '#8a8f98']
 };
 
 function personSvg(kit: Kit, n: number): string {
@@ -109,39 +86,104 @@ function personSvg(kit: Kit, n: number): string {
 }
 
 const PEOPLE = 12;
-export interface KitGroup {
-	id: string;
+interface MockGroup {
 	kits: Kit[];
+	people: number;
+	perMoment: number;
+	proposed: KitGroup['proposed'];
+}
+const all = (kit: Kit): Kit[] => Array.from({ length: PEOPLE }, () => kit);
+
+/** Where the engine has got to with the two checks. */
+export interface MockChecks {
+	pitch: { round: number; status: 'pending' | 'approved'; points: Record<string, Px> };
+	kits: { round: number; status: 'pending' | 'answered'; groups: MockGroup[]; splitAllowed: boolean };
 }
 
-/** Blue with one red player in it, red with the referee in it, and one
- *  group that is two kits (green and orange). */
-export const firstGroups = (): KitGroup[] => [
-	{ id: 'g0', kits: Array.from({ length: PEOPLE }, (_, i) => (i === 7 ? 'red' : 'blue')) },
-	{ id: 'g1', kits: Array.from({ length: PEOPLE }, (_, i) => (i === 3 ? 'yellow' : 'red')) },
-	{ id: 'g2', kits: Array.from({ length: PEOPLE }, (_, i) => (i % 2 ? 'orange' : 'green')) }
-];
+export const firstChecks = (): MockChecks => ({
+	pitch: {
+		round: 1,
+		status: 'pending',
+		// Right at the left end, off at the right.
+		points: {
+			...structuredClone(TRUE_POINTS),
+			'right corner flag': [1905, 536],
+			'far right corner flag': [1552, 228],
+			'halfway far end': [1022, 242]
+		}
+	},
+	kits: {
+		round: 1,
+		status: 'pending',
+		splitAllowed: true,
+		// Blue with one red player in it, red, one group that is two kits, the
+		// keepers and referee, and people who aren't players.
+		groups: [
+			{ kits: all('blue').map((k, i) => (i === 7 ? 'red' : k)), people: 412, perMoment: 10.6, proposed: 'A' },
+			{ kits: all('red'), people: 388, perMoment: 9.8, proposed: 'B' },
+			{ kits: all('green').map((k, i) => (i % 2 ? 'orange' : k)), people: 97, perMoment: 2.4, proposed: 'other' },
+			{ kits: all('yellow'), people: 61, perMoment: 1.6, proposed: 'keeperOrReferee' },
+			{ kits: all('grey'), people: 33, perMoment: 0.7, proposed: 'other' }
+		]
+	}
+});
 
-export function splitGroup(groups: KitGroup[], id: string): KitGroup[] {
-	return groups.flatMap((g) => {
-		const kinds = [...new Set(g.kits)];
-		if (g.id !== id || kinds.length < 2) return [g];
-		return kinds.slice(0, 2).map((kind, i) => ({ id: `${g.id}${'ab'[i]}`, kits: Array.from({ length: PEOPLE }, () => kind) }));
-	});
+export const pendingChecks = (st: MockChecks) => (['pitch', 'kits'] as const).filter((n) => st[n].status === 'pending');
+
+/** Applies an answer as the engine would. True when it had to work on it
+ *  (and asks that question again). */
+export function applyAnswer(st: MockChecks, a: PitchAnswer | KitsAnswer): boolean {
+	if (a.question === 'pitch') {
+		if ('approve' in a) {
+			st.pitch.status = 'approved';
+			return false;
+		}
+		for (const [name, p] of Object.entries(a.points)) if ('yaw' in p && st.pitch.points[name]) st.pitch.points[name] = toPx(p);
+		st.pitch.round++;
+		return true;
+	}
+	if (a.split != null) {
+		st.kits.groups = st.kits.groups.flatMap((g, c) => {
+			const kinds = [...new Set(g.kits)];
+			if (c !== a.split || kinds.length < 2) return [g];
+			return kinds.slice(0, 2).map((kind) => ({ kits: all(kind), people: Math.round(g.people / 2), perMoment: g.perMoment / 2, proposed: 'other' as const }));
+		});
+		st.kits.splitAllowed = false;
+		st.kits.round++;
+		return true;
+	}
+	st.kits.status = 'answered';
+	return false;
 }
 
-export function kitsQuestion(groups: KitGroup[], round: number, canSplit: boolean): KitsQuestion {
+export function pitchQuestion(st: MockChecks): PitchQuestion {
 	return {
-		round,
-		text:
-			'Each group should be one kit. Mark anyone who is in the wrong group or is not a player in kit. ' +
-			'Then say whether every kit has exactly one group, two groups are the same kit, or one group has two kits in it.',
-		canSplit,
-		groups: groups.map((g) => ({
-			id: g.id,
-			people: g.kits.map((kit, i) => {
-				const id = `p${String(i).padStart(2, '0')}`;
-				return { id, image: `kits/${g.id}/${id}.svg`, imageUrl: dataUrl(personSvg(kit, i)) };
+		round: st.pitch.round,
+		status: st.pitch.status,
+		background: 'pitch/background.svg',
+		backgroundUrl: dataUrl(pitchSvg()),
+		overlay: 'pitch/overlay.svg',
+		overlayUrl: dataUrl(pitchSvg(st.pitch.points)),
+		panorama: PANORAMA,
+		lines: linesPx(st.pitch.points).map((l) => l.map((p) => [toDeg(p).yaw, toDeg(p).pitch] as [number, number])),
+		points: Object.fromEntries(Object.entries(st.pitch.points).map(([name, p]) => [name, toDeg(p)]))
+	};
+}
+
+export function kitsQuestion(st: MockChecks): KitsQuestion {
+	return {
+		round: st.kits.round,
+		status: st.kits.status,
+		k: st.kits.groups.length,
+		splitAllowed: st.kits.splitAllowed,
+		groups: st.kits.groups.map((g, c) => ({
+			component: c,
+			people: g.people,
+			perMoment: g.perMoment,
+			proposed: g.proposed,
+			crops: g.kits.map((kit, n) => {
+				const id = `c${c}_${String(n).padStart(2, '0')}`;
+				return { id, image: `engine/crops/kits${st.kits.round}/${id}.svg`, imageUrl: dataUrl(personSvg(kit, n)) };
 			})
 		}))
 	};

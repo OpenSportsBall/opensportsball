@@ -579,11 +579,14 @@ export class OpenSportsBallStack extends cdk.Stack {
       engineImageTag: props.engineImageTag ?? 'stub',
       engineCompute: props.engineCompute ?? 'cpu',
     });
-    // The website's API starts the jobs. It, the admin API (deletes), and
-    // the two functions that can make a recording ready a second time may
-    // stop one.
-    webFn.addEnvironment('BATCH_JOBS', JSON.stringify(processing.jobs));
-    processing.grantSubmit(webFn);
+    // The website's API starts the jobs, and the job events function the
+    // run, once a refit leaves nothing to ask. The API, the admin API
+    // (deletes), and the two functions that can make a recording ready a
+    // second time may stop one.
+    for (const f of [webFn, jobsFn]) {
+      f.addEnvironment('BATCH_JOBS', JSON.stringify(processing.jobs));
+      processing.grantSubmit(f);
+    }
     for (const f of [webFn, adminFn, deviceFn, ingestFn]) processing.grantTerminate(f);
 
     // When a Batch job of ours starts or ends, the job record follows, and

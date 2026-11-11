@@ -36,7 +36,9 @@ export type JobStatus =
 	| 'done'
 	| 'failed'
 	| 'cancelled';
-export type CheckName = 'pitch' | 'kits';
+/** The engine's questions. `cameras` is asked only when the phones' views
+ *  couldn't be stitched, and then before the other two. */
+export type CheckName = 'cameras' | 'pitch' | 'kits';
 
 export interface Job {
 	schemaVersion: 1;
@@ -47,7 +49,7 @@ export interface Job {
 	status: JobStatus;
 	/** Up to the checks, or after them; tells the two `queued` states apart. */
 	phase: 'prepare' | 'run';
-	checks: Record<CheckName, 'open' | 'answered'>;
+	checks: Partial<Record<CheckName, 'open' | 'answered'>>;
 	progress: { stage: string; fraction: number; etaSeconds?: number | null; at?: string } | null;
 	error: { code: string; message: string } | null;
 	/** The recording became ready again (a second phone) after this started. */
@@ -58,40 +60,75 @@ export interface Job {
 	finishedAt: string | null;
 }
 
-/** A point in an image's pixels, origin top left. */
-export type Point = [number, number];
+// The engine's own questions and answers (shared/schemas/engine-questions and
+// engine-answers), as the API passes them through with a signed `...Url`
+// next to every picture. Angles are panorama degrees: yaw right +, pitch down +.
 
-export interface PitchKeypoint {
-	id: string;
-	label: string;
-	x: number;
-	y: number;
+/** The background picture's pixels: x = (yaw - yawRange[0]) / degPerPx,
+ *  y = (pitch - pitchRange[0]) / degPerPx. */
+export interface Panorama {
+	image: string;
+	degPerPx: number;
+	yawRange: [number, number];
+	pitchRange: [number, number];
+}
+
+export interface PitchPoint {
+	yaw: number;
+	pitch: number;
 }
 
 export interface PitchQuestion {
 	round: number;
-	text: string;
-	image: string;
-	/** Signed link to `image`; null if the engine named a file it may not. */
-	imageUrl: string | null;
-	width: number;
-	height: number;
-	lines: Point[][];
-	keypoints: PitchKeypoint[];
-	paint?: { text: string; choice: string; options: { id: string; label: string; image?: string; imageUrl?: string | null }[] };
+	status: 'pending' | 'approved';
+	/** The empty pitch; `overlay` is the same with the fitted lines drawn on. */
+	background: string;
+	backgroundUrl: string | null;
+	overlay: string;
+	overlayUrl: string | null;
+	panorama?: Panorama | null;
+	/** Each fitted marking as a polyline of [yaw, pitch]. */
+	lines: [number, number][][];
+	/** Named keypoints where the fit puts them: what a correction starts from. */
+	points: Record<string, PitchPoint>;
+	/** False when the pitch has to be marked before it can be approved. */
+	approveAllowed?: boolean;
+	/** Why the last answer wasn't accepted. */
+	problem?: string;
 }
 
-export interface KitPerson {
+export interface KitCrop {
 	id: string;
 	image: string;
 	imageUrl: string | null;
 }
 
+export interface KitGroup {
+	/** The group's number in answers. */
+	component: number;
+	people: number;
+	perMoment: number;
+	/** The engine's guess. A and B are the two sides, in no order. */
+	proposed: 'A' | 'B' | 'keeperOrReferee' | 'other';
+	crops: KitCrop[];
+}
+
 export interface KitsQuestion {
 	round: number;
-	text: string;
-	canSplit: boolean;
-	groups: { id: string; people: KitPerson[] }[];
+	status: 'pending' | 'answered';
+	k: number;
+	splitAllowed: boolean;
+	problem?: string;
+	groups: KitGroup[];
+}
+
+/** Asked only when the phones' views couldn't be stitched: which order of
+ *  the phones shows the pitch in one piece. */
+export interface CamerasQuestion {
+	round: number;
+	status: 'pending' | 'answered';
+	panoramas: { mainLeft: string; mainLeftUrl: string | null; secondaryLeft: string; secondaryLeftUrl: string | null };
+	reason?: string;
 }
 
 /** GET .../jobs/{jobId}/questions */
@@ -99,27 +136,42 @@ export interface JobQuestions {
 	status: JobStatus;
 	checks: Job['checks'];
 	expiresAt: string;
-	questions: { schemaVersion: 1; jobId: string; engineVersion?: string; pitch: PitchQuestion; kits: KitsQuestion };
+	questions: {
+		schemaVersion: 1;
+		pending: CheckName[];
+		cameras?: CamerasQuestion;
+		pitch?: PitchQuestion;
+		kits?: KitsQuestion;
+	};
 }
+
+export type PitchPointAnswer = { yaw: number; pitch: number } | { fromFit: true } | { skipped: true };
 
 export type PitchAnswer =
-	| { check: 'pitch'; round: number; approved: true; paint?: string }
-	| {
-			check: 'pitch';
-			round: number;
-			approved: false;
-			keypoints: ({ id: string; x: number; y: number } | { id: string; skipped: true })[];
-			paint?: string;
-	  };
-
-export type KitStructure = { kind: 'ok' } | { kind: 'merge'; groups: string[] } | { kind: 'split'; group: string };
+	| { question: 'pitch'; round: number; approve: true }
+	| { question: 'pitch'; round: number; points: Record<string, PitchPointAnswer> };
 
 export interface KitsAnswer {
-	check: 'kits';
+	question: 'kits';
 	round: number;
-	wrong: { groupId: string; personId: string }[];
-	structure: KitStructure;
+	/** Per group (its component number), the crops tapped as not belonging. */
+	tapped?: Record<string, string[]>;
+	/** Sets of groups that are the same kit. */
+	merge?: number[][];
+	/** A group that holds two kits. */
+	split?: number;
+	/** Only when the user changed a group's role; otherwise the engine keeps its guess. */
+	keeperOrReferee?: number[];
+	notKit?: number[];
 }
+
+export interface CamerasAnswer {
+	question: 'cameras';
+	round: number;
+	leftPhone: 'main' | 'secondary';
+}
+
+export type CheckAnswer = PitchAnswer | KitsAnswer | CamerasAnswer;
 
 /** POST .../jobs/{jobId}/downloads */
 export interface JobVideo {
