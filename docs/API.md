@@ -102,6 +102,14 @@ them: `GET /games`, `GET /games/{gameId}`, `POST .../downloads`, and the
 contributions. Its refresh token lasts 30 days, like the website's, so a
 game can be downloaded and processed overnight without signing in again.
 
+The `osb` command (packages/osb_core, `bin/osb.dart`) is the same client
+with no window: `osb sign-in` opens managed login in the person's own
+browser and listens on this computer for the answer, at
+`http://localhost:<port>/callback` on the first free port of 47161-47163
+(the Desktop client allows exactly those). It keeps its tokens in a file
+only its owner can read, apart from the app's, and calls the same routes
+(`osb games`, `osb game`, `osb download`).
+
 ## Upload permission link
 
 The website's game page shows a link and its QR code for a phone that

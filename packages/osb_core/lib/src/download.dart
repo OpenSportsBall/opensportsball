@@ -123,6 +123,18 @@ class FootageDownloader {
     }
   }
 
+  Future<void> _saving = Future.value();
+
+  /// Writes the record of checked files. The workers finish files at the
+  /// same time: their writes go one after another, each whole (two at once
+  /// could leave the older list, a finished file missing from it).
+  Future<void> _saveVerified(Map<String, Object?> verified) =>
+      _saving = _saving.catchError((Object _) {}).then((_) async {
+        final tmp = File('${_verifiedFile.path}.tmp');
+        await tmp.writeAsString(jsonEncode(verified));
+        await tmp.rename(_verifiedFile.path);
+      });
+
   /// Fresh links (re-asked when within 30 minutes of expiring, or [force]).
   Future<DownloadLinks> _fresh({bool force = false}) async {
     final l = _links;
@@ -228,14 +240,14 @@ class FootageDownloader {
         }
         final st = await dest.stat();
         verified[f.objectKey] = {'bytes': f.bytes, 'modified': st.modified.millisecondsSinceEpoch, 'sha256': expected};
-        await _verifiedFile.writeAsString(jsonEncode(verified));
+        await _saveVerified(verified);
         done += f.bytes;
         filesDone++;
         report(null);
       }
     }
 
-    await _verifiedFile.writeAsString(jsonEncode(verified));
+    await _saveVerified(verified);
     Future<void> guarded() async {
       try {
         await worker();

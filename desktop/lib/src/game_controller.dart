@@ -67,14 +67,6 @@ const usualChunkSeconds = 3320;
 
 String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
 
-/// The folder a game's recording goes in: `<work>/<date time> <game id>`.
-String recordingFolder(String work, GameSummary g, String recordingId, {required bool onlyRecording}) {
-  final t = g.when.toLocal();
-  String two(int v) => v.toString().padLeft(2, '0');
-  final name = '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}.${two(t.minute)} ${g.gameId.substring(0, 8)}';
-  return onlyRecording ? '$work/$name' : '$work/$name/${recordingId.substring(0, 8)}';
-}
-
 class GameController extends ChangeNotifier {
   GameController({required this.summary, required this.session, required this.settings, required this.onSignedOut});
 

@@ -55,9 +55,7 @@ class Settings extends ChangeNotifier {
 
   /// Where each game's footage and results go (~100 GB a game).
   String get workFolder =>
-      _values['workFolder'] as String? ??
-      Platform.environment['OSB_WORK_FOLDER'] ??
-      '${Platform.environment['HOME'] ?? '/tmp'}/Movies/OpenSportsBall';
+      _values['workFolder'] as String? ?? defaultWorkFolder();
 
   /// The engine's launcher. Unset: the one inside the app, or $OSB_ENGINE.
   String? get enginePath => _values['enginePath'] as String?;

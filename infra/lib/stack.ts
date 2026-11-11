@@ -35,6 +35,12 @@ import { loginBrandingAssets, loginBrandingSettings } from './login-branding.js'
 export const APP_LOGIN_CALLBACK = 'opensportsball://auth';
 /** Where managed login returns to the desktop (Mac) app. */
 export const DESKTOP_LOGIN_CALLBACK = 'opensportsball://desktop-auth';
+/** Where managed login returns to for the `osb` command, which listens on
+ *  this computer for its sign-in (packages/osb_core loopback_login.dart,
+ *  `loopbackLoginPorts`: keep the two the same). Cognito matches the whole
+ *  URL, so each port is listed; the command uses the first that is free. */
+export const DESKTOP_CLI_LOGIN_PORTS = [47161, 47162, 47163];
+export const DESKTOP_CLI_LOGIN_CALLBACKS = DESKTOP_CLI_LOGIN_PORTS.map((p) => `http://localhost:${p}/callback`);
 
 /** How long the phones' uploads stay in the footage bucket. The privacy
  *  policy (web/src/routes/privacy) states this number. */
@@ -308,7 +314,7 @@ export class OpenSportsBallStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
-        callbackUrls: [DESKTOP_LOGIN_CALLBACK],
+        callbackUrls: [DESKTOP_LOGIN_CALLBACK, ...DESKTOP_CLI_LOGIN_CALLBACKS],
         logoutUrls: [DESKTOP_LOGIN_CALLBACK],
       },
       accessTokenValidity: cdk.Duration.hours(1),
