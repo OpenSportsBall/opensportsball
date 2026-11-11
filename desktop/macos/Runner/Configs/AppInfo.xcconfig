@@ -25,7 +25,7 @@ PRODUCT_COPYRIGHT = Copyright © 2026 The OpenSportsBall Authors. Apache-2.0.
 // them (the private half is in the release Mac's Keychain). Release builds
 // check for updates; debug builds never do.
 OSB_UPDATE_FEED_URL = https:/$()/github.com/OpenSportsBall/opensportsball/releases/latest/download/appcast.xml
-OSB_UPDATE_PUBLIC_KEY =
+OSB_UPDATE_PUBLIC_KEY = Z96wVNXa5/livSt7QPepR6+D9DEiCUCGgHiO4Rg1n+Y=
 
 // The engine is built for Apple silicon only.
 EXCLUDED_ARCHS = x86_64

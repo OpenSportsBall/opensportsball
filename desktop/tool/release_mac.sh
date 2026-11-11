@@ -83,7 +83,11 @@ LIST="$OUT/machos.txt"
 find "$ENGINE" -type f -print0 | xargs -0 file -N -F $'\t' |
   awk -F'\t' '$1 !~ / \(for architecture / && $2 ~ /Mach-O/ && $2 !~ /object/ { print $1 "\t" ($2 ~ /executable/ ? "exe" : "lib") }' > "$LIST"
 echo "$(wc -l < "$LIST" | tr -d ' ') files"
-awk -F'\t' '$2=="lib" {print $1}' "$LIST" | tr '\n' '\0' | xargs -0 -n 20 -P 8 bash -c 'sign "$@"' _
+# One file first, alone: if the Keychain asks whether codesign may use the
+# key, that's one question ("Always Allow") instead of eight at once.
+FIRST=$(awk -F'\t' '$2=="lib" {print $1; exit}' "$LIST")
+sign "$FIRST"
+awk -F'\t' -v first="$FIRST" '$2=="lib" && $1!=first {print $1}' "$LIST" | tr '\n' '\0' | xargs -0 -n 20 -P 8 bash -c 'sign "$@"' _
 awk -F'\t' '$2=="exe" {print $1}' "$LIST" | while IFS= read -r f; do
   sign --entitlements "$ENGINE_ENT" "$f"
 done
