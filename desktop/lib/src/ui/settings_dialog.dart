@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../services.dart';
+import 'share_views.dart';
 
 class SettingsDialog extends StatefulWidget {
   const SettingsDialog({super.key, required this.settings});
@@ -57,14 +58,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
             const SizedBox(height: 16),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              value: widget.settings.shareLabels,
+              value: widget.settings.sharingAgreed,
               onChanged: (v) async {
-                await widget.settings.set('shareLabels', v ? true : null);
+                // Switching it on shows what is shared, to agree to.
+                if (v) {
+                  await showShareConsent(context, widget.settings);
+                } else {
+                  await widget.settings.setSharingAgreed(false);
+                }
                 if (mounted) setState(() {});
               },
-              title: const Text('Share the ball marks I make'),
+              title: const Text('Share what I check and mark, to improve OpenSportsBall'),
               subtitle: const Text(
-                'The pictures you mark the ball on (frames of your games) and the marks. Off: marking is locked.',
+                'Off: nothing more is sent, and marking the ball is locked. What was already shared stays until you '
+                'withdraw it, on its game here or on the website (Account).',
               ),
             ),
             const SizedBox(height: 8),

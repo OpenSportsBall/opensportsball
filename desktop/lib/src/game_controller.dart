@@ -15,6 +15,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:osb_core/osb_core.dart';
+import 'package:osb_core/osb_core.dart' as osb show withdrawShared;
 
 import 'services.dart';
 
@@ -226,6 +227,8 @@ class GameController extends ChangeNotifier {
     }
     await _runChecks();
     notifyListeners();
+    // What was agreed and not sent yet (the app was quit, or offline).
+    if (phase == Phase.readyToRun || phase == Phase.done) unawaited(sendAgreed());
   }
 
   void _takeStatus(EngineEvent status) {
@@ -401,18 +404,112 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  // --- sharing ----------------------------------------------------------------
+
+  /// What has been sent from this game, and whether the user withdrew it.
+  SentRecord? sent;
+
+  /// The result being sent now, and how far.
+  SendProgress? sending;
+  String? shareError;
+  Future<void>? _sendingNow;
+
+  List<String> get sharedNames => sent?.names ?? const [];
+  bool get shareStopped => sent?.stopped ?? false;
+
+  /// Sends what the user agreed to share and hasn't been sent as it now
+  /// stands: the pitch map and the kit groups (each check's own switch) and
+  /// the ball sets with marks. The engine lists them (`share`); nothing is
+  /// sent before the sharing wording is agreed, or after this game's
+  /// contributions were withdrawn. Never throws: [shareError] says what
+  /// went wrong, and the next call carries on.
+  Future<void> sendAgreed() => _sendingNow ??= _sendAgreed().whenComplete(() => _sendingNow = null);
+
+  Future<void> _sendAgreed() async {
+    final dir = folder, rec = recording;
+    if (dir == null || rec == null) return;
+    try {
+      sent = await SentRecord.read(dir);
+      if (!settings.sharingAgreed || shareStopped || !await _job.exists()) return;
+      final names = <String>[];
+      final failure = await _sideCommand(
+        ['share', _job.path],
+        onEvent: (e) {
+          if (e.event == 'share' && e.raw['path'] != null) names.add('${e.raw['name']}');
+        },
+      );
+      if (failure != null || names.isEmpty) return; // nothing to share yet
+      shareError = null;
+      await sendShared(
+        session: session,
+        recording: dir,
+        gameId: summary.gameId,
+        recordingId: rec.recordingId,
+        names: names,
+        onProgress: (p) {
+          sending = p;
+          notifyListeners();
+        },
+      );
+    } on SignedOut {
+      onSignedOut();
+    } on OsbException catch (e) {
+      shareError = e.message;
+    } on FileSystemException catch (e) {
+      shareError = 'A file to share couldn’t be read (${e.osError?.message ?? e.message}).';
+    } on Object catch (e) {
+      // Sending runs on its own, beside the game: whatever goes wrong is said here, not thrown.
+      shareError = 'Sharing went wrong ($e).';
+    } finally {
+      sending = null;
+      try {
+        sent = await SentRecord.read(dir);
+      } on FileSystemException {
+        // the folder went away
+      }
+      notifyListeners();
+    }
+  }
+
+  /// Withdraws everything sent from this game, for good, and stops sending
+  /// from it.
+  Future<void> withdrawShared() async {
+    final dir = folder;
+    if (dir == null) return;
+    await _sendingNow;
+    shareError = null;
+    try {
+      await osb.withdrawShared(session: session, recording: dir);
+    } on SignedOut {
+      onSignedOut();
+    } on OsbException catch (e) {
+      shareError = e.message;
+    }
+    sent = await SentRecord.read(dir);
+    notifyListeners();
+  }
+
+  /// Shares this game again after a withdrawal.
+  Future<void> shareAgain() async {
+    final dir = folder;
+    if (dir == null) return;
+    await resumeSharing(dir);
+    await sendAgreed();
+  }
+
   // --- ball labels ------------------------------------------------------------
 
   /// A short engine command beside whatever else is running (`label` and
   /// `share` only read the game's files and write under engine/labels and
   /// engine/share). Returns what went wrong, or null.
-  Future<String?> _sideCommand(List<String> args) async {
+  Future<String?> _sideCommand(List<String> args, {void Function(EngineEvent)? onEvent}) async {
     final engine = settings.findEngine();
     if (engine == null) return 'No processing engine found. Choose it in Settings.';
     final run = await EngineRun.start(EngineCommand.packaged(engine), args);
     String? failure;
     final sub = run.events.listen((e) {
       if (e.event == 'error') failure = e.message;
+      onEvent?.call(e);
     });
     final exit = await run.exitCode;
     await sub.cancel();
@@ -434,15 +531,13 @@ class GameController extends ChangeNotifier {
   }
 
   /// Stores [labels] with the set (the engine writes them in the formats
-  /// training reads) and lists the set's files for sharing. Returns the set
-  /// as it now stands.
+  /// training reads) and sends the set as it now stands. Returns the set.
   Future<BallLabelSet> saveBallLabels(BallLabelSet set, Map<String, BallLabel> labels) async {
     if (labels.isNotEmpty) {
       final file = await set.writeAnswers(labels);
-      final failure =
-          await _sideCommand(['label', _job.path, '--answers', file.path]) ??
-          await _sideCommand(['share', _job.path, '--kinds', 'ball']);
+      final failure = await _sideCommand(['label', _job.path, '--answers', file.path]);
       if (failure != null) throw OsbException(failure);
+      unawaited(sendAgreed());
     }
     return (await BallLabelSet.read(set.folder)) ?? set;
   }
@@ -462,6 +557,7 @@ class GameController extends ChangeNotifier {
     ], onEvent: _onStep);
     if (exit == EngineExit.ok) {
       await _loadQuestions();
+      if (phase == Phase.readyToRun) unawaited(sendAgreed()); // the checks are answered
     } else {
       phase = await File('${folder!.path}/engine/questions.json').exists() ? Phase.questions : Phase.needsPrepare;
       if (phase == Phase.questions) questions = await EngineQuestions.read(folder!);
@@ -498,6 +594,7 @@ class GameController extends ChangeNotifier {
     _powerTimer = null;
     if (exit == EngineExit.ok) {
       phase = Phase.done;
+      unawaited(sendAgreed());
     } else if (exit == EngineExit.needsAnswers) {
       await _loadQuestions();
     } else if (exit == EngineExit.stopped) {

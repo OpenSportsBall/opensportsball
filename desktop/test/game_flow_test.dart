@@ -22,7 +22,17 @@ const gameId = '11111111-2222-3333-4444-555555555555';
 const recId = '99999999-8888-7777-6666-555555555555';
 final seg = Uint8List.fromList(List.generate(5000, (i) => i % 256));
 
-Session fakeServer({String status = 'ready'}) {
+/// What the stand-in API holds of the contributions sent to it.
+class Shared {
+  /// Contribution id to its name, for those not withdrawn.
+  final live = <String, String>{};
+
+  /// Every file that arrived, as `<contribution id>/<path>`.
+  final files = <String>{};
+  int _n = 0;
+}
+
+Session fakeServer({String status = 'ready', Shared? shared}) {
   final sha = sha256.convert(seg).toString();
   final manifest = {
     'gameId': gameId,
@@ -38,7 +48,7 @@ Session fakeServer({String status = 'ready'}) {
   };
   Future<http.StreamedResponse> json(Object o) async =>
       http.StreamedResponse(Stream.value(utf8.encode(jsonEncode(o))), 200);
-  final client = MockClient.streaming((req, _) async {
+  final client = MockClient.streaming((req, body) async {
     final p = req.url.path;
     if (p == '/games/$gameId') {
       return json({
@@ -69,6 +79,31 @@ Session fakeServer({String status = 'ready'}) {
           },
         ],
       });
+    }
+    if (shared != null && req.url.host == 's3.test') {
+      shared.files.add(p.substring(1));
+      return http.StreamedResponse(const Stream.empty(), 200);
+    }
+    if (shared != null && p == '/contributions' && req.method == 'POST') {
+      final b = jsonDecode(await body.bytesToString()) as Map;
+      expect(b['consentVersion'], 'share-v1');
+      expect(b['recordingId'], recId);
+      final doc = b['contribution'] as Map;
+      final id = 'c${++shared._n}';
+      shared.live[id] = doc['name'] as String;
+      return json({
+        'contributionId': id,
+        'status': 'uploading',
+        'uploads': [
+          for (final f in (doc['files'] as List).cast<Map>())
+            {'path': f['path'], 'url': 'https://s3.test/$id/${f['path']}', 'headers': <String, String>{}},
+        ],
+      });
+    }
+    if (shared != null && p.endsWith('/complete')) return json({'status': 'complete'});
+    if (shared != null && req.method == 'DELETE' && p.startsWith('/contributions/')) {
+      shared.live.remove(p.split('/').last);
+      return http.StreamedResponse(const Stream.empty(), 204);
     }
     if (p == '/manifest.json') return json(manifest);
     if (p == '/main/main_000.mp4') return http.StreamedResponse(Stream.value(seg), 200);
@@ -201,7 +236,84 @@ void main() {
       'b2': {'status': 'none'},
       'b1': {'status': 'unsure'},
     });
-    expect(File('${again.folder!.path}/engine/share/ball-1.json').existsSync(), isTrue);
+    // Sharing isn't agreed: nothing was listed for sending, nothing sent.
+    await again.sendAgreed();
+    expect(Directory('${again.folder!.path}/engine/share').existsSync(), isFalse);
+    expect(again.sharedNames, isEmpty);
+  });
+
+  test(
+    'what was agreed is sent: the pitch map, the kit groups by their switches, the ball marks; and withdrawn',
+    () async {
+      final shared = Shared();
+      final ctl = controller(fakeServer(shared: shared));
+      await ctl.open();
+      await ctl.startDownload();
+      await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
+      await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: false));
+      expect(ctl.phase, Phase.readyToRun);
+
+      // The checks are answered, but the sharing wording isn't agreed: nothing goes.
+      await ctl.sendAgreed();
+      expect(shared.live, isEmpty);
+      expect(File('${ctl.folder!.path}/engine/share/pitch.json').existsSync(), isFalse);
+
+      // Agreed: the pitch map goes; the kit groups' switch was off.
+      await settings.setSharingAgreed(true);
+      await ctl.sendAgreed();
+      expect(ctl.shareError, isNull);
+      expect(shared.live, {'c1': 'pitch'});
+      expect(shared.files, {'c1/pitch/pitch.json', 'c1/pitch/background.png'});
+      expect(ctl.sharedNames, ['pitch']);
+
+      // The run sends nothing new; ball marks go when they are saved, and
+      // again (the older copy withdrawn) when more are added.
+      await ctl.run();
+      await ctl.sendAgreed();
+      expect(shared.live, {'c1': 'pitch'});
+      final set = await ctl.ballSet();
+      var now = await ctl.saveBallLabels(set, {'b0': const BallAt(1000, 500)});
+      await ctl.sendAgreed();
+      expect(shared.live, {'c1': 'pitch', 'c2': 'ball-1'});
+      expect(shared.files, contains('c2/engine/labels/ball-1/images/b0.jpg'));
+      expect(shared.files, isNot(contains('c2/engine/labels/ball-1/images/b1.jpg'))); // not marked, not sent
+      now = await ctl.saveBallLabels(now, {'b1': const NoBall()});
+      await ctl.sendAgreed();
+      expect(shared.live, {'c1': 'pitch', 'c3': 'ball-1'});
+      expect(ctl.sharedNames, ['ball-1', 'pitch']);
+
+      // A new launch knows what was sent, and sends nothing twice.
+      final again = controller(fakeServer(shared: shared));
+      await again.open();
+      await again.sendAgreed();
+      expect(again.sharedNames, ['ball-1', 'pitch']);
+      expect(shared.live.keys, ['c1', 'c3']);
+
+      // Withdrawn: deleted from the project, and nothing more goes from this game.
+      await again.withdrawShared();
+      expect(shared.live, isEmpty);
+      expect(again.sharedNames, isEmpty);
+      expect(again.shareStopped, isTrue);
+      await again.saveBallLabels(now, {'b2': const BallUnsure()});
+      await again.sendAgreed();
+      expect(shared.live, isEmpty);
+      await again.shareAgain();
+      expect(shared.live.values, unorderedEquals(['pitch', 'ball-1']));
+    },
+  );
+
+  test('offline, sharing says so and the game carries on', () async {
+    final ctl = controller(fakeServer()); // no contributions routes: 404
+    await ctl.open();
+    await ctl.startDownload();
+    await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
+    await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: true));
+    await settings.setSharingAgreed(true);
+    await ctl.sendAgreed();
+    expect(ctl.shareError, contains('404'));
+    expect(ctl.sharedNames, isEmpty);
+    expect(ctl.phase, Phase.readyToRun);
+    expect(ctl.error, isNull);
   });
 
   test('a recording still uploading is not downloaded', () async {
