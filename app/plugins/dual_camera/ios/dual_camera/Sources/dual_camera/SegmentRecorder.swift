@@ -37,7 +37,9 @@ final class SegmentRecorder {
 
   private let settings: Settings
   private let queue: DispatchQueue
-  private let clock: CMClock
+  /// The capture clock that video timestamps are on. Asked for each time,
+  /// because the session's clock can change when its inputs change.
+  private let clock: () -> CMClock
   private let prepQueue = DispatchQueue(label: "dev.opensportsball.dual_camera.prepare")
 
   /// Writer 0, created eagerly, until the first video frame starts it.
@@ -68,7 +70,7 @@ final class SegmentRecorder {
   /// even if no audio has come past it.
   private static let closingTimeout = CMTime(seconds: 1, preferredTimescale: 600)
 
-  init(settings: Settings, clock: CMClock, queue: DispatchQueue) throws {
+  init(settings: Settings, clock: @escaping () -> CMClock, queue: DispatchQueue) throws {
     self.settings = settings
     self.clock = clock
     self.queue = queue
@@ -85,8 +87,19 @@ final class SegmentRecorder {
     guard pts.isValid else { return }
 
     if current == nil {
-      guard let writer = first else { return }
-      first = nil
+      // The first frame of the recording, or the first after `split`.
+      let writer: SegmentWriter
+      if let unused = first {
+        first = nil
+        writer = unused
+      } else {
+        do {
+          writer = try takePrepared()
+        } catch {
+          fail("could not create segment \(nextIndex): \(error.localizedDescription)")
+          return
+        }
+      }
       writer.startSession(at: pts, deviceMs: wallClockMs(pts))
       current = writer
       nominalEnd = CMTimeAdd(pts, settings.segmentDuration)
@@ -118,6 +131,28 @@ final class SegmentRecorder {
     if stopping && closing.isEmpty { return }
     pendingAudio.append(sampleBuffer)
     drainAudio(force: false)
+  }
+
+  // MARK: - Split
+
+  /// Ends the current segment at the last frame written; the next video
+  /// frame starts a new segment. For a break in capture (an interruption, or
+  /// a change of inputs): the frames after it may be much later, or on
+  /// another clock, so they get a file with its own start time instead of
+  /// a hidden gap inside one file.
+  func split() {
+    guard !stopping, !failed, let writer = current else { return }
+    current = nil
+    writer.end = lastVideoPTS.isValid
+      ? CMTimeAdd(lastVideoPTS, settings.frameDuration)
+      : CMTimeAdd(writer.start, settings.frameDuration)
+    closing.append(writer)
+    // Capture has stopped, so no trailing audio is coming.
+    drainAudio(force: true)
+    for old in closing { finish(old) }
+    pendingAudio.removeAll()
+    nominalEnd = .invalid
+    lastVideoPTS = .invalid
   }
 
   // MARK: - Stop
@@ -329,7 +364,7 @@ final class SegmentRecorder {
   /// Converts a capture timestamp (session synchronization clock) to
   /// wall-clock ms: wall = nowWall - (nowClock - pts).
   private func wallClockMs(_ pts: CMTime) -> Int64 {
-    let nowClock = CMClockGetTime(clock)
+    let nowClock = CMClockGetTime(clock())
     let nowWall = Date().timeIntervalSince1970
     let age = CMTimeSubtract(nowClock, pts).seconds
     return Int64(((nowWall - age) * 1000).rounded())

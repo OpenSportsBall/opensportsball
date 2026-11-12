@@ -178,8 +178,15 @@ quickly.
    Main, then press "Stop on this phone" on the Secondary and walk back.
    The manifest should complete once they reconnect (keep the Main screen
    open).
-6. **Interruption.** Call one phone while it records. It should stop,
-   save the segment in progress, and the Main phone should show an error.
+6. **Interruption.** Call one phone while it records. An Android phone
+   should stop, save the segment in progress, and the Main phone should
+   show an error. An iPhone should keep recording: set an alarm for a
+   minute ahead, start recording, let the alarm ring for 20 seconds and
+   dismiss it, record another minute, then stop. The files should cover
+   the whole time except a second or two when the alarm started, with no
+   sound while it rang and sound again within 30 seconds of dismissing
+   it. Repeat with a phone call, and with leaving the app for 10 seconds
+   (recording pauses and resumes in a new file when you return).
 7. **Mixed pair.** Repeat 2-3 with one iPhone and one Android phone.
 8. **Dark screen.** Start a paired recording and wait 15 seconds: both
    screens should go black at minimum brightness with a dim "REC" line.
