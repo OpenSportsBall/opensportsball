@@ -70,6 +70,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.47.6 # pinned: 3.50 deprecates package:flutter/material.dart, which analyze fails on
       - run: flutter pub get
       - run: flutter analyze lib test
       - run: flutter test
