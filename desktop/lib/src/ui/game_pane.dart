@@ -334,6 +334,20 @@ class _Body extends StatelessWidget {
             const SizedBox(height: 8),
             if (ctl.output != null)
               SelectableText(ctl.output!, style: t.bodySmall?.copyWith(fontFamily: BrandFonts.mono)),
+            if (ctl.youtubeOutput != null && ctl.youtubeOutput != ctl.output) ...[
+              const SizedBox(height: 12),
+              Text('To upload to YouTube, use the 1440p copy: YouTube shows it sharper.', style: t.bodyMedium),
+              const SizedBox(height: 4),
+              SelectableText(ctl.youtubeOutput!, style: t.bodySmall?.copyWith(fontFamily: BrandFonts.mono)),
+            ],
+            if (ctl.youtubeCopyMissing) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Settings ask for a 1440p copy for YouTube, and this game has none yet. '
+                'Making it takes about half an hour and 25 GB.',
+                style: t.bodyMedium,
+              ),
+            ],
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
@@ -348,6 +362,18 @@ class _Body extends StatelessWidget {
                   icon: const Icon(Icons.folder_outlined),
                   label: const Text('Show in Finder'),
                 ),
+                if (ctl.youtubeOutput != null && ctl.youtubeOutput != ctl.output)
+                  OutlinedButton.icon(
+                    onPressed: () => revealInFinder(ctl.youtubeOutput!),
+                    icon: const Icon(Icons.upload_outlined),
+                    label: const Text('Show the YouTube copy'),
+                  ),
+                if (ctl.youtubeCopyMissing)
+                  OutlinedButton.icon(
+                    onPressed: ctl.busy ? null : ctl.run,
+                    icon: const Icon(Icons.upload_outlined),
+                    label: const Text('Make the YouTube copy'),
+                  ),
                 if (ctl.chunkDetails.isNotEmpty) segments,
               ],
             ),

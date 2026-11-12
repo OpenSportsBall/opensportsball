@@ -44,6 +44,9 @@ class EngineEvent {
   String? get message => raw['message'] as String?;
   String? get log => raw['log'] as String?;
   String? get output => raw['output'] as String?;
+
+  /// The 1440p copy for YouTube, when the job asked for one and it is made.
+  String? get youtubeOutput => raw['youtubeOutput'] as String?;
   List<String> get pending => [for (final p in (raw['pending'] as List? ?? [])) '$p'];
 
   /// A line that isn't an event (a stray print), or null.
@@ -58,11 +61,13 @@ class EngineEvent {
   }
 }
 
-/// The engine-job.schema.json file for one recording folder.
-Map<String, Object?> engineJob(String recordingFolder, {int height = 1080, int? maxChunks}) => {
+/// The engine-job.schema.json file for one recording folder. With
+/// [youtubeCopy], a 1080p game.mp4 gets a 1440p game-youtube.mp4 beside it
+/// (a 1440p game.mp4 is that file already).
+Map<String, Object?> engineJob(String recordingFolder, {int height = 1080, bool youtubeCopy = false, int? maxChunks}) => {
       'schemaVersion': 1,
       'recording': recordingFolder,
-      'output': {'height': height},
+      'output': {'height': height, if (youtubeCopy && height < 1440) 'youtubeCopy': true},
       if (maxChunks != null) 'options': {'maxChunks': maxChunks},
     };
 

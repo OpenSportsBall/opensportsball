@@ -72,6 +72,10 @@ class Settings extends ChangeNotifier {
 
   int get outputHeight => (_values['outputHeight'] as num?)?.toInt() ?? 1080;
 
+  /// Beside a 1080p game.mp4, also a 1440p game-youtube.mp4: YouTube shows
+  /// a 1440p upload with a better codec and bitrate than a 1080p one.
+  bool get youtubeCopy => _values['youtubeCopy'] == true && outputHeight < 1440;
+
   /// For development: process only this many chunks of a game (the job's
   /// maxChunks); null for the whole game.
   /// For development: download only the first this many segments of each

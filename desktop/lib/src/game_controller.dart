@@ -44,6 +44,7 @@ const stepNames = {
   'cameras': 'Placing the cameras',
   'game': 'Processing the game',
   'mux': 'Adding the sound',
+  'youtube': 'Making the copy for YouTube',
   'cleanup': 'Tidying up',
 };
 
@@ -129,6 +130,15 @@ class GameController extends ChangeNotifier {
   String? error;
   String? errorLog;
   String? output;
+
+  /// The 1440p copy for YouTube, once made (game.mp4 itself when that is
+  /// 1440p already).
+  String? youtubeOutput;
+
+  /// The game is done and Settings ask for a YouTube copy it doesn't have
+  /// (the setting was switched on later, or the copy failed): [run] makes
+  /// just the copy.
+  bool get youtubeCopyMissing => phase == Phase.done && settings.youtubeCopy && youtubeOutput == null;
   bool pausedForBattery = false;
   bool _disposed = false;
 
@@ -191,7 +201,14 @@ class GameController extends ChangeNotifier {
   Future<void> _writeJob() async {
     await folder!.create(recursive: true);
     await _job.writeAsString(
-      jsonEncode(engineJob(folder!.path, height: settings.outputHeight, maxChunks: settings.maxChunks)),
+      jsonEncode(
+        engineJob(
+          folder!.path,
+          height: settings.outputHeight,
+          youtubeCopy: settings.youtubeCopy,
+          maxChunks: settings.maxChunks,
+        ),
+      ),
     );
   }
 
@@ -234,6 +251,7 @@ class GameController extends ChangeNotifier {
   void _takeStatus(EngineEvent status) {
     ball = BallCheck.of(status.raw) ?? ball;
     chunkDetails = ChunkDetail.listOf(status.raw['chunkDetails']);
+    youtubeOutput = status.youtubeOutput;
   }
 
   /// Asks the engine where each chunk stands (it reads its own files, so
@@ -400,6 +418,7 @@ class GameController extends ChangeNotifier {
       unawaited(loadChunkDetails());
     } else if (e.event == 'done' && e.output != null) {
       output = e.output;
+      youtubeOutput = e.youtubeOutput;
       ball = BallCheck.of(e.raw) ?? ball;
     }
   }
@@ -575,6 +594,8 @@ class GameController extends ChangeNotifier {
 
   Future<void> run() async {
     if (busy) return;
+    final wasDone = phase == Phase.done; // only the YouTube copy is to be made
+    await _writeJob(); // what Settings say now (the video size, the YouTube copy)
     phase = Phase.running;
     pausedForBattery = false;
     activity = 'Processing the game';
@@ -601,7 +622,7 @@ class GameController extends ChangeNotifier {
       phase = pausedForBattery ? Phase.paused : Phase.readyToRun;
       if (pausedForBattery) _powerTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkPower());
     } else {
-      phase = Phase.readyToRun;
+      phase = wasDone ? Phase.done : Phase.readyToRun;
     }
     notifyListeners();
   }

@@ -189,4 +189,9 @@ exit 3
       'options': {'maxChunks': 1},
     });
   });
+
+  test('a job asks for the YouTube copy only beside a 1080p video', () {
+    expect(engineJob('/x/rec', youtubeCopy: true)['output'], {'height': 1080, 'youtubeCopy': true});
+    expect(engineJob('/x/rec', height: 1440, youtubeCopy: true)['output'], {'height': 1440});
+  });
 }
