@@ -90,7 +90,15 @@ Each event is a map with a `type`:
   already reported).
 - `interrupted` covers the OS taking the camera away (phone call, app
   backgrounded, another app, thermal shutdown). Recording is stopped and
-  the in-progress segment finalized and reported if possible.
+  the in-progress segment finalized and reported if possible. Android
+  sends it for every interruption; iOS only for a capture runtime error.
+- On iOS an interruption does not stop the recording. The in-progress
+  segment is finalized and reported, a non-fatal `error` with code
+  `interrupted` is sent, and the next segment starts with the first frame
+  after capture resumes, so consecutive segments can have a gap between
+  them (compare `startedAtDeviceMs` + `durationMs` with the next start).
+  When an alarm or call takes the microphone, video resumes at once and
+  the segments have no sound until the microphone is free again.
 
 ## Recording requirements
 
