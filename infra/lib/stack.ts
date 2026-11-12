@@ -171,9 +171,6 @@ export class OpenSportsBallStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          trustedKeyGroups: [
-            new cloudfront.KeyGroup(this, 'FootageSigningKeys', {
-              items: [footageKey],
           // A link to a file here saves it rather than playing it in the
           // tab: a page on the website cannot ask for that itself (the
           // `download` attribute is ignored across origins). <video>, <img>
@@ -184,6 +181,9 @@ export class OpenSportsBallStack extends cdk.Stack {
               customHeaders: [{ header: 'Content-Disposition', value: 'attachment', override: true }],
             },
           }),
+          trustedKeyGroups: [
+            new cloudfront.KeyGroup(this, 'FootageSigningKeys', {
+              items: [footageKey],
               comment: 'Keys trusted to sign OpenSportsBall footage URLs',
             }),
           ],
@@ -552,15 +552,15 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(DELETE, '/games/{gameId}/recordings/{recordingId}', webIntegration, people);
     route(POST, '/games/{gameId}/grant-tickets', webIntegration, people); // a link for a phone with no grant
     route(POST, '/games/{gameId}/recordings/{recordingId}/downloads', webIntegration, people); // signed footage links
-    route(GET, '/contributions', webIntegration, people); // what the user shared to improve the models
-    route(POST, '/contributions', webIntegration, people); // signed uploads for one shared result
-    route(POST, '/contributions/{contributionId}/complete', webIntegration, people);
     // A page of download links to a recording's footage, for someone with no sign-in.
     const footageLinks = '/games/{gameId}/recordings/{recordingId}/footage-links';
     route(GET, footageLinks, webIntegration, people);
     route(POST, footageLinks, webIntegration, people);
     route(DELETE, `${footageLinks}/{linkId}`, webIntegration, people); // stop sharing
     route(POST, '/footage-links/lookup', webIntegration); // the website's /footage page, with the link's token
+    route(GET, '/contributions', webIntegration, people); // what the user shared to improve the models
+    route(POST, '/contributions', webIntegration, people); // signed uploads for one shared result
+    route(POST, '/contributions/{contributionId}/complete', webIntegration, people);
     route(DELETE, '/contributions/{contributionId}', webIntegration, people); // withdraw it
     route(GET, '/admin/accounts', adminIntegration, people); // admins group only, checked in the Lambda
     route(GET, '/admin/accounts/{accountId}/games', adminIntegration, people);
