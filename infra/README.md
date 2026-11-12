@@ -62,6 +62,7 @@ Options (pass with `-c key=value`):
 | `contributionRetentionDays` | none (kept until withdrawn) | Expire shared results this many days after upload; the privacy policy must say the same |
 | `engineImageTag` | `stub` | Tag of the engine image in the stack's repository ("Cloud processing") |
 | `engineCompute` | `cpu` | Where `prepare` and `run` go: `cpu` (Fargate, enough for the stub engine) or `gpu` (Spot `g5.xlarge` / `g6.xlarge`, for the real engine) |
+| `gpuSpot` | `true` | `false` runs the GPU jobs on On-Demand instances instead of Spot (about twice the price, never reclaimed), for an account whose Spot quota for G instances is still 0 |
 | `emailFrom` | none | Sender of the processing emails, e.g. `OpenSportsBall <no-reply@example.com>`; an address or domain verified in SES. None are sent without it |
 
 ### Deployment settings

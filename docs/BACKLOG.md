@@ -102,8 +102,27 @@ Footage and logs from these tests decide several items below.
 
 ## Phase 3: processing pipeline
 
-- [ ] On-demand GPU quota: request G instances in `us-west-2`, the
-      fallback when Spot has none (the Spot quota was granted 2026-11-10).
+- [ ] Spot GPU quota: "All G and VT Spot Instance Requests" in
+      `us-west-2` is still 0 (the 2026-10-06 request for 8 vCPUs was closed
+      without being applied; found 2026-11-11). On-Demand G is 8 vCPUs, so
+      the stack is deployed with `-c gpuSpot=false` until Spot is granted.
+- [ ] Remove the footage check from cloud jobs. The engine hashes every
+      segment against the manifest's SHA-256 before it starts (7 minutes
+      for a 53 GB game on a `g5.xlarge`, the GPU idle). It is there for the
+      Mac app's downloads; S3 already guards the copy to the instance.
+      First: what it still catches is a file that was wrong in S3, so
+      either check that hash when the phone's upload completes, or hash
+      each file as the job downloads it instead of reading it twice.
+- [ ] Put cloud jobs' scratch on the instance's own NVMe drive.
+      `g5.xlarge` and `g6.xlarge` each come with a 250 GB local SSD the
+      stack doesn't use. Scratch is a 200 GB `gp3` volume at its default
+      125 MiB/s, which is what limits the footage download (135 MB/s
+      measured, 6.5 minutes for 53 GB, on a 10 Gbit/s link inside AWS) and
+      every read of the footage after it. Format and mount the drive at
+      boot (launch template user data) and point Docker's storage or the
+      job's scratch at it; check 250 GB holds a game's footage and
+      outputs; then measure, and raise the download's four parallel files
+      if they become the limit.
 - [ ] Cloud processing ([CLOUD-PROCESSING-PLAN.md](CLOUD-PROCESSING-PLAN.md)).
       Steps 1-3 are deployed with the stub engine. Step 4 (the real
       engine's wrapper and image, and the engine's own question and answer

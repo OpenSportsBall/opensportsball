@@ -86,6 +86,9 @@ export interface OpenSportsBallStackProps extends cdk.StackProps {
   /** Where prepare and run go: `cpu` (Fargate; enough for the stub) or
    *  `gpu` (Spot g5/g6; the real engine). Default `cpu`. */
   engineCompute?: EngineCompute;
+  /** False puts the GPU jobs on On-Demand instances instead of Spot, for
+   *  an account with no Spot quota for G instances yet. Default true. */
+  gpuSpot?: boolean;
   /** Verified SES sender for the processing emails, e.g.
    *  `OpenSportsBall <no-reply@example.com>`. None are sent without it. */
   emailFrom?: string;
@@ -594,6 +597,7 @@ export class OpenSportsBallStack extends cdk.Stack {
       table,
       engineImageTag: props.engineImageTag ?? 'stub',
       engineCompute: props.engineCompute ?? 'cpu',
+      gpuSpot: props.gpuSpot,
     });
     // The website's API starts the jobs, and the job events function the
     // run, once a refit leaves nothing to ask. The API, the admin API

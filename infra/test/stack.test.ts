@@ -511,6 +511,25 @@ describe('cloud processing', () => {
     }
   });
 
+  it('puts the GPU jobs on On-Demand instances when Spot is turned off', () => {
+    const app = new cdk.App({ context: { '@aws-cdk/customresources:installLatestAwsSdkDefault': false } });
+    const stack = new OpenSportsBallStack(app, 'TestOnDemand', {
+      repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+      authDomainPrefix: 'osb-test',
+      engineImageTag: 'v1',
+      engineCompute: 'gpu',
+      gpuSpot: false,
+    });
+    Template.fromStack(stack).hasResourceProperties('AWS::Batch::ComputeEnvironment', {
+      ComputeResources: Match.objectLike({
+        Type: 'EC2',
+        AllocationStrategy: 'BEST_FIT_PROGRESSIVE',
+        MinvCpus: 0,
+        InstanceTypes: ['g5.xlarge', 'g6.xlarge'],
+      }),
+    });
+  }, 120_000);
+
   it('runs prepare and run on the GPU when asked, retrying only a reclaimed Spot instance', () => {
     const d = defs(gpu);
     for (const name of ['Prepare', 'Run']) {

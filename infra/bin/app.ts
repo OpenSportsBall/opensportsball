@@ -37,6 +37,10 @@ const engineCompute = ctx('engineCompute');
 if (engineCompute !== undefined && engineCompute !== 'cpu' && engineCompute !== 'gpu') {
   throw new Error(`engineCompute must be "cpu" or "gpu", not "${engineCompute}"`);
 }
+const gpuSpot = ctx('gpuSpot');
+if (gpuSpot !== undefined && gpuSpot !== 'true' && gpuSpot !== 'false') {
+  throw new Error(`gpuSpot must be "true" or "false", not "${gpuSpot}"`);
+}
 
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 // Cognito login domains are global; default to one derived from the account.
@@ -55,6 +59,7 @@ new OpenSportsBallStack(app, ctx('stackName') ?? 'OpenSportsBall', {
   contributionRetentionDays: ctx('contributionRetentionDays') ? Number(ctx('contributionRetentionDays')) : undefined,
   engineImageTag: ctx('engineImageTag'),
   engineCompute: engineCompute as 'cpu' | 'gpu' | undefined,
+  gpuSpot: gpuSpot === undefined ? undefined : gpuSpot === 'true',
   emailFrom: ctx('emailFrom'),
   description: 'OpenSportsBall: phone recording uploads, accounts and website',
 });

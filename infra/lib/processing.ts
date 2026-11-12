@@ -34,6 +34,10 @@ export interface ProcessingProps {
   /** Tag of the engine image in this stack's repository. */
   engineImageTag: string;
   engineCompute: EngineCompute;
+  /** Spot GPU instances (the default), or On-Demand ones when false: for
+   *  an account whose Spot quota for G instances is still 0. On-Demand
+   *  costs about twice as much and is never reclaimed. */
+  gpuSpot?: boolean;
 }
 
 /** The GPU quota this is sized for: 8 vCPUs of G instances, so two games
@@ -129,8 +133,9 @@ export class Processing extends Construct {
       environment: { OSB_BUCKET: footage.bucketName, OSB_TABLE: table.tableName, AWS_DEFAULT_REGION: cdk.Stack.of(this).region },
     };
 
-    // --- GPU: Spot, scaling to zero ---------------------------------------------
+    // --- GPU: Spot (or On-Demand), scaling to zero ---------------------------------------------
 
+    const gpuSpot = props.gpuSpot ?? true;
     const launchTemplate = new ec2.LaunchTemplate(this, 'GpuTemplate', {
       // The ECS AMI keeps images and container storage on the root volume.
       blockDevices: [
@@ -147,8 +152,10 @@ export class Processing extends Construct {
     });
     const gpu = new batch.ManagedEc2EcsComputeEnvironment(this, 'Gpu', {
       ...network,
-      spot: true,
-      allocationStrategy: batch.AllocationStrategy.SPOT_PRICE_CAPACITY_OPTIMIZED,
+      spot: gpuSpot,
+      allocationStrategy: gpuSpot
+        ? batch.AllocationStrategy.SPOT_PRICE_CAPACITY_OPTIMIZED
+        : batch.AllocationStrategy.BEST_FIT_PROGRESSIVE,
       instanceTypes: GPU_INSTANCE_TYPES.map((t) => new ec2.InstanceType(t)),
       useOptimalInstanceClasses: false,
       images: [{ imageType: batch.EcsMachineImageType.ECS_AL2023_NVIDIA }],
