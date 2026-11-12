@@ -7,6 +7,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
+	import FootageShare from '#lib/components/FootageShare.svelte';
 	import JobPanel from '#lib/components/JobPanel.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
@@ -285,6 +286,10 @@
 					</ul>
 
 					<JobPanel gameId={game.gameId} {rec} onchange={() => void refresh()} />
+
+					{#if rec.devices.some((d) => d.uploadedSegments > 0)}
+						<FootageShare gameId={game.gameId} recordingId={rec.recordingId} />
+					{/if}
 				</section>
 			{/each}
 		</div>

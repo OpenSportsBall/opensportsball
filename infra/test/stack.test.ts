@@ -36,6 +36,7 @@ describe('API', () => {
       { key: 'DELETE /devices/{deviceId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}', auth: 'JWT' },
+      { key: 'DELETE /games/{gameId}/recordings/{recordingId}/footage-links/{linkId}', auth: 'JWT' },
       { key: 'DELETE /games/{gameId}/recordings/{recordingId}/jobs/{jobId}', auth: 'JWT' },
       { key: 'DELETE /me', auth: 'JWT' },
       { key: 'GET /admin/accounts', auth: 'JWT' },
@@ -45,6 +46,7 @@ describe('API', () => {
       { key: 'GET /devices', auth: 'JWT' },
       { key: 'GET /games', auth: 'JWT' },
       { key: 'GET /games/{gameId}', auth: 'JWT' },
+      { key: 'GET /games/{gameId}/recordings/{recordingId}/footage-links', auth: 'JWT' },
       { key: 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}', auth: 'JWT' },
       { key: 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions', auth: 'JWT' },
       { key: 'GET /me', auth: 'JWT' },
@@ -52,9 +54,11 @@ describe('API', () => {
       { key: 'POST /contributions/{contributionId}/complete', auth: 'JWT' },
       { key: 'POST /devices/link', auth: 'NONE' },
       { key: 'POST /devices/unlink', auth: 'CUSTOM' },
+      { key: 'POST /footage-links/lookup', auth: 'NONE' },
       { key: 'POST /games/{gameId}/grant-tickets', auth: 'JWT' },
       { key: 'POST /games/{gameId}/grants', auth: 'CUSTOM' },
       { key: 'POST /games/{gameId}/recordings/{recordingId}/downloads', auth: 'JWT' },
+      { key: 'POST /games/{gameId}/recordings/{recordingId}/footage-links', auth: 'JWT' },
       { key: 'POST /games/{gameId}/recordings/{recordingId}/jobs', auth: 'JWT' },
       { key: 'POST /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/downloads', auth: 'JWT' },
       { key: 'POST /grant-tickets', auth: 'CUSTOM' },
@@ -394,6 +398,14 @@ describe('footage downloads', () => {
     expect(b.CachePolicyId).toBe('4135ea2d-6df8-44a3-9df3-4b5a84be39ad');
     expect(footageCdn().Properties.DistributionConfig.PriceClass).toBe('PriceClass_100');
     f.hasOutput('FootageCdnDomain', {});
+  });
+
+  it('tells browsers to save footage, so a link on the website downloads it', () => {
+    const b = footageCdn().Properties.DistributionConfig.DefaultCacheBehavior;
+    const policy = f.findResources('AWS::CloudFront::ResponseHeadersPolicy')[b.ResponseHeadersPolicyId.Ref]!;
+    expect(policy.Properties.ResponseHeadersPolicyConfig.CustomHeadersConfig.Items).toEqual([
+      { Header: 'Content-Disposition', Value: 'attachment', Override: true },
+    ]);
   });
 
   it('reads the footage bucket through origin access control, read-only', () => {

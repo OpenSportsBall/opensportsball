@@ -64,6 +64,7 @@ export async function deleteRecording(acct: string, gameId: string, recordingId:
   const sub = `${gameId}#${recordingId}#`;
   await deleteJobs(acct, `JOB#${sub}`);
   await deleteEverything(recordingPrefix(acct, gameId, recordingId));
+  await deleteFootageLinks(acct, `FLINK#${sub}`);
   await deleteItems(acct, [`REPORT#${sub}`, `OBJ#${sub}`, `UPLOAD#${sub}`, `JOB#${sub}`]);
   await deleteKeys([keys.recording(acct, gameId, recordingId)]);
 }
@@ -90,6 +91,7 @@ export async function deleteGame(acct: string, gameId: string, footageOnly = fal
   await deleteKeys(tickets.flatMap((t) => [keys.token(t.tokenHash), { pk: `ACCOUNT#${acct}`, sk: t.sk }]));
 
   const g = `${gameId}#`;
+  await deleteFootageLinks(acct, `FLINK#${g}`);
   // DELETED#<gameId># is each recording's marker; the game's covers them.
   await deleteItems(acct, [`GRANT#${g}`, `REPORT#${g}`, `OBJ#${g}`, `UPLOAD#${g}`, `JOB#${g}`, `REC#${g}`, `DELETED#${g}`]);
   await deleteKeys([keys.game(acct, gameId)]);
@@ -108,7 +110,10 @@ export async function deleteAccount(acct: string) {
   const devices = await queryPrefix<{ deviceId: string; tokenHash: string }>(acct, 'DEVICE#');
   const grants = await queryPrefix<{ tokenHash: string }>(acct, 'GRANT#');
   const tickets = await queryPrefix<{ tokenHash: string }>(acct, 'TICKET#');
+  // The account's own items go with the rest below.
+  const footageLinks = await queryPrefix<{ linkId: string }>(acct, 'FLINK#');
   await deleteKeys([
+    ...footageLinks.map((l) => keys.token(l.linkId)),
     ...devices.flatMap((d) => [keys.token(d.tokenHash), keys.owner(d.deviceId)]),
     ...[...grants, ...tickets].map((g) => keys.token(g.tokenHash)),
   ]);
@@ -128,6 +133,13 @@ export async function deleteAccount(acct: string) {
   } catch (e) {
     if (!(e instanceof UserNotFoundException)) throw e;
   }
+}
+
+/** Footage links (lib/footageLinks.ts) under [prefix], and their tokens:
+ *  a link to deleted footage stops existing, rather than showing nothing. */
+async function deleteFootageLinks(acct: string, prefix: string) {
+  const links = await queryPrefix<Key & { linkId: string }>(acct, prefix);
+  await deleteKeys(links.flatMap((l) => [keys.token(l.linkId), { pk: l.pk, sk: l.sk }]));
 }
 
 const putMarker = (key: Key) =>

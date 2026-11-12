@@ -9,6 +9,7 @@
  * | LINKCODE#<code>     | LINKCODE                                | pending phone link      |
  * | TOKEN#<sha256>      | TOKEN                                   | device token -> device, |
  * |                     |                                         | or grant token -> grant |
+ * |                     |                                         | or footage link -> rec. |
  * | DEVICE#<deviceId>   | OWNER                                   | which account owns it   |
  * | ACCOUNT#<acct>      | DEVICE#<deviceId>                       | linked phone            |
  * | ACCOUNT#<acct>      | GAME#<gameId>                           | game                    |
@@ -19,6 +20,7 @@
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
  * | ACCOUNT#<acct>      | UPLOAD#<gameId>#<recordingId>#<file>    | multipart in progress   |
  * | ACCOUNT#<acct>      | JOB#<gameId>#<recordingId>#<jobId>      | pointer to a job        |
+ * | ACCOUNT#<acct>      | FLINK#<gameId>#<recordingId>#<sha256>   | footage download link   |
  * | ACCOUNT#<acct>      | SETTINGS                                | what the account may do |
  * | ACCOUNT#<acct>      | DELETED#<gameId>                        | deleted game            |
  * | ACCOUNT#<acct>      | DELETED#<gameId>#<recordingId>          | deleted recording       |
@@ -140,6 +142,11 @@ export const keys = {
   jobRef: (acct: string, gameId: string, recId: string, jobId: string) => ({
     pk: `ACCOUNT#${acct}`,
     sk: `JOB#${gameId}#${recId}#${jobId}`,
+  }),
+  /** A link to download a recording's footage (lib/footageLinks.ts); its token is at keys.token. */
+  footageLink: (acct: string, gameId: string, recId: string, tokenHash: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `FLINK#${gameId}#${recId}#${tokenHash}`,
   }),
   settings: (acct: string) => ({ pk: `ACCOUNT#${acct}`, sk: 'SETTINGS' }),
   /** Left when an account is deleted (lib/deletion.ts), so a link code or

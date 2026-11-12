@@ -174,6 +174,16 @@ export class OpenSportsBallStack extends cdk.Stack {
           trustedKeyGroups: [
             new cloudfront.KeyGroup(this, 'FootageSigningKeys', {
               items: [footageKey],
+          // A link to a file here saves it rather than playing it in the
+          // tab: a page on the website cannot ask for that itself (the
+          // `download` attribute is ignored across origins). <video>, <img>
+          // and the apps' own downloads take no notice of it.
+          responseHeadersPolicy: new cloudfront.ResponseHeadersPolicy(this, 'FootageHeaders', {
+            comment: 'OpenSportsBall footage: links download',
+            customHeadersBehavior: {
+              customHeaders: [{ header: 'Content-Disposition', value: 'attachment', override: true }],
+            },
+          }),
               comment: 'Keys trusted to sign OpenSportsBall footage URLs',
             }),
           ],
@@ -545,6 +555,12 @@ export class OpenSportsBallStack extends cdk.Stack {
     route(GET, '/contributions', webIntegration, people); // what the user shared to improve the models
     route(POST, '/contributions', webIntegration, people); // signed uploads for one shared result
     route(POST, '/contributions/{contributionId}/complete', webIntegration, people);
+    // A page of download links to a recording's footage, for someone with no sign-in.
+    const footageLinks = '/games/{gameId}/recordings/{recordingId}/footage-links';
+    route(GET, footageLinks, webIntegration, people);
+    route(POST, footageLinks, webIntegration, people);
+    route(DELETE, `${footageLinks}/{linkId}`, webIntegration, people); // stop sharing
+    route(POST, '/footage-links/lookup', webIntegration); // the website's /footage page, with the link's token
     route(DELETE, '/contributions/{contributionId}', webIntegration, people); // withdraw it
     route(GET, '/admin/accounts', adminIntegration, people); // admins group only, checked in the Lambda
     route(GET, '/admin/accounts/{accountId}/games', adminIntegration, people);

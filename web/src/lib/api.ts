@@ -5,6 +5,9 @@ import type {
 	AdminReport,
 	Contribution,
 	Device,
+	FootageLink,
+	FootageLinkCreated,
+	FootagePage,
 	Game,
 	GameSummary,
 	GameTicket,
@@ -44,7 +47,7 @@ export function createApiClient(opts: ApiClientOptions) {
 	const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
 	const base = opts.baseUrl.replace(/\/+$/, '');
 
-	/** [anonymous]: a route that needs no sign-in (the /grant page). */
+	/** [anonymous]: a route that needs no sign-in (the /grant and /footage pages). */
 	async function request<T>(method: string, path: string, body?: unknown, anonymous = false): Promise<T> {
 		const headers: Record<string, string> = {};
 		if (!anonymous) {
@@ -100,6 +103,8 @@ export function createApiClient(opts: ApiClientOptions) {
 
 	const enc = encodeURIComponent;
 	const jobs = (gameId: string, recordingId: string) => `/games/${enc(gameId)}/recordings/${enc(recordingId)}/jobs`;
+	const footageLinks = (gameId: string, recordingId: string) =>
+		`/games/${enc(gameId)}/recordings/${enc(recordingId)}/footage-links`;
 	const job = (j: Pick<Job, 'gameId' | 'recordingId' | 'jobId'>) => `${jobs(j.gameId, j.recordingId)}/${enc(j.jobId)}`;
 	return {
 		me: () => request<Me>('GET', '/me'),
@@ -149,6 +154,16 @@ export function createApiClient(opts: ApiClientOptions) {
 			request<{ accountId: string; cloudProcessing: boolean }>('PUT', `/admin/accounts/${enc(accountId)}/cloud-processing`, {
 				enabled
 			}),
+		/** The recording's download pages that still work. */
+		listFootageLinks: async (gameId: string, recordingId: string) =>
+			(await request<{ links: FootageLink[] }>('GET', footageLinks(gameId, recordingId))).links,
+		/** A page of download links to the recording's raw video, for [hours] (24, 72 or 168). */
+		createFootageLink: (gameId: string, recordingId: string, hours: number) =>
+			request<FootageLinkCreated>('POST', footageLinks(gameId, recordingId), { hours }),
+		/** Stops a download page working. */
+		revokeFootageLink: (gameId: string, recordingId: string, linkId: string) =>
+			request<void>('DELETE', `${footageLinks(gameId, recordingId)}/${enc(linkId)}`),
+		lookupFootageLink: (token: string) => request<FootagePage>('POST', '/footage-links/lookup', { token }, true),
 		lookupGrantTicket: (ticket: string) => request<GrantLookup>('POST', '/grants/lookup', { ticket }, true)
 	};
 }

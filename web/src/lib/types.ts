@@ -268,6 +268,42 @@ export interface GameTicket {
 	appUri: string;
 }
 
+/** A page of download links to a recording's footage that needs no
+ *  sign-in (GET .../footage-links). `linkId` cannot be turned into the link. */
+export interface FootageLink {
+	linkId: string;
+	createdAt: string;
+	expiresAt: string;
+}
+
+/** POST .../footage-links: the only answer that carries the link's token. */
+export interface FootageLinkCreated extends FootageLink {
+	gameId: string;
+	recordingId: string;
+	token: string;
+}
+
+export interface FootageFile {
+	deviceId: string;
+	fileName: string;
+	bytes: number;
+	sha256: string | null;
+	url: string;
+}
+
+/** POST /footage-links/lookup: what the /footage page shows. The page
+ *  works until `expiresAt`; the file links on it until `linksExpireAt`
+ *  (at most 12 hours), after which the page asks again. */
+export interface FootagePage {
+	recordedAt: string | null;
+	status: RecordingStatus;
+	expiresAt: string;
+	linksExpireAt: string;
+	devices: { deviceId: string; role: Role; model: string }[];
+	manifestUrl: string | null;
+	files: FootageFile[];
+}
+
 /** POST /grants/lookup: a website ticket's details for the /grant page;
  *  `used` once a phone has redeemed it. */
 export interface GrantLookup extends GameTicket {

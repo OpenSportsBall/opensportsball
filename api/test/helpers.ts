@@ -108,6 +108,18 @@ export async function callWeb(
   return toRes(await web(event as any));
 }
 
+/** Calls a website route that has no authorizer (the token in the body is
+ *  the credential), as API Gateway would: with no claims at all. */
+export async function callPublic(routeKey: string, body: unknown): Promise<Res> {
+  const event = {
+    routeKey,
+    body: JSON.stringify(body),
+    isBase64Encoded: false,
+    requestContext: { domainName: API_DOMAIN },
+  };
+  return toRes(await web(event as any));
+}
+
 /** Calls a phone route the way API Gateway would: the authorizer runs
  *  first and its context is passed on. */
 export async function callDevice(

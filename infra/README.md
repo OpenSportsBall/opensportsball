@@ -93,9 +93,11 @@ Footage leaves the bucket through a second CloudFront distribution,
 `FootageCdn`, not straight from S3: CloudFront's first 1 TB a month is
 free, and S3 to CloudFront costs nothing. It serves only URLs (or cookies)
 signed by the website API (`api/src/lib/footageUrls.ts`), which signs an
-account's own recordings. Nothing is cached, so a deleted recording is gone
-from CloudFront as soon as it is gone from S3. Uploads still go straight to
-S3.
+account's own recordings, and those a footage link was made for
+(`docs/API.md`, "Footage links"). Nothing is cached, so a deleted recording is gone
+from CloudFront as soon as it is gone from S3. Every answer carries
+`Content-Disposition: attachment`, so a link on the website saves the file.
+Uploads still go straight to S3.
 
 The distribution needs a key pair. Make it once per deployment, signed in
 to the AWS account:

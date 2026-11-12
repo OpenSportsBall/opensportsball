@@ -256,6 +256,60 @@ on your own computer. → `200`
   or deleted). `503 downloads_unavailable`: this deployment has no footage
   distribution.
 
+### Footage links
+
+A page of download links to one recording's raw video, for someone with no
+account: the owner makes a link on the game's page and sends it. The link
+is `https://<site>/footage#<token>` (`osbf_` + 43 base64url characters; in
+the fragment, so the web server never sees it). The server stores only the
+token's SHA-256 hash, which is also the link's `linkId`.
+
+#### `POST /games/{gameId}/recordings/{recordingId}/footage-links`
+Body: `{"hours": 24 | 72 | 168}` →
+`201 {"linkId", "token": "osbf_...", "gameId", "recordingId", "createdAt", "expiresAt"}`
+
+- The only answer that carries `token`: it cannot be read back later.
+- `400 bad_request`: any other `hours`. `404 not_found`: no such recording
+  on the account. `409 conflict`: the recording already has 10 links that
+  still work.
+
+#### `GET /games/{gameId}/recordings/{recordingId}/footage-links`
+→ `200 {"links": [{"linkId", "createdAt", "expiresAt"}]}`: the ones that
+still work, oldest first.
+
+#### `DELETE /games/{gameId}/recordings/{recordingId}/footage-links/{linkId}`
+Stops the link. → `204`; `404 not_found` if there is none.
+
+- File links a page already handed out keep working until their own
+  `linksExpireAt` (below): at most 12 hours.
+- Deleting the recording, its game or the account deletes its links.
+
+#### `POST /footage-links/lookup` (no sign-in: the token is the credential)
+Body: `{"token": "osbf_..."}` → `200`
+
+```json
+{
+  "recordedAt": "... | null",
+  "status": "waiting_for_manifest | uploading | ready",
+  "expiresAt": "...",
+  "linksExpireAt": "...",
+  "devices": [{"deviceId": "...", "role": "main | secondary", "model": "..."}],
+  "manifestUrl": "https://<footage CDN>/... | null",
+  "files": [{"deviceId", "fileName", "bytes", "sha256", "url"}]
+}
+```
+
+- `files` and `manifestUrl` are as in `POST .../downloads` above: every
+  segment that has arrived. `devices` names the phones a manifest or
+  report has listed; a file's phone may not be among them yet.
+- `expiresAt` is when the link stops. The signed URLs work until
+  `linksExpireAt`: 12 hours from now or `expiresAt`, whichever is first.
+  The page asks again for fresh ones.
+- `404 not_found`: no such link (never made, stopped, or its recording
+  deleted). `410 gone`: expired. `503 downloads_unavailable` as above.
+- The footage distribution answers with `Content-Disposition: attachment`,
+  so a browser saves a file a link points at instead of playing it.
+
 ### `DELETE /games/{gameId}/recordings/{recordingId}`
 Deletes one recording for good. → `204`
 

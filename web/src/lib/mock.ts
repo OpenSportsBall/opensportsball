@@ -31,6 +31,8 @@ import type {
 	Device,
 	Game,
 	GameSummary,
+	FootageLink,
+	FootagePage,
 	GameTicket,
 	GrantLookup,
 	Job,
@@ -766,6 +768,36 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			}
 			return new Response(null, { status: 204 });
 		}
+		if ((m = path.match(/^\/games\/([^/]+)\/recordings\/([^/]+)\/footage-links(?:\/([^/]+))?$/))) {
+			const [gameId, recordingId, linkId] = [m[1], m[2], m[3]].map((x) => (x === undefined ? undefined : decodeURIComponent(x)));
+			const rec = games.find((x) => x.gameId === gameId)?.recordings.find((r) => r.recordingId === recordingId);
+			if (!rec) return fail(404, 'not_found', 'No such recording.');
+			const open = footageLinks.filter((l) => l.recording === rec && l.expiresAt > iso(now()));
+			const view = ({ linkId, createdAt, expiresAt }: MockFootageLink): FootageLink => ({ linkId, createdAt, expiresAt });
+			if (method === 'GET' && !linkId) return json(200, { links: open.map(view) });
+			if (method === 'POST' && !linkId) {
+				if (![24, 72, 168].includes(body?.hours)) return fail(400, 'bad_request', '"hours" must be one of 24, 72, 168.');
+				if (open.length >= 10) {
+					return fail(409, 'conflict', 'This recording already has as many download pages as it can. Stop one first.');
+				}
+				const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+				const link: MockFootageLink = {
+					linkId: Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(random() * 16)]).join(''),
+					token: 'osbf_' + Array.from({ length: 43 }, () => chars[Math.floor(random() * chars.length)]).join(''),
+					recording: rec,
+					createdAt: iso(now()),
+					expiresAt: iso(now() + body.hours * 3600_000)
+				};
+				footageLinks.push(link);
+				return json(201, { ...view(link), gameId, recordingId, token: link.token });
+			}
+			const i = footageLinks.findIndex((l) => l.recording === rec && l.linkId === linkId);
+			if (method === 'DELETE' && i >= 0) {
+				footageLinks.splice(i, 1);
+				return new Response(null, { status: 204 });
+			}
+			return fail(404, 'not_found', 'No such download page.');
+		}
 		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
 			const id = decodeURIComponent(m[1]);
 			if (!games.some((x) => x.gameId === id)) return fail(404, 'not_found', 'No such game.');
@@ -785,6 +817,43 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			return json(201, body);
 		}
 		return fail(404, 'not_found', `No route for ${method} ${path} in the mock API.`);
+	}
+
+	/** Download pages made so far (docs/API.md, "Footage links"). */
+	interface MockFootageLink extends FootageLink {
+		token: string;
+		recording: MockRecording;
+	}
+	const footageLinks: MockFootageLink[] = [];
+
+	/** POST /footage-links/lookup: what has arrived of the link's recording. */
+	function footagePage(token: unknown): Response {
+		const link = footageLinks.find((l) => l.token === token);
+		// Deleting a recording or its game takes its links with it.
+		if (!link || !games.some((g) => g.recordings.includes(link.recording))) {
+			return fail(404, 'not_found', 'That download page does not exist.');
+		}
+		if (link.expiresAt <= iso(now())) return fail(410, 'gone', 'That download page has expired.');
+		const rec = recordingView(link.recording);
+		const url = `data:video/mp4;base64,${VIDEO_BASE64}`;
+		const page: FootagePage = {
+			recordedAt: rec.recordedAt,
+			status: rec.status,
+			expiresAt: link.expiresAt,
+			linksExpireAt: iso(Math.min(Date.parse(link.expiresAt), now() + 12 * 3600_000)),
+			devices: rec.devices.flatMap((d) => (d.role && d.model ? [{ deviceId: d.deviceId, role: d.role, model: d.model }] : [])),
+			manifestUrl: rec.status === 'ready' ? 'data:application/json,%7B%7D' : null,
+			files: rec.devices.flatMap((d) =>
+				Array.from({ length: d.uploadedSegments }, (_, i) => ({
+					deviceId: d.deviceId,
+					fileName: `${d.deviceId}_${String(i).padStart(3, '0')}.mp4`,
+					bytes: Math.round(d.uploadedBytes / d.uploadedSegments),
+					sha256: rec.hasManifest ? '0'.repeat(64) : null,
+					url
+				}))
+			)
+		};
+		return json(200, page);
 	}
 
 	/** Website tickets made so far, for POST /grants/lookup. */
@@ -827,6 +896,10 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			if (!t) return fail(404, 'not_found', 'That upload permission does not exist.');
 			const body: GrantLookup = { ...t, used: false };
 			return json(200, body);
+		}
+		if (req.method === 'POST' && new URL(req.url).pathname === '/footage-links/lookup') {
+			// No sign-in: the /footage page is opened by whoever was sent the link.
+			return footagePage(((await req.json()) as { token?: unknown }).token);
 		}
 		const auth = req.headers.get('Authorization');
 		if (!auth?.startsWith('Bearer ')) return fail(401, 'unauthorized', 'Missing bearer token.');
