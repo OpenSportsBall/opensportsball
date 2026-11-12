@@ -32,7 +32,9 @@ class Shared {
   int _n = 0;
 }
 
-Session fakeServer({String status = 'ready', Shared? shared}) {
+/// [liveStatus], when given, is asked on every request: a recording that
+/// finishes uploading between two looks.
+Session fakeServer({String status = 'ready', String Function()? liveStatus, Shared? shared}) {
   final sha = sha256.convert(seg).toString();
   final manifest = {
     'gameId': gameId,
@@ -56,7 +58,7 @@ Session fakeServer({String status = 'ready', Shared? shared}) {
         'recordings': [
           {
             'recordingId': recId,
-            'status': status,
+            'status': liveStatus?.call() ?? status,
             'devices': [
               {'deviceId': 'main', 'role': 'main', 'model': 'Pixel', 'expectedBytes': seg.length},
             ],
@@ -66,7 +68,7 @@ Session fakeServer({String status = 'ready', Shared? shared}) {
     }
     if (p.endsWith('/downloads')) {
       return json({
-        'status': status,
+        'status': liveStatus?.call() ?? status,
         'expiresAt': DateTime.now().add(const Duration(hours: 12)).toUtc().toIso8601String(),
         'manifestUrl': 'https://cdn.test/manifest.json',
         'files': [
@@ -362,6 +364,57 @@ void main() {
     await ctl.open();
     expect(ctl.phase, Phase.needsDownload);
     expect(ctl.error, contains('still uploading'));
+    expect(ctl.awaitingUpload, isTrue);
+  });
+
+  test('a game opened while uploading is ready when asked again after the upload finishes', () async {
+    var status = 'uploading';
+    final ctl = controller(fakeServer(liveStatus: () => status));
+    await ctl.open();
+    expect(ctl.awaitingUpload, isTrue);
+    status = 'ready';
+    await ctl.open();
+    expect(ctl.awaitingUpload, isFalse);
+    expect(ctl.error, isNull);
+    expect(ctl.recording!.ready, isTrue);
+  });
+
+  test('deleting a game from this Mac: its folder goes, the record of what was shared stays', () async {
+    final ctl = controller(fakeServer());
+    await ctl.open();
+    expect(ctl.canDeleteLocal, isFalse); // nothing here yet
+    await ctl.startDownload();
+    expect(ctl.phase, Phase.questions);
+    final dir = ctl.folder!;
+    expect(settings.knownGame(recId), isNotNull);
+    expect(ctl.canDeleteLocal, isTrue);
+    expect(await ctl.localBytes(), greaterThan(seg.length));
+
+    await ctl.deleteLocal();
+    expect(ctl.error, isNull);
+    expect(dir.existsSync(), isFalse);
+    expect(settings.knownGame(recId), isNull);
+    expect(ctl.phase, Phase.needsDownload);
+    expect(ctl.questions, isNull);
+    expect(ctl.canDeleteLocal, isFalse);
+
+    // Downloaded again, with something shared from it: that record is all that is left.
+    await ctl.startDownload();
+    expect(ctl.phase, Phase.questions);
+    final sent = SentRecord.fileIn(dir)..createSync(recursive: true);
+    sent.writeAsStringSync('{"stopped": false, "sent": {"pitch": {"contributionId": "c1", "digest": "d"}}}');
+    File('${dir.path}/engine/share/pitch.json').writeAsStringSync('{}');
+    await ctl.deleteLocal();
+    expect(ctl.error, isNull);
+    expect([for (final e in dir.listSync(recursive: true)) e.path.substring(dir.path.length + 1)]..sort(), [
+      'engine',
+      'engine/share',
+      'engine/share/sent.json',
+    ]);
+    expect((await SentRecord.read(dir)).idOf('pitch'), 'c1');
+    expect(ctl.phase, Phase.needsDownload);
+    expect(ctl.canDeleteLocal, isFalse);
+    expect(settings.knownGame(recId)!.folder, dir.path);
   });
 
   test('without an engine it says where to set one', () async {
@@ -370,6 +423,33 @@ void main() {
     await ctl.open();
     await ctl.startDownload();
     expect(ctl.error, contains('No processing engine'));
+  });
+
+  test('a game is found where it was put, as far along as it was, after the work folder changes', () async {
+    await settings.set('maxChunks', 1);
+    final first = controller(fakeServer());
+    await first.open();
+    await first.startDownload();
+    expect(first.phase, Phase.questions);
+    final was = first.folder!.path;
+
+    // The app opened again: the same settings file, another work folder
+    // and no maxChunks.
+    final saved = (jsonDecode(settings.file.readAsStringSync()) as Map).cast<String, Object?>();
+    settings = Settings.inMemory(settings.file, saved);
+    await settings.set('workFolder', '${work.path}/elsewhere');
+    await settings.set('maxChunks', null);
+    final again = controller(fakeServer());
+    await again.open();
+    expect(again.folder!.path, was);
+    expect(again.phase, Phase.questions);
+    expect((jsonDecode(File('$was/job.json').readAsStringSync()) as Map)['options'], {'maxChunks': 1});
+
+    // Its folder gone, it goes where games go now.
+    Directory(was).deleteSync(recursive: true);
+    await again.open();
+    expect(again.folder!.path, startsWith('${work.path}/elsewhere/'));
+    expect(again.phase, Phase.needsDownload);
   });
 
   test('the games folder is named by date and game, and by recording when there are several', () {

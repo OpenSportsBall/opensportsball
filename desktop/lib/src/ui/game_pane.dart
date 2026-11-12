@@ -26,6 +26,64 @@ String formatDuration(double seconds) {
   return '$h h ${(m % 60).toString().padLeft(2, '0')} min';
 }
 
+/// Asks, saying what goes and what stays, then deletes the game's folder.
+Future<void> confirmDeleteLocal(BuildContext context, GameController ctl) async {
+  final size = ctl.localBytes();
+  final video = ctl.videoInFolder;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) {
+      final t = Theme.of(context).textTheme;
+      final c = BrandColors.of(context);
+      return AlertDialog(
+        title: const Text('Delete this game from this Mac?'),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FutureBuilder<int>(
+                future: size,
+                builder: (context, s) => Text(
+                  'Its folder${s.hasData ? ' (${formatGb(s.data!)})' : ''} is deleted for good, not moved to the Trash: '
+                  'the footage${video ? ', the game video' : ''} and everything the engine worked out.',
+                  style: t.bodyMedium,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (video) ...[
+                Text(
+                  'The game video is only on this Mac. Check that your copy (on YouTube, or another disk) is whole '
+                  'before deleting.',
+                  style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+              ],
+              Text(
+                'The footage in your account isn’t touched: the game can be downloaded and processed again, '
+                'from the start.',
+                style: t.bodyMedium?.copyWith(color: c.inkMuted),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(ctl.folder!.path, style: t.bodySmall?.copyWith(fontFamily: BrandFonts.mono)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: c.coral),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      );
+    },
+  );
+  if (ok == true) await ctl.deleteLocal();
+}
+
 class GamePane extends StatelessWidget {
   const GamePane({super.key, required this.controller, this.otherBusy});
   final GameController controller;
@@ -69,6 +127,12 @@ class GamePane extends StatelessWidget {
               onPressed: () => openFile(ctl.folder!.path),
               icon: const Icon(Icons.folder_open_outlined, size: 18),
               label: const Text('Show in Finder'),
+            ),
+          if (ctl.canDeleteLocal)
+            TextButton.icon(
+              onPressed: () => confirmDeleteLocal(context, ctl),
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('Delete from this Mac…'),
             ),
         ],
       ),

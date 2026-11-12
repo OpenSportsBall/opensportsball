@@ -50,7 +50,7 @@ To try a real game from the site without downloading and processing all
 of it:
 
 ```sh
-OSB_MAX_SEGMENTS=4 OSB_MAX_CHUNKS=1 OSB_WORK_FOLDER=/tmp/osb-short \
+OSB_MAX_SEGMENTS=4 OSB_MAX_CHUNKS=1 OSB_WORK_FOLDER=~/Movies/OpenSportsBall-short \
 OSB_ENGINE=/path/to/osb-engine/osb-engine flutter run -d macos
 ```
 
