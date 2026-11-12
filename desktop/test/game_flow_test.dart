@@ -302,6 +302,47 @@ void main() {
     },
   );
 
+  test('the YouTube copy: made beside game.mp4, and alone for a game already done', () async {
+    final ctl = controller(fakeServer());
+    await ctl.open();
+    await ctl.startDownload();
+    await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: false));
+    await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: false));
+    await ctl.run();
+    expect(ctl.phase, Phase.done);
+    expect(ctl.youtubeOutput, isNull);
+    expect(ctl.youtubeCopyMissing, isFalse);
+
+    // Switched on in Settings afterwards: the finished game says it has none, and run makes just that.
+    await settings.set('youtubeCopy', true);
+    expect(ctl.youtubeCopyMissing, isTrue);
+    final game = File(ctl.output!);
+    final made = game.lastModifiedSync();
+    final fractions = <double?>[];
+    ctl.addListener(() => fractions.add(ctl.fraction));
+    await ctl.run();
+    expect(ctl.phase, Phase.done);
+    expect(ctl.youtubeOutput, endsWith('fullgame/game-youtube.mp4'));
+    expect(File(ctl.youtubeOutput!).existsSync(), isTrue);
+    expect(ctl.youtubeCopyMissing, isFalse);
+    expect(game.lastModifiedSync(), made);
+    expect(fractions.whereType<double>(), isEmpty); // the game wasn't processed again
+    expect((jsonDecode(File('${ctl.folder!.path}/job.json').readAsStringSync()) as Map)['output'], {
+      'height': 1080,
+      'youtubeCopy': true,
+    });
+
+    // A new launch finds both.
+    final again = controller(fakeServer());
+    await again.open();
+    expect(again.phase, Phase.done);
+    expect(again.youtubeOutput, ctl.youtubeOutput);
+
+    // 1440p only: game.mp4 is the YouTube file, no copy is asked for.
+    await settings.set('outputHeight', 1440);
+    expect(settings.youtubeCopy, isFalse);
+  });
+
   test('offline, sharing says so and the game carries on', () async {
     final ctl = controller(fakeServer()); // no contributions routes: 404
     await ctl.open();

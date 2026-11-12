@@ -18,12 +18,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
   late final _work = TextEditingController(text: widget.settings.workFolder);
   late final _engine = TextEditingController(text: widget.settings.enginePath ?? '');
   late int _height = widget.settings.outputHeight;
+  late bool _youtubeCopy = widget.settings.youtubeCopy;
 
   Future<void> _save() async {
     final s = widget.settings;
     await s.set('workFolder', _work.text.trim().isEmpty ? null : _work.text.trim());
     await s.set('enginePath', _engine.text.trim().isEmpty ? null : _engine.text.trim());
     await s.set('outputHeight', _height);
+    await s.set('youtubeCopy', _youtubeCopy && _height < 1440);
     if (mounted) Navigator.pop(context);
   }
 
@@ -46,14 +48,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              initialValue: _height,
-              decoration: const InputDecoration(labelText: 'Video size'),
+            // One choice of three: the copy only makes sense beside 1080p.
+            DropdownButtonFormField<String>(
+              initialValue: _height >= 1440 ? '1440' : (_youtubeCopy ? '1080+youtube' : '1080'),
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Video size',
+                helperText: 'YouTube shows a 1440p upload much sharper than a 1080p one.',
+              ),
               items: const [
-                DropdownMenuItem(value: 1080, child: Text('1080p')),
-                DropdownMenuItem(value: 1440, child: Text('1440p (YouTube shows it sharper; a bigger file)')),
+                DropdownMenuItem(value: '1080', child: Text('1080p')),
+                DropdownMenuItem(
+                  value: '1080+youtube',
+                  child: Text('1080p, and a 1440p copy for YouTube (25 GB more)', overflow: TextOverflow.ellipsis),
+                ),
+                DropdownMenuItem(value: '1440', child: Text('1440p only (a bigger file)')),
               ],
-              onChanged: (v) => setState(() => _height = v ?? 1080),
+              onChanged: (v) => setState(() {
+                _height = v == '1440' ? 1440 : 1080;
+                _youtubeCopy = v == '1080+youtube';
+              }),
             ),
             const SizedBox(height: 16),
             SwitchListTile(
