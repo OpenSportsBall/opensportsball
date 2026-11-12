@@ -55,9 +55,11 @@ def chunk_details(done):
 
 if cmd == "status":
     out = rec / "fullgame" / "game.mp4"
+    copy = out.with_name("game-youtube.mp4")
     done = 4 if out.exists() else 0
     emit("status", prepared=(eng / "questions.json").exists(), pending=pending(), pieces=0,
-         output=str(out) if out.exists() else None, chunkDetails=chunk_details(done) if done else [],
+         output=str(out) if out.exists() else None, youtubeOutput=str(copy) if copy.exists() else None,
+         chunkDetails=chunk_details(done) if done else [],
          **(ball(done) if done else {}))
 elif cmd == "label" and args[:1] == ["ball"]:
     sd = eng / "labels" / "ball-1"
@@ -144,11 +146,20 @@ elif cmd == "run":
     if pending():
         emit("needs_answers", pending=pending(), questions="engine/questions.json")
         sys.exit(3)
-    for i in range(1, 4):
-        emit("progress", stage="game", fraction=i / 4, chunks=4, elapsedS=i, etaS=4 - i)
-        emit("ball", chunksDone=i, chunks=4, **ball(i))
-        time.sleep(0.05)
     out = rec / "fullgame" / "game.mp4"
-    out.parent.mkdir(exist_ok=True)
-    out.write_bytes(b"not really a video")
-    emit("done", output=str(out), seconds=1, **ball(4))
+    if not out.exists():
+        for i in range(1, 4):
+            emit("progress", stage="game", fraction=i / 4, chunks=4, elapsedS=i, etaS=4 - i)
+            emit("ball", chunksDone=i, chunks=4, **ball(i))
+            time.sleep(0.05)
+        out.parent.mkdir(exist_ok=True)
+        out.write_bytes(b"not really a video")
+    yt = {}
+    if job.get("output", {}).get("youtubeCopy"):  # beside game.mp4; a finished game gets only the copy
+        copy = out.with_name("game-youtube.mp4")
+        if not copy.exists():
+            emit("step", step="youtube", status="started")
+            copy.write_bytes(b"a bigger not really a video")
+            emit("step", step="youtube", status="done", seconds=0.1)
+        yt = {"youtubeOutput": str(copy)}
+    emit("done", output=str(out), **yt, seconds=1, **ball(4))
