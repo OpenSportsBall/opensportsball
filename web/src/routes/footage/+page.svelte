@@ -60,9 +60,43 @@
 		window.addEventListener('hashchange', again);
 		return () => {
 			clearTimeout(timer);
+			clearInterval(starting);
+			for (const f of frames) f.remove();
 			window.removeEventListener('hashchange', again);
 		};
 	});
+
+	/** Starts every file's download, a second apart. The footage CDN sends
+	 *  each as an attachment, so a hidden frame downloads it without leaving
+	 *  this page; browsers that ask first ask once for them all. */
+	const STAGGER_MS = 1000;
+	let started = $state(0);
+	let frames: HTMLIFrameElement[] = [];
+	let starting: ReturnType<typeof setInterval> | undefined;
+
+	function downloadAll() {
+		if (view.kind !== 'ready') return;
+		clearInterval(starting);
+		for (const f of frames) f.remove();
+		frames = [];
+		const urls = phones.flatMap((p) => p.files.map((f) => f.url));
+		started = 0;
+		const next = () => {
+			const url = urls[started];
+			if (url === undefined) {
+				clearInterval(starting);
+				return;
+			}
+			const frame = document.createElement('iframe');
+			frame.hidden = true;
+			frame.src = url;
+			document.body.append(frame);
+			frames.push(frame);
+			started++;
+		};
+		next();
+		starting = setInterval(next, STAGGER_MS);
+	}
 
 	function plural(n: number, word: string) {
 		return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -83,7 +117,18 @@
 				{plural(fileCount, 'file')}, {formatBytes(totalBytes)} in all, as the phones recorded them
 			</div>
 		</div>
+		{#if fileCount > 1}
+			<button class="btn btn-primary" onclick={downloadAll}>Download all ({formatBytes(totalBytes)})</button>
+		{/if}
 	</div>
+
+	{#if started > 0}
+		<p class="muted small" role="status">
+			{started < fileCount ? `Starting download ${started} of ${fileCount}…` : `All ${fileCount} downloads started.`}
+			If your browser asks whether this site may download several files, allow it. If any are missing, use the buttons
+			below.
+		</p>
+	{/if}
 
 	<p class="note small">
 		This page works until <strong>{formatDateTime(page.expiresAt)}</strong>. Anyone with its address can download these
