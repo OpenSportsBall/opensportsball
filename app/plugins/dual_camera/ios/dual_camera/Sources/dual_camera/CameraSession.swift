@@ -26,6 +26,11 @@ final class CameraSession: NSObject,
   private let emit: ([String: Any]) -> Void
 
   private var device: AVCaptureDevice?
+  private var audioInput: AVCaptureDeviceInput?
+  /// The microphone was taken out of the session because something else
+  /// (an alarm, a call) is using it. Video carries on without sound.
+  private var micDetached = false
+  private var micTimer: DispatchSourceTimer?
   private var config: OpenConfig?
   private var recordWidth = 0
   private var recordHeight = 0
@@ -99,16 +104,17 @@ final class CameraSession: NSObject,
     guard let mic = AVCaptureDevice.default(for: .audio) else {
       throw CameraError("camera_unavailable", "no microphone")
     }
-    let audioInput: AVCaptureDeviceInput
+    let micInput: AVCaptureDeviceInput
     do {
-      audioInput = try AVCaptureDeviceInput(device: mic)
+      micInput = try AVCaptureDeviceInput(device: mic)
     } catch {
       throw CameraError("camera_unavailable", "could not open microphone: \(error.localizedDescription)")
     }
-    guard session.canAddInput(audioInput) else {
+    guard session.canAddInput(micInput) else {
       throw CameraError("camera_unavailable", "cannot add microphone input")
     }
-    session.addInput(audioInput)
+    session.addInput(micInput)
+    audioInput = micInput
 
     // Recording must not drop frames; a late frame is queued, not discarded.
     videoOutput.alwaysDiscardsLateVideoFrames = false
@@ -614,7 +620,10 @@ final class CameraSession: NSObject,
         width: recordWidth, height: recordHeight))
     let newRecorder: SegmentRecorder
     do {
-      newRecorder = try SegmentRecorder(settings: settings, clock: captureClock, queue: queue)
+      newRecorder = try SegmentRecorder(
+        settings: settings,
+        clock: { [weak self] in self?.captureClock ?? CMClockGetHostTimeClock() },
+        queue: queue)
     } catch let error as CameraError {
       completion(.failure(error))
       return
@@ -724,6 +733,7 @@ final class CameraSession: NSObject,
     endRecording(then: nil) { [weak self] in
       guard let self else { completion(); return }
       self.closed = true
+      self.stopMicTimer()
       for observer in self.observers { NotificationCenter.default.removeObserver(observer) }
       self.observers.removeAll()
       if self.session.isRunning { self.session.stopRunning() }
@@ -745,6 +755,19 @@ final class CameraSession: NSObject,
       self?.queue.async { self?.handleInterruption(reason) }
     })
     observers.append(center.addObserver(
+      forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil
+    ) { [weak self] _ in
+      self?.queue.async { self?.handleInterruptionEnded() }
+    })
+    observers.append(center.addObserver(
+      forName: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), queue: nil
+    ) { [weak self] note in
+      guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+            AVAudioSession.InterruptionType(rawValue: raw) == .ended
+      else { return }
+      self?.queue.async { self?.reattachMicrophone() }
+    })
+    observers.append(center.addObserver(
       forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil
     ) { [weak self] note in
       let error = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
@@ -752,9 +775,72 @@ final class CameraSession: NSObject,
     })
   }
 
+  /// The OS has stopped the capture session for now. The recording stays
+  /// open: the segment in progress is closed, and a new one starts with the
+  /// first frame after the session runs again.
   private func handleInterruption(_ reason: String) {
     guard !closed else { return }
-    endRecording(then: ["type": "interrupted", "reason": reason], completion: nil)
+    NSLog("dual_camera: capture interrupted (%@)", reason)
+    let wasRecording = recorder != nil
+    recorder?.split()
+    var message = "capture interrupted (\(reason)); recording resumes when the camera is back"
+    if reason == "microphone_in_use" {
+      // The session only stays stopped because it holds the microphone.
+      // Without it, video runs again while the alarm or call lasts.
+      detachMicrophone()
+      message = "microphone taken by an alarm or call; recording video without sound until it is free"
+    }
+    if wasRecording {
+      emit(["type": "error", "code": "interrupted", "message": message, "fatal": false])
+    }
+  }
+
+  private func handleInterruptionEnded() {
+    guard !closed else { return }
+    NSLog("dual_camera: capture interruption ended")
+    if !session.isRunning { session.startRunning() }
+  }
+
+  private func detachMicrophone() {
+    guard let input = audioInput, session.inputs.contains(input) else { return }
+    session.beginConfiguration()
+    session.removeInput(input)
+    session.commitConfiguration()
+    micDetached = true
+    if !session.isRunning { session.startRunning() }
+    // The audio session normally says when the microphone is free again,
+    // but that notice is not guaranteed, so also ask now and then.
+    stopMicTimer()
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + 30, repeating: 30)
+    timer.setEventHandler { [weak self] in self?.reattachMicrophone() }
+    timer.resume()
+    micTimer = timer
+  }
+
+  private func reattachMicrophone() {
+    guard micDetached, !closed, let input = audioInput else { return }
+    do {
+      try AVAudioSession.sharedInstance().setActive(true)
+    } catch {
+      return  // Still in use; the timer tries again.
+    }
+    let clockBefore = captureClock
+    session.beginConfiguration()
+    let added = session.canAddInput(input)
+    if added { session.addInput(input) }
+    session.commitConfiguration()
+    guard added else { return }
+    micDetached = false
+    stopMicTimer()
+    NSLog("dual_camera: microphone is back")
+    // Frames from here on may be stamped by another clock.
+    if !CFEqual(clockBefore, captureClock) { recorder?.split() }
+  }
+
+  private func stopMicTimer() {
+    micTimer?.cancel()
+    micTimer = nil
   }
 
   private func handleRuntimeError(_ error: AVError?) {
