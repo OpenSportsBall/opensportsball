@@ -11,7 +11,10 @@
  * that through; everything else is decided here, where the API and sign-in
  * addresses are known.
  */
-export function siteContentSecurityPolicy(o: { loginUrl: string; region: string }): string {
+export function siteContentSecurityPolicy(o: { loginUrl: string; region: string; footageCdnDomain?: string }): string {
+  // The checks' pictures and the game video come from the footage
+  // distribution, by signed URL.
+  const footage = o.footageCdnDomain ? [`https://${o.footageCdnDomain}`] : [];
   const directives: [string, string[]][] = [
     ['default-src', ["'self'"]],
     // The page's own <meta> policy narrows this to its files and one hash.
@@ -28,7 +31,8 @@ export function siteContentSecurityPolicy(o: { loginUrl: string; region: string 
         `https://cognito-idp.${o.region}.amazonaws.com`,
       ],
     ],
-    ['img-src', ["'self'", 'data:']],
+    ['img-src', ["'self'", 'data:', ...footage]],
+    ['media-src', ["'self'", ...footage]],
     ['font-src', ["'self'"]],
     // Svelte sets style attributes.
     ['style-src', ["'self'", "'unsafe-inline'"]],

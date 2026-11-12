@@ -6,9 +6,23 @@
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { isAdmin } from '../lib/admin.js';
-import { body, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { SHA256_HEX, badRequest, body, json, notFound, pathParam, respond, str, type Result } from '../lib/http.js';
+import {
+  answerCheck,
+  cancelJob,
+  getJob,
+  getJobView,
+  jobView,
+  latestJobs,
+  questionsView,
+  reportLocal,
+  startJob,
+  videoLink,
+} from '../lib/jobs.js';
+import { getSettings } from '../lib/settings.js';
 import { expectedDevices } from '../lib/manifest.js';
-import { deployedFootageSigner } from '../lib/footageUrls.js';
+import { createFootageLink, listFootageLinks, lookupFootageLink, revokeFootageLink, signedFootage } from '../lib/footageLinks.js';
+import { FOOTAGE_LINK_TOKEN } from '../lib/tokens.js';
 import {
   STATUS_ORDER,
   getRecording,
@@ -21,7 +35,7 @@ import {
   type RecordingItem,
   type RecordingStatus,
 } from '../lib/recordings.js';
-import { config, ddb, keys, manifestKey, queryPrefix, segmentKey } from '../lib/store.js';
+import { config, ddb, keys, queryPrefix } from '../lib/store.js';
 import { createLinkCode } from '../lib/linkCodes.js';
 import { unlinkDevice, type DeviceItem } from '../lib/devices.js';
 import { createGameTicket } from '../lib/grants.js';
@@ -40,11 +54,22 @@ interface GameItem {
 
 export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise<Result> =>
   respond(async () => {
+    if (event.routeKey === 'POST /footage-links/lookup') {
+      // From the website's /footage page, opened by someone with no
+      // sign-in: the link's token is the credential. It is in the body, not
+      // the path, so it stays out of access logs.
+      return json(200, await lookupFootageLink(str(body(event), 'token', FOOTAGE_LINK_TOKEN)));
+    }
     const claims = event.requestContext.authorizer.jwt.claims;
     const acct = String(claims.sub);
     switch (event.routeKey) {
       case 'GET /me':
-        return json(200, { accountId: acct, email: claims.email ?? null, admin: isAdmin(claims) });
+        return json(200, {
+          accountId: acct,
+          email: claims.email ?? null,
+          admin: isAdmin(claims),
+          cloudProcessing: (await getSettings(acct)).cloudProcessing,
+        });
       case 'DELETE /me':
         await deleteAccount(acct);
         return json(204);
@@ -69,6 +94,13 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         return postGameTicket(acct, pathParam(event, 'gameId'), event.requestContext.domainName);
       case 'POST /games/{gameId}/recordings/{recordingId}/downloads':
         return postDownloads(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'));
+      case 'GET /games/{gameId}/recordings/{recordingId}/footage-links':
+        return json(200, { links: await listFootageLinks(acct, ...recPath(event)) });
+      case 'POST /games/{gameId}/recordings/{recordingId}/footage-links':
+        return json(201, await createFootageLink(acct, ...recPath(event), body(event).hours));
+      case 'DELETE /games/{gameId}/recordings/{recordingId}/footage-links/{linkId}':
+        await revokeFootageLink(acct, ...recPath(event), pathParam(event, 'linkId', SHA256_HEX));
+        return json(204);
       case 'GET /contributions':
         return json(200, await listContributions(acct));
       case 'POST /contributions':
@@ -78,10 +110,39 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
       case 'DELETE /contributions/{contributionId}':
         await deleteContribution(acct, pathParam(event, 'contributionId'));
         return json(204);
+      case 'POST /games/{gameId}/recordings/{recordingId}/jobs': {
+        const where = body(event).where;
+        if (where !== 'cloud' && where !== 'local') throw badRequest('"where" must be "cloud" or "local".');
+        return json(201, await startJob(acct, pathParam(event, 'gameId'), pathParam(event, 'recordingId'), where));
+      }
+      case 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}':
+        return json(200, await getJobView(acct, ...jobPath(event)));
+      case 'DELETE /games/{gameId}/recordings/{recordingId}/jobs/{jobId}':
+        await cancelJob(await getJob(acct, ...jobPath(event)));
+        return json(204);
+      case 'GET /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/questions':
+        return json(200, await questionsView(await getJob(acct, ...jobPath(event))));
+      case 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers':
+        return json(200, await answerCheck(await getJob(acct, ...jobPath(event)), body(event)));
+      case 'PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/status':
+        return json(200, await reportLocal(await getJob(acct, ...jobPath(event)), body(event)));
+      case 'POST /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/downloads':
+        return json(200, await videoLink(await getJob(acct, ...jobPath(event))));
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
   });
+
+const recPath = (event: APIGatewayProxyEventV2WithJWTAuthorizer): [string, string] => [
+  pathParam(event, 'gameId'),
+  pathParam(event, 'recordingId'),
+];
+
+const jobPath = (event: APIGatewayProxyEventV2WithJWTAuthorizer): [string, string, string] => [
+  pathParam(event, 'gameId'),
+  pathParam(event, 'recordingId'),
+  pathParam(event, 'jobId'),
+];
 
 async function listDevices(acct: string) {
   const items = await queryPrefix<DeviceItem>(acct, 'DEVICE#');
@@ -141,42 +202,18 @@ async function postGameTicket(acct: string, gameId: string, apiDomain: string) {
   return json(201, await createGameTicket({ accountId: acct, gameId, apiDomain }));
 }
 
-/** Signed CloudFront links for every segment of a recording that has
- *  arrived, with the size and SHA-256 its phone listed, and for the merged
- *  manifest once the recording is ready. */
+/** Signed CloudFront links to a recording's footage, for its owner. */
 async function postDownloads(acct: string, gameId: string, recordingId: string) {
   const rec = await getRecording(acct, gameId, recordingId);
   if (!rec) throw notFound('No such recording.');
-  const signer = await deployedFootageSigner();
-  const [objects, reports] = await Promise.all([
-    listObjects(acct, gameId, recordingId),
-    listReports(acct, gameId, recordingId),
-  ]);
-  // What each phone listed, by "<deviceId>/<fileName>".
-  const listed = new Map<string, { bytes: number; sha256: string }>();
-  const devices = [...(rec.manifest?.devices ?? []), ...reports.map((r) => r.device)];
-  for (const s of devices.flatMap((d) => d.segments ?? [])) listed.set(s.objectKey, s);
   const expiresAt = new Date(Date.now() + config.downloadUrlTtlSeconds * 1000);
-  const files = objects
-    .map((o) => {
-      const l = listed.get(`${o.deviceId}/${o.fileName}`);
-      return {
-        deviceId: o.deviceId,
-        fileName: o.fileName,
-        bytes: o.bytes,
-        sha256: l && l.bytes === o.bytes ? l.sha256 : null,
-        url: signer.url(segmentKey(acct, gameId, recordingId, o.deviceId, o.fileName), expiresAt),
-      };
-    })
-    .sort((a, b) => a.deviceId.localeCompare(b.deviceId) || a.fileName.localeCompare(b.fileName));
+  const reports = await listReports(acct, gameId, recordingId);
   return json(200, {
     gameId,
     recordingId,
     status: rec.status,
     expiresAt: expiresAt.toISOString(),
-    // Written when the recording turns ready (recordings.ts: checkReady).
-    manifestUrl: rec.status === 'ready' ? signer.url(manifestKey(acct, gameId, recordingId), expiresAt) : null,
-    files,
+    ...(await signedFootage(acct, rec, reports, expiresAt)),
   });
 }
 
@@ -184,10 +221,11 @@ async function getGame(acct: string, gameId: string) {
   const g = await ddb.send(new GetCommand({ TableName: config.table, Key: keys.game(acct, gameId) }));
   const game = g.Item as GameItem | undefined;
   if (!game) throw notFound('No such game.');
-  const [recordings, objects, reports] = await Promise.all([
+  const [recordings, objects, reports, jobs] = await Promise.all([
     queryPrefix<RecordingItem>(acct, `REC#${gameId}#`),
     listObjects(acct, gameId),
     listReports(acct, gameId),
+    latestJobs(acct, gameId),
   ]);
   const recs = recordings.map((r) => ({
     item: r,
@@ -210,6 +248,8 @@ async function getGame(acct: string, gameId: string) {
         objects.filter((o) => o.recordingId === r.recordingId),
         reports.filter((p) => p.recordingId === r.recordingId),
       ),
+      // The newest processing job, or null when it was never processed.
+      job: jobs.has(r.recordingId) ? jobView(jobs.get(r.recordingId)!, r) : null,
     })),
   });
 }

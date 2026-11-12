@@ -13,7 +13,8 @@ import { ScanCommand, type ScanCommandInput } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import { isAdmin } from '../lib/admin.js';
 import { deleteGame, deleteRecording } from '../lib/deletion.js';
-import { forbidden, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { badRequest, body, forbidden, json, notFound, pathParam, respond, type Result } from '../lib/http.js';
+import { setCloudProcessing } from '../lib/settings.js';
 import { recordedAt, type RecordingItem, type RecordingStatus, type ReportItem } from '../lib/recordings.js';
 import { accountPrefix, cognito, config, ddb, gamePrefix, queryPrefix, recordingPrefix, s3 } from '../lib/store.js';
 
@@ -51,6 +52,14 @@ export const handler = (event: APIGatewayProxyEventV2WithJWTAuthorizer): Promise
         await deleteRecording(acct, gameId, recordingId, footageOnly);
         return json(204);
       }
+      case 'PUT /admin/accounts/{accountId}/cloud-processing': {
+        const acct = pathParam(event, 'accountId');
+        const enabled = body(event).enabled;
+        if (typeof enabled !== 'boolean') throw badRequest('"enabled" must be true or false.');
+        audit(claims, { action: enabled ? 'cloud_processing_on' : 'cloud_processing_off', accountId: acct });
+        await setCloudProcessing(acct, enabled, String(claims.sub));
+        return json(200, { accountId: acct, cloudProcessing: enabled });
+      }
       default:
         throw notFound(`No route ${event.routeKey}.`);
     }
@@ -68,6 +77,8 @@ export interface AccountRow {
   devices: { deviceId: string; platform: string; model: string; linkedAt: string; lastSeenAt: string | null }[];
   games: number;
   recordings: Record<RecordingStatus, number> & { total: number };
+  /** May start cloud processing (PUT .../cloud-processing). */
+  cloudProcessing: boolean;
   /** Everything under accounts/<id>/ in the footage bucket. */
   storageBytes: number;
   objectCount: number;
@@ -90,6 +101,7 @@ async function accountsReport() {
         devices: [],
         games: 0,
         recordings: { total: 0, waiting_for_manifest: 0, uploading: 0, ready: 0 },
+        cloudProcessing: false,
         storageBytes: 0,
         objectCount: 0,
         lastUploadAt: null,
@@ -114,6 +126,8 @@ async function accountsReport() {
     if (sk === 'CLOSED') {
       const r = row(acct);
       r.status = 'deleted';
+    } else if (sk === 'SETTINGS') {
+      row(acct).cloudProcessing = it.cloudProcessing === true;
     } else if (sk.startsWith('DEVICE#')) {
       row(acct).devices.push({
         deviceId: String(it.deviceId),
@@ -192,12 +206,13 @@ async function scanAccountItems(): Promise<ScannedItem[]> {
       new ScanCommand({
         TableName: config.table,
         FilterExpression:
-          'begins_with(pk, :acct) AND (sk = :closed OR begins_with(sk, :dev) OR begins_with(sk, :game) OR begins_with(sk, :rec))',
-        ProjectionExpression: 'pk, sk, #status, deviceId, platform, model, linkedAt, lastSeenAt',
+          'begins_with(pk, :acct) AND (sk = :closed OR sk = :settings OR begins_with(sk, :dev) OR begins_with(sk, :game) OR begins_with(sk, :rec))',
+        ProjectionExpression: 'pk, sk, #status, deviceId, platform, model, linkedAt, lastSeenAt, cloudProcessing',
         ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: {
           ':acct': 'ACCOUNT#',
           ':closed': 'CLOSED',
+          ':settings': 'SETTINGS',
           ':dev': 'DEVICE#',
           ':game': 'GAME#',
           ':rec': 'REC#',
@@ -226,7 +241,7 @@ async function listAccountObjects(prefix = 'accounts/') {
   return out;
 }
 
-/** Every admin delete leaves a line in the Lambda's logs (kept a month):
+/** Every admin change leaves a line in the Lambda's logs (kept a month):
  *  who, and what. */
 function audit(claims: Record<string, unknown>, what: Record<string, string>) {
   console.log(JSON.stringify({ audit: true, admin: String(claims.sub), ...what }));

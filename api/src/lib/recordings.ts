@@ -10,6 +10,7 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { expectedDevices, mergeManifest, type ExpectedDevice, type Manifest, type ManifestDevice } from './manifest.js';
 import { refuseDeleted } from './deletion.js';
+import { supersedeActiveJob } from './jobs.js';
 import { config, ddb, events, keys, manifestKey, queryPrefix, recordingPrefix, s3 } from './store.js';
 
 export type RecordingStatus = 'waiting_for_manifest' | 'uploading' | 'ready';
@@ -26,6 +27,10 @@ export interface RecordingItem {
   /** Main's manifest as uploaded (may lack the Secondary's segments). */
   manifest?: Manifest;
   manifestSha256?: string;
+  /** When it last became ready; removed while a late Secondary uploads. */
+  readyAt?: string;
+  /** The job processing it, or the last one that did (lib/jobs.ts). */
+  activeJobId?: string;
 }
 
 export interface ReportItem {
@@ -186,6 +191,9 @@ export async function checkReady(acct: string, gameId: string, recordingId: stri
   }
 
   try {
+    // Ready a second time (a late Secondary): a job that started on Main's
+    // footage alone is working from an old manifest.
+    await supersedeActiveJob(rec);
     await publishReady(acct, gameId, recordingId);
   } catch (e) {
     // Undo so the next upload or manifest call retries the hand-off.

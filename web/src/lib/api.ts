@@ -5,10 +5,17 @@ import type {
 	AdminReport,
 	Contribution,
 	Device,
+	FootageLink,
+	FootageLinkCreated,
+	FootagePage,
 	Game,
 	GameSummary,
 	GameTicket,
 	GrantLookup,
+	Job,
+	JobQuestions,
+	CheckAnswer,
+	JobVideo,
 	LinkCode,
 	Me
 } from './types';
@@ -40,7 +47,7 @@ export function createApiClient(opts: ApiClientOptions) {
 	const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
 	const base = opts.baseUrl.replace(/\/+$/, '');
 
-	/** [anonymous]: a route that needs no sign-in (the /grant page). */
+	/** [anonymous]: a route that needs no sign-in (the /grant and /footage pages). */
 	async function request<T>(method: string, path: string, body?: unknown, anonymous = false): Promise<T> {
 		const headers: Record<string, string> = {};
 		if (!anonymous) {
@@ -95,6 +102,10 @@ export function createApiClient(opts: ApiClientOptions) {
 	}
 
 	const enc = encodeURIComponent;
+	const jobs = (gameId: string, recordingId: string) => `/games/${enc(gameId)}/recordings/${enc(recordingId)}/jobs`;
+	const footageLinks = (gameId: string, recordingId: string) =>
+		`/games/${enc(gameId)}/recordings/${enc(recordingId)}/footage-links`;
+	const job = (j: Pick<Job, 'gameId' | 'recordingId' | 'jobId'>) => `${jobs(j.gameId, j.recordingId)}/${enc(j.jobId)}`;
 	return {
 		me: () => request<Me>('GET', '/me'),
 		/** Deletes the account, its phones, games and footage, and its sign-in, for good. */
@@ -127,6 +138,32 @@ export function createApiClient(opts: ApiClientOptions) {
 		/** Deletes any account's recording and its footage, for good (admins). */
 		adminDeleteRecording: (accountId: string, gameId: string, recordingId: string) =>
 			request<void>('DELETE', `/admin/accounts/${enc(accountId)}/games/${enc(gameId)}/recordings/${enc(recordingId)}`),
+		/** Starts processing a ready recording in the cloud. */
+		startJob: (gameId: string, recordingId: string) => request<Job>('POST', jobs(gameId, recordingId), { where: 'cloud' }),
+		getJob: (gameId: string, recordingId: string, jobId: string) =>
+			request<Job>('GET', job({ gameId, recordingId, jobId })),
+		cancelJob: (j: Job) => request<void>('DELETE', job(j)),
+		/** The pitch and kit checks, with links to their pictures. */
+		jobQuestions: (j: Job) => request<JobQuestions>('GET', `${job(j)}/questions`),
+		/** Answers one of the engine's questions (cameras, pitch or kits). */
+		answerCheck: (j: Job, answer: CheckAnswer) => request<Job>('PUT', `${job(j)}/answers`, answer),
+		/** A signed link to the finished game video. */
+		jobVideo: (j: Job) => request<JobVideo>('POST', `${job(j)}/downloads`),
+		/** Lets an account process in the cloud, or stops it (admins). */
+		adminSetCloudProcessing: (accountId: string, enabled: boolean) =>
+			request<{ accountId: string; cloudProcessing: boolean }>('PUT', `/admin/accounts/${enc(accountId)}/cloud-processing`, {
+				enabled
+			}),
+		/** The recording's download pages that still work. */
+		listFootageLinks: async (gameId: string, recordingId: string) =>
+			(await request<{ links: FootageLink[] }>('GET', footageLinks(gameId, recordingId))).links,
+		/** A page of download links to the recording's raw video, for [hours] (24, 72 or 168). */
+		createFootageLink: (gameId: string, recordingId: string, hours: number) =>
+			request<FootageLinkCreated>('POST', footageLinks(gameId, recordingId), { hours }),
+		/** Stops a download page working. */
+		revokeFootageLink: (gameId: string, recordingId: string, linkId: string) =>
+			request<void>('DELETE', `${footageLinks(gameId, recordingId)}/${enc(linkId)}`),
+		lookupFootageLink: (token: string) => request<FootagePage>('POST', '/footage-links/lookup', { token }, true),
 		lookupGrantTicket: (ticket: string) => request<GrantLookup>('POST', '/grants/lookup', { ticket }, true)
 	};
 }

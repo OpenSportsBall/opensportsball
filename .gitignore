@@ -10,6 +10,8 @@
 *.wav
 *.aac
 footage/
+# The website's /footage page is code, not footage.
+!web/src/routes/footage/
 # Link to ../opensportsball-processing/footage (old absolute paths in run records)
 /footage
 *.pt
@@ -50,6 +52,7 @@ local.properties
 web/.svelte-kit/
 web/build/
 web/static/config.json
+web/mock-real/
 .claude/
 
 # Deploy outputs (account-specific)

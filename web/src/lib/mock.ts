@@ -11,6 +11,16 @@
  *   15-second refresh shows bars moving and recordings turning "ready".
  * - A phone "scans" each link code 5 seconds after POST /link-codes: the
  *   next GET /devices after that includes the new device.
+ * - A processing job moves with wall-clock time too: a few seconds queued,
+ *   then preparing, then it waits for the checks (a made-up pitch and kit
+ *   groups, lib/mockScene.ts); once both are answered it runs and ends
+ *   with a short test-pattern video.
+ * - To see the checks drawn from a real game, copy a prepared recording's
+ *   `engine/questions.json` and the pictures it names (same paths) into
+ *   `web/mock-real/` (git-ignored, and served only by `npm run dev:mock`,
+ *   never built: it shows real people). Jobs then ask those questions
+ *   instead of the made-up ones. Nothing refits them; a correction comes
+ *   back as the same question.
  */
 import type {
 	AdminAccount,
@@ -21,13 +31,23 @@ import type {
 	Device,
 	Game,
 	GameSummary,
+	FootageLink,
+	FootagePage,
 	GameTicket,
 	GrantLookup,
+	Job,
+	JobQuestions,
+	JobVideo,
 	LinkCode,
 	Recording,
 	RecordingDevice,
 	RecordingStatus
 } from './types';
+import { applyAnswer, firstChecks, kitsQuestion, pendingChecks, pitchQuestion, type MockChecks } from './mockScene';
+import { VIDEO_BASE64 } from './mockVideo';
+
+/** How long a mock job spends in each state. */
+export const MOCK_JOB_MS = { queue: 3_000, prepare: 12_000, refit: 4_000, run: 30_000 };
 
 export const MOCK_BASE_URL = 'https://mock.invalid';
 export const MOCK_LINK_DELAY_MS = 5_000;
@@ -54,6 +74,16 @@ interface MockRecording {
 	recordedAt: string | null;
 	hasManifest: boolean;
 	devices: MockDeviceProgress[];
+}
+
+/** A job and the made-up game its checks are about. */
+interface MockJob {
+	job: Job;
+	/** When its current status began. */
+	since: number;
+	hasQuestions: boolean;
+	/** Where the "engine" has got to with the checks. */
+	engine: MockChecks;
 }
 
 interface MockGame {
@@ -167,6 +197,99 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 
 	const codes: PendingCode[] = [];
 
+	// --- Processing jobs ------------------------------------------------------
+
+	const jobs: MockJob[] = [];
+	const cloudProcessing = new Map<string, boolean>([['mock-account-0001', true], ['mock-account-0002', true]]);
+
+	function newJob(gameId: string, recordingId: string, at: number): MockJob {
+		const j: MockJob = {
+			job: {
+				schemaVersion: 1,
+				jobId: uuid(),
+				gameId,
+				recordingId,
+				where: 'cloud',
+				status: 'queued',
+				phase: 'prepare',
+				checks: { pitch: 'open', kits: 'open' },
+				progress: null,
+				error: null,
+				stale: false,
+				engineVersion: 'mock-engine 0.1.0',
+				createdAt: iso(at),
+				updatedAt: iso(at),
+				finishedAt: null
+			},
+			since: at,
+			hasQuestions: false,
+			engine: firstChecks()
+		};
+		jobs.push(j);
+		return j;
+	}
+
+	const PREPARE_STAGES = ['sync', 'pitch', 'kits'];
+	const RUN_STAGES = ['ball', 'roles', 'render', 'upload'];
+
+	/** Moves a job on to where the clock says it is. */
+	function tick(m: MockJob): MockJob {
+		const j = m.job;
+		const move = (status: Job['status'], after: number) => {
+			m.since += after;
+			j.status = status;
+			j.progress = null;
+			j.updatedAt = iso(m.since);
+		};
+		for (;;) {
+			const elapsed = now() - m.since;
+			if (j.status === 'queued' && elapsed >= MOCK_JOB_MS.queue) {
+				move(j.phase === 'run' ? 'running' : 'preparing', MOCK_JOB_MS.queue);
+			} else if (j.status === 'preparing' && elapsed >= MOCK_JOB_MS.prepare) {
+				move('needs_answers', MOCK_JOB_MS.prepare);
+				m.hasQuestions = true;
+			} else if (j.status === 'refitting' && elapsed >= MOCK_JOB_MS.refit) {
+				move('needs_answers', MOCK_JOB_MS.refit);
+			} else if (j.status === 'running' && elapsed >= MOCK_JOB_MS.run) {
+				move('done', MOCK_JOB_MS.run);
+				j.finishedAt = j.updatedAt;
+			} else {
+				if (j.status === 'preparing' || j.status === 'running') {
+					const total = j.status === 'preparing' ? MOCK_JOB_MS.prepare : MOCK_JOB_MS.run;
+					const stages = j.status === 'preparing' ? PREPARE_STAGES : RUN_STAGES;
+					const fraction = Math.min(0.99, elapsed / total);
+					j.progress = {
+						stage: stages[Math.floor(fraction * stages.length)],
+						fraction,
+						etaSeconds: Math.round((total - elapsed) / 1000)
+					};
+				}
+				return m;
+			}
+		}
+	}
+
+	const jobOf = (gameId: string, recordingId: string, jobId: string) =>
+		jobs.find((m) => m.job.gameId === gameId && m.job.recordingId === recordingId && m.job.jobId === jobId);
+	/** The newest job of a recording. */
+	const latestJob = (gameId: string, recordingId: string) =>
+		jobs.filter((m) => m.job.gameId === gameId && m.job.recordingId === recordingId).at(-1);
+	const isFinal = (j: Job) => j.status === 'done' || j.status === 'failed' || j.status === 'cancelled';
+
+	// The oldest game's first half was processed days ago.
+	{
+		const at = t0 - 6 * 24 * 3600_000;
+		const seeded = newJob('g-a04b7e3d-6f19-4c82-8d5a-e2b16f7c9a83', 'rec-1h-55b0', at);
+		Object.assign(seeded.job, {
+			status: 'done',
+			phase: 'run',
+			checks: { pitch: 'answered', kits: 'answered' },
+			finishedAt: iso(at + 3 * 3600_000),
+			updatedAt: iso(at + 3 * 3600_000)
+		});
+		seeded.hasQuestions = true;
+	}
+
 	function deviceView(d: MockDeviceProgress, hasManifest: boolean): RecordingDevice {
 		const steps = Math.floor((now() - t0) / SEGMENT_INTERVAL_MS);
 		const uploaded = Math.min(d.expectedSegments, d.startSegments + Math.floor(steps * d.rate));
@@ -193,7 +316,8 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			recordedAt: r.recordedAt,
 			status,
 			hasManifest: r.hasManifest,
-			devices: ds
+			devices: ds,
+			job: null
 		};
 	}
 
@@ -207,7 +331,10 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			gameId: g.gameId,
 			createdAt: g.createdAt,
 			recordedAt: gameRecordedAt(g),
-			recordings: g.recordings.map(recordingView)
+			recordings: g.recordings.map((r) => {
+				const m = latestJob(g.gameId, r.recordingId);
+				return { ...recordingView(r), job: m ? structuredClone(tick(m).job) : null };
+			})
 		};
 	}
 	function gameSummary(g: MockGame): GameSummary {
@@ -329,7 +456,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		const segments = recs.flatMap((r) => r.devices);
 		const count = (s: RecordingStatus) => recs.filter((r) => r.status === s).length;
 		const empty = { total: 0, waiting_for_manifest: 0, uploading: 0, ready: 0 };
-		const mine: AdminAccount = {
+		const mine: Omit<AdminAccount, 'cloudProcessing'> = {
 			accountId: 'mock-account-0001',
 			email: 'parent@example.com',
 			status: 'active',
@@ -342,7 +469,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			lastUploadAt: recs.some((r) => r.status !== 'ready') ? ago(1) : ago(60 * 24 * 3),
 			oldestObjectAt: ago(60 * 24 * 7)
 		};
-		const others: AdminAccount[] = [
+		const others: Omit<AdminAccount, 'cloudProcessing'>[] = [
 			{
 				accountId: 'mock-account-0002',
 				email: 'coach.rivera@example.com',
@@ -400,7 +527,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			}
 		];
 		const accounts = [mine, ...others]
-			.map((a) => ({ ...a, ...videoTotals(a.accountId) }))
+			.map((a) => ({ ...a, ...videoTotals(a.accountId), cloudProcessing: cloudProcessing.get(a.accountId) === true }))
 			.sort((a, b) => b.storageBytes - a.storageBytes);
 		const sum = (f: (a: AdminAccount) => number) => accounts.reduce((n, a) => n + f(a), 0);
 		return {
@@ -450,7 +577,82 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		}))
 	);
 
-	function route(method: string, path: string): Response {
+	/** The job routes under /games/{g}/recordings/{r}/jobs (docs/API.md). */
+	function jobRoute(method: string, gameId: string, recordingId: string, rest: string, body: any): Response {
+		const g = games.find((x) => x.gameId === gameId);
+		const rec = g?.recordings.find((r) => r.recordingId === recordingId);
+		if (!g || !rec) return fail(404, 'not_found', 'No such recording.');
+		if (rest === '') {
+			if (method !== 'POST') return fail(404, 'not_found', 'No such route in the mock API.');
+			if (!cloudProcessing.get(MOCK_ACCOUNT)) return fail(403, 'cloud_not_enabled', 'Cloud processing is not switched on for this account.');
+			if (recordingView(rec).status !== 'ready') return fail(409, 'conflict', 'This recording is still uploading.');
+			const last = latestJob(gameId, recordingId);
+			if (last && !isFinal(tick(last).job)) return fail(409, 'conflict', 'This recording is already being processed.');
+			return json(201, newJob(gameId, recordingId, now()).job);
+		}
+		const [, jobId, action = ''] = rest.match(/^\/([^/]+)(?:\/([a-z]+))?$/) ?? [];
+		const m = jobId ? jobOf(gameId, recordingId, decodeURIComponent(jobId)) : undefined;
+		if (!m) return fail(404, 'not_found', 'No such job.');
+		const j = tick(m).job;
+		if (method === 'GET' && action === '') return json(200, j);
+		if (method === 'DELETE' && action === '') {
+			if (isFinal(j)) return fail(409, 'conflict', 'This job has already finished.');
+			j.status = 'cancelled';
+			j.progress = null;
+			j.finishedAt = j.updatedAt = iso(now());
+			return new Response(null, { status: 204 });
+		}
+		if (method === 'GET' && action === 'questions') {
+			if (!m.hasQuestions) return fail(409, 'conflict', 'This job has no questions yet.');
+			const q: JobQuestions = {
+				status: j.status,
+				checks: { ...j.checks },
+				expiresAt: iso(now() + 12 * 3600_000),
+				questions: {
+					schemaVersion: 1,
+					pending: pendingChecks(m.engine),
+					pitch: pitchQuestion(m.engine),
+					kits: kitsQuestion(m.engine)
+				}
+			};
+			return json(200, q);
+		}
+		if (method === 'PUT' && action === 'answers') {
+			const check = body?.question as 'pitch' | 'kits';
+			if (check !== 'pitch' && check !== 'kits') return fail(400, 'bad_request', '"question" must be "cameras", "pitch" or "kits".');
+			if (j.status !== 'needs_answers') return fail(409, 'conflict', 'This job is not waiting for answers.');
+			if (j.checks[check] !== 'open') return fail(409, 'conflict', 'This check is already answered.');
+			if (body.round !== m.engine[check].round) {
+				return fail(409, 'conflict', 'These questions have changed since you opened them. Reload and answer again.');
+			}
+			if (check === 'kits' && body.split != null && !m.engine.kits.splitAllowed) {
+				return fail(400, 'invalid_answers', 'A group can only be split once.');
+			}
+			const refit = applyAnswer(m.engine, body);
+			m.since = now();
+			j.updatedAt = iso(now());
+			if (refit) j.status = 'refitting';
+			else {
+				j.checks[check] = 'answered';
+				if (j.checks.pitch === 'answered' && j.checks.kits === 'answered') {
+					j.status = 'queued';
+					j.phase = 'run';
+				}
+			}
+			return json(200, j);
+		}
+		if (method === 'POST' && action === 'downloads') {
+			if (j.status !== 'done') return fail(409, 'conflict', 'This job has no video yet.');
+			const v: JobVideo = {
+				expiresAt: iso(now() + 12 * 3600_000),
+				video: { url: `data:video/mp4;base64,${VIDEO_BASE64}`, bytes: Math.floor((VIDEO_BASE64.length * 3) / 4), fileName: 'game.mp4' }
+			};
+			return json(200, v);
+		}
+		return fail(404, 'not_found', 'No such route in the mock API.');
+	}
+
+	function route(method: string, path: string, body: any): Response {
 		let m: RegExpMatchArray | null;
 		if (method === 'GET' && path === '/contributions') {
 			return json(200, { contributions: contributions.map((c) => ({ ...c })) });
@@ -463,7 +665,21 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			return new Response(null, { status: 204 });
 		}
 		if (method === 'GET' && path === '/me') {
-			return json(200, { accountId: 'mock-account-0001', email: 'parent@example.com', admin: true });
+			return json(200, {
+				accountId: 'mock-account-0001',
+				email: 'parent@example.com',
+				admin: true,
+				cloudProcessing: cloudProcessing.get('mock-account-0001') === true
+			});
+		}
+		if ((m = path.match(/^\/games\/([^/]+)\/recordings\/([^/]+)\/jobs(.*)$/))) {
+			return jobRoute(method, decodeURIComponent(m[1]), decodeURIComponent(m[2]), m[3], body);
+		}
+		if (method === 'PUT' && (m = path.match(/^\/admin\/accounts\/([^/]+)\/cloud-processing$/))) {
+			if (typeof body?.enabled !== 'boolean') return fail(400, 'bad_request', '"enabled" must be true or false.');
+			const id = decodeURIComponent(m[1]);
+			cloudProcessing.set(id, body.enabled);
+			return json(200, { accountId: id, cloudProcessing: body.enabled });
 		}
 		if (method === 'DELETE' && path === '/me') {
 			contributions.splice(0);
@@ -552,6 +768,36 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			}
 			return new Response(null, { status: 204 });
 		}
+		if ((m = path.match(/^\/games\/([^/]+)\/recordings\/([^/]+)\/footage-links(?:\/([^/]+))?$/))) {
+			const [gameId, recordingId, linkId] = [m[1], m[2], m[3]].map((x) => (x === undefined ? undefined : decodeURIComponent(x)));
+			const rec = games.find((x) => x.gameId === gameId)?.recordings.find((r) => r.recordingId === recordingId);
+			if (!rec) return fail(404, 'not_found', 'No such recording.');
+			const open = footageLinks.filter((l) => l.recording === rec && l.expiresAt > iso(now()));
+			const view = ({ linkId, createdAt, expiresAt }: MockFootageLink): FootageLink => ({ linkId, createdAt, expiresAt });
+			if (method === 'GET' && !linkId) return json(200, { links: open.map(view) });
+			if (method === 'POST' && !linkId) {
+				if (![24, 72, 168].includes(body?.hours)) return fail(400, 'bad_request', '"hours" must be one of 24, 72, 168.');
+				if (open.length >= 10) {
+					return fail(409, 'conflict', 'This recording already has as many download pages as it can. Stop one first.');
+				}
+				const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+				const link: MockFootageLink = {
+					linkId: Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(random() * 16)]).join(''),
+					token: 'osbf_' + Array.from({ length: 43 }, () => chars[Math.floor(random() * chars.length)]).join(''),
+					recording: rec,
+					createdAt: iso(now()),
+					expiresAt: iso(now() + body.hours * 3600_000)
+				};
+				footageLinks.push(link);
+				return json(201, { ...view(link), gameId, recordingId, token: link.token });
+			}
+			const i = footageLinks.findIndex((l) => l.recording === rec && l.linkId === linkId);
+			if (method === 'DELETE' && i >= 0) {
+				footageLinks.splice(i, 1);
+				return new Response(null, { status: 204 });
+			}
+			return fail(404, 'not_found', 'No such download page.');
+		}
 		if (method === 'POST' && (m = path.match(/^\/games\/([^/]+)\/grant-tickets$/))) {
 			const id = decodeURIComponent(m[1]);
 			if (!games.some((x) => x.gameId === id)) return fail(404, 'not_found', 'No such game.');
@@ -573,8 +819,72 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		return fail(404, 'not_found', `No route for ${method} ${path} in the mock API.`);
 	}
 
+	/** Download pages made so far (docs/API.md, "Footage links"). */
+	interface MockFootageLink extends FootageLink {
+		token: string;
+		recording: MockRecording;
+	}
+	const footageLinks: MockFootageLink[] = [];
+
+	/** POST /footage-links/lookup: what has arrived of the link's recording. */
+	function footagePage(token: unknown): Response {
+		const link = footageLinks.find((l) => l.token === token);
+		// Deleting a recording or its game takes its links with it.
+		if (!link || !games.some((g) => g.recordings.includes(link.recording))) {
+			return fail(404, 'not_found', 'That download page does not exist.');
+		}
+		if (link.expiresAt <= iso(now())) return fail(410, 'gone', 'That download page has expired.');
+		const rec = recordingView(link.recording);
+		const url = `data:video/mp4;base64,${VIDEO_BASE64}`;
+		const page: FootagePage = {
+			recordedAt: rec.recordedAt,
+			status: rec.status,
+			expiresAt: link.expiresAt,
+			linksExpireAt: iso(Math.min(Date.parse(link.expiresAt), now() + 12 * 3600_000)),
+			devices: rec.devices.flatMap((d) => (d.role && d.model ? [{ deviceId: d.deviceId, role: d.role, model: d.model }] : [])),
+			manifestUrl: rec.status === 'ready' ? 'data:application/json,%7B%7D' : null,
+			files: rec.devices.flatMap((d) =>
+				Array.from({ length: d.uploadedSegments }, (_, i) => ({
+					deviceId: d.deviceId,
+					fileName: `${d.deviceId}_${String(i).padStart(3, '0')}.mp4`,
+					bytes: Math.round(d.uploadedBytes / d.uploadedSegments),
+					sha256: rec.hasManifest ? '0'.repeat(64) : null,
+					url
+				}))
+			)
+		};
+		return json(200, page);
+	}
+
 	/** Website tickets made so far, for POST /grants/lookup. */
 	const gameTickets = new Map<string, GameTicket>();
+
+	/** A real game's questions from web/mock-real/ (the dev server serves it), if someone put them there. */
+	let real: Promise<JobQuestions['questions'] | null> | undefined;
+	const PICTURES = new Set(['image', 'overlay', 'background', 'sheet', 'mainLeft', 'secondaryLeft']);
+	function withUrls(node: any): any {
+		if (Array.isArray(node)) return node.map(withUrls);
+		if (typeof node !== 'object' || node === null) return node;
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(node)) {
+			out[k] = k === 'panorama' ? v : withUrls(v);
+			if (PICTURES.has(k) && typeof v === 'string' && k !== 'panorama') out[`${k}Url`] = `/mock-real/${v}`;
+		}
+		return out;
+	}
+	function realQuestions() {
+		real ??= (async () => {
+			if (typeof window === 'undefined') return null;
+			try {
+				const r = await fetch('/mock-real/questions.json');
+				if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return null;
+				return withUrls(await r.json()) as JobQuestions['questions'];
+			} catch {
+				return null;
+			}
+		})();
+		return real;
+	}
 
 	return async (input, init) => {
 		const req = new Request(input, init);
@@ -587,9 +897,26 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 			const body: GrantLookup = { ...t, used: false };
 			return json(200, body);
 		}
+		if (req.method === 'POST' && new URL(req.url).pathname === '/footage-links/lookup') {
+			// No sign-in: the /footage page is opened by whoever was sent the link.
+			return footagePage(((await req.json()) as { token?: unknown }).token);
+		}
 		const auth = req.headers.get('Authorization');
 		if (!auth?.startsWith('Bearer ')) return fail(401, 'unauthorized', 'Missing bearer token.');
 		const url = new URL(req.url);
-		return route(req.method.toUpperCase(), url.pathname);
+		let body: unknown;
+		if (req.method === 'PUT' || req.method === 'POST') {
+			try {
+				body = await req.json();
+			} catch {
+				body = undefined;
+			}
+		}
+		const res = route(req.method.toUpperCase(), url.pathname, body);
+		if (req.method === 'GET' && res.ok && url.pathname.endsWith('/questions')) {
+			const q = await realQuestions();
+			if (q) return json(200, { ...(await res.json()), questions: { ...q, pending: ['pitch', 'kits'] } });
+		}
+		return res;
 	};
 }

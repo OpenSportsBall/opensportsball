@@ -10,6 +10,10 @@
  *  instead of quietly creating it again (ensureRecording). If a delete
  *  fails partway, calling it again finishes it.
  *
+ *  Processing goes with the footage: jobs still running are stopped, and
+ *  what they wrote (questions, answers, the game video, checkpoints) is
+ *  deleted.
+ *
  *  Deleting the account leaves only a `CLOSED` marker holding the account
  *  id and when it was deleted. */
 
@@ -17,6 +21,7 @@ import { AbortMultipartUploadCommand, DeleteObjectsCommand, ListMultipartUploads
 import { AdminDeleteUserCommand, UserNotFoundException } from '@aws-sdk/client-cognito-identity-provider';
 import { BatchWriteCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { gone, notFound } from './http.js';
+import { deleteJobs } from './jobs.js';
 import {
   accountPrefix,
   cognito,
@@ -24,6 +29,7 @@ import {
   ddb,
   gamePrefix,
   keys,
+  processingPrefix,
   queryPrefix,
   recordingPrefix,
   s3,
@@ -55,9 +61,11 @@ export async function deleteRecording(acct: string, gameId: string, recordingId:
   const [rec, deleted] = await Promise.all([exists(keys.recording(acct, gameId, recordingId)), exists(marker)]);
   if (!rec && !deleted && !footageOnly) throw notFound('No such recording.');
   await putMarker(marker);
-  await deleteFootage(recordingPrefix(acct, gameId, recordingId));
   const sub = `${gameId}#${recordingId}#`;
-  await deleteItems(acct, [`REPORT#${sub}`, `OBJ#${sub}`, `UPLOAD#${sub}`]);
+  await deleteJobs(acct, `JOB#${sub}`);
+  await deleteEverything(recordingPrefix(acct, gameId, recordingId));
+  await deleteFootageLinks(acct, `FLINK#${sub}`);
+  await deleteItems(acct, [`REPORT#${sub}`, `OBJ#${sub}`, `UPLOAD#${sub}`, `JOB#${sub}`]);
   await deleteKeys([keys.recording(acct, gameId, recordingId)]);
 }
 
@@ -73,7 +81,8 @@ export async function deleteGame(acct: string, gameId: string, footageOnly = fal
   const [game, deleted] = await Promise.all([exists(keys.game(acct, gameId)), exists(marker)]);
   if (!game && !deleted && !footageOnly) throw notFound('No such game.');
   await putMarker(marker);
-  await deleteFootage(gamePrefix(acct, gameId));
+  await deleteJobs(acct, `JOB#${gameId}#`);
+  await deleteEverything(gamePrefix(acct, gameId));
 
   // Website tickets for this game that no phone has redeemed yet. Grant
   // tokens already in a phone's hands are left to expire, so that phone
@@ -82,16 +91,17 @@ export async function deleteGame(acct: string, gameId: string, footageOnly = fal
   await deleteKeys(tickets.flatMap((t) => [keys.token(t.tokenHash), { pk: `ACCOUNT#${acct}`, sk: t.sk }]));
 
   const g = `${gameId}#`;
+  await deleteFootageLinks(acct, `FLINK#${g}`);
   // DELETED#<gameId># is each recording's marker; the game's covers them.
-  await deleteItems(acct, [`GRANT#${g}`, `REPORT#${g}`, `OBJ#${g}`, `UPLOAD#${g}`, `REC#${g}`, `DELETED#${g}`]);
+  await deleteItems(acct, [`GRANT#${g}`, `REPORT#${g}`, `OBJ#${g}`, `UPLOAD#${g}`, `JOB#${g}`, `REC#${g}`, `DELETED#${g}`]);
   await deleteKeys([keys.game(acct, gameId)]);
 }
 
 export const isClosed = (acct: string) => exists(keys.closedAccount(acct));
 
 /** Deletes the account: its phones (unlinked, their tokens revoked), the
- *  grant tokens and tickets it handed out, all footage, every table item
- *  but the CLOSED marker, and the sign-in itself in Cognito. The marker
+ *  grant tokens and tickets it handed out, all footage and what was made from it, every
+ *  table item but the CLOSED marker, and the sign-in itself in Cognito. The marker
  *  goes first, so a link code still open or an upload already under way
  *  is refused (410) rather than starting the account again. */
 export async function deleteAccount(acct: string) {
@@ -100,12 +110,16 @@ export async function deleteAccount(acct: string) {
   const devices = await queryPrefix<{ deviceId: string; tokenHash: string }>(acct, 'DEVICE#');
   const grants = await queryPrefix<{ tokenHash: string }>(acct, 'GRANT#');
   const tickets = await queryPrefix<{ tokenHash: string }>(acct, 'TICKET#');
+  // The account's own items go with the rest below.
+  const footageLinks = await queryPrefix<{ linkId: string }>(acct, 'FLINK#');
   await deleteKeys([
+    ...footageLinks.map((l) => keys.token(l.linkId)),
     ...devices.flatMap((d) => [keys.token(d.tokenHash), keys.owner(d.deviceId)]),
     ...[...grants, ...tickets].map((g) => keys.token(g.tokenHash)),
   ]);
 
-  await deleteFootage(accountPrefix(acct));
+  await deleteJobs(acct, 'JOB#');
+  await deleteEverything(accountPrefix(acct));
   // What the user shared to improve the models goes with the account (lib/contributions.ts).
   await deleteAllContributions(acct);
 
@@ -121,8 +135,22 @@ export async function deleteAccount(acct: string) {
   }
 }
 
+/** Footage links (lib/footageLinks.ts) under [prefix], and their tokens:
+ *  a link to deleted footage stops existing, rather than showing nothing. */
+async function deleteFootageLinks(acct: string, prefix: string) {
+  const links = await queryPrefix<Key & { linkId: string }>(acct, prefix);
+  await deleteKeys(links.flatMap((l) => [keys.token(l.linkId), { pk: l.pk, sk: l.sk }]));
+}
+
 const putMarker = (key: Key) =>
   ddb.send(new PutCommand({ TableName: config.table, Item: { ...key, deletedAt: new Date().toISOString() } }));
+
+/** The footage under [footagePrefix], and what processing made from it. */
+async function deleteEverything(footagePrefix: string) {
+  await deleteFootage(footagePrefix);
+  await deleteFootage(processingPrefix('outputs', footagePrefix));
+  await deleteFootage(processingPrefix('work', footagePrefix));
+}
 
 /** Aborts unfinished uploads, then deletes every object, under [prefix]. */
 async function deleteFootage(prefix: string) {

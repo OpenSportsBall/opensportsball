@@ -24,6 +24,18 @@ export const TICKET_TTL_MS = 90 * 24 * 3600 * 1000;
  *  link, which may sit in a message for a while before the phone opens it. */
 export const GAME_TICKET_TTL_MS = 7 * 24 * 3600 * 1000;
 
+/** `osbf_` + 32 random bytes: a footage link, letting whoever holds it
+ *  download one recording's segments for a while (lib/footageLinks.ts). */
+export const newFootageLinkToken = () => `osbf_${randomBytes(32).toString('base64url')}`;
+
+export const FOOTAGE_LINK_TOKEN = /^osbf_[A-Za-z0-9_-]{43}$/;
+
+/** How long a footage link may last: a day, three days or a week. */
+export const FOOTAGE_LINK_HOURS: readonly number[] = [24, 72, 168];
+
+/** Footage links one recording may have open at a time. */
+export const MAX_FOOTAGE_LINKS = 10;
+
 /** Unbound tickets one Main phone may hold at a time. */
 export const MAX_OPEN_TICKETS = 5;
 

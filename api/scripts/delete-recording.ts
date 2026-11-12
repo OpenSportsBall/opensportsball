@@ -179,6 +179,7 @@ async function main() {
       query(pk, `REPORT#${scope}#`),
       query(pk, `OBJ#${scope}#`),
       query(pk, `UPLOAD#${scope}#`),
+      query(pk, `FLINK#${scope}#`),
       ...(recId ? [] : [query(pk, `GAME#${gameId}`), query(pk, `GRANT#${gameId}#`)]),
     ])
   ).flat();
@@ -186,6 +187,11 @@ async function main() {
   // A game's grants each have a TOKEN# item that lets the other phone upload.
   for (const g of items.filter((i) => (i.sk as string).startsWith('GRANT#'))) {
     keys.push({ pk: `TOKEN#${g.tokenHash}`, sk: 'TOKEN' });
+  }
+
+  // A footage link's token is what its download page is opened with.
+  for (const l of items.filter((i) => (i.sk as string).startsWith('FLINK#'))) {
+    keys.push({ pk: `TOKEN#${l.linkId}`, sk: 'TOKEN' });
   }
 
   const prefix = `accounts/${acct}/games/${gameId}/` + (recId ? `recordings/${recId}/` : '');

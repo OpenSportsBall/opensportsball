@@ -81,7 +81,7 @@ interface FileEntry {
 
 export const contributionPrefix = (acct: string, id: string) => `contributions/${acct}/${id}/`;
 export const contributionsAccountPrefix = (acct: string) => `contributions/${acct}/`;
-const fileKey = (acct: string, id: string, path: string) => `${contributionPrefix(acct, id)}files/${path}`;
+export const fileKey = (acct: string, id: string, path: string) => `${contributionPrefix(acct, id)}files/${path}`;
 const docKey = (acct: string, id: string) => `${contributionPrefix(acct, id)}contribution.json`;
 const b64 = (hex: string) => Buffer.from(hex, 'hex').toString('base64');
 

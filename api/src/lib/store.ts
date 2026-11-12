@@ -9,6 +9,7 @@
  * | LINKCODE#<code>     | LINKCODE                                | pending phone link      |
  * | TOKEN#<sha256>      | TOKEN                                   | device token -> device, |
  * |                     |                                         | or grant token -> grant |
+ * |                     |                                         | or footage link -> rec. |
  * | DEVICE#<deviceId>   | OWNER                                   | which account owns it   |
  * | ACCOUNT#<acct>      | DEVICE#<deviceId>                       | linked phone            |
  * | ACCOUNT#<acct>      | GAME#<gameId>                           | game                    |
@@ -18,10 +19,18 @@
  * | ACCOUNT#<acct>      | REPORT#<gameId>#<recordingId>#<dev>     | a phone's own segments  |
  * | ACCOUNT#<acct>      | OBJ#<gameId>#<recordingId>#<dev>#<file> | uploaded segment        |
  * | ACCOUNT#<acct>      | UPLOAD#<gameId>#<recordingId>#<file>    | multipart in progress   |
+ * | ACCOUNT#<acct>      | JOB#<gameId>#<recordingId>#<jobId>      | pointer to a job        |
+ * | ACCOUNT#<acct>      | FLINK#<gameId>#<recordingId>#<sha256>   | footage download link   |
+ * | ACCOUNT#<acct>      | SETTINGS                                | what the account may do |
  * | ACCOUNT#<acct>      | DELETED#<gameId>                        | deleted game            |
  * | ACCOUNT#<acct>      | DELETED#<gameId>#<recordingId>          | deleted recording       |
  * | ACCOUNT#<acct>      | CLOSED                                  | deleted account         |
  * | ACCOUNT#<acct>      | CONTRIB#<contributionId>                | shared result (models)  |
+ * | JOB#<jobId>         | JOB                                     | processing job          |
+ *
+ * A job has a partition of its own so the engine's container, which
+ * writes its progress there, can be limited by IAM to `JOB#` keys and
+ * never reads or writes an account's items (lib/jobs.ts).
  */
 
 import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
@@ -76,6 +85,22 @@ export const config = {
   get downloadUrlTtlSeconds() {
     return Number(env('DOWNLOAD_URL_TTL_SECONDS', String(12 * 3600)));
   },
+  /** Where each engine command runs, as the stack sets it: a JSON object
+   *  `{"prepare": {"queue", "definition"}, "run": ..., "refit": ...}`.
+   *  Null on a stack without cloud processing. */
+  get batchJobs(): Record<'prepare' | 'run' | 'refit', { queue: string; definition: string }> | null {
+    const v = process.env.BATCH_JOBS;
+    return v ? JSON.parse(v) : null;
+  },
+  /** The website's address, for links in emails. */
+  get siteUrl() {
+    return process.env.SITE_URL || null;
+  },
+  /** The verified SES sender, e.g. `OpenSportsBall <no-reply@example.com>`;
+   *  no emails are sent without it. */
+  get emailFrom() {
+    return process.env.EMAIL_FROM || null;
+  },
 };
 
 export const keys = {
@@ -112,6 +137,18 @@ export const keys = {
     pk: `ACCOUNT#${acct}`,
     sk: `DELETED#${gameId}#${recId}`,
   }),
+  job: (jobId: string) => ({ pk: `JOB#${jobId}`, sk: 'JOB' }),
+  /** Lists an account's jobs by game and recording; the job itself is at keys.job. */
+  jobRef: (acct: string, gameId: string, recId: string, jobId: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `JOB#${gameId}#${recId}#${jobId}`,
+  }),
+  /** A link to download a recording's footage (lib/footageLinks.ts); its token is at keys.token. */
+  footageLink: (acct: string, gameId: string, recId: string, tokenHash: string) => ({
+    pk: `ACCOUNT#${acct}`,
+    sk: `FLINK#${gameId}#${recId}#${tokenHash}`,
+  }),
+  settings: (acct: string) => ({ pk: `ACCOUNT#${acct}`, sk: 'SETTINGS' }),
   /** Left when an account is deleted (lib/deletion.ts), so a link code or
    *  an upload already under way can't bring it back. */
   closedAccount: (acct: string) => ({ pk: `ACCOUNT#${acct}`, sk: 'CLOSED' }),
@@ -152,6 +189,20 @@ export const segmentKey = (acct: string, gameId: string, recId: string, deviceId
 
 export const manifestKey = (acct: string, gameId: string, recId: string) =>
   `${recordingPrefix(acct, gameId, recId)}manifest.json`;
+
+/** What processing writes is kept apart from the phones' uploads, under
+ *  the same path below another root: `outputs/` for what the user gets
+ *  (questions, answers, the game video), `work/` for checkpoints (expired
+ *  after a week). Not under `accounts/`, whose objects count as uploaded
+ *  footage and expire with it. */
+export type ProcessingRoot = 'outputs' | 'work';
+
+/** The folder under [root] matching a footage prefix (account, game or recording). */
+export const processingPrefix = (root: ProcessingRoot, footagePrefix: string) =>
+  `${root}/${footagePrefix.slice('accounts/'.length)}`;
+
+export const jobPrefix = (root: ProcessingRoot, acct: string, gameId: string, recId: string, jobId: string) =>
+  `${processingPrefix(root, recordingPrefix(acct, gameId, recId))}jobs/${jobId}/`;
 
 const SEGMENT_KEY =
   /^accounts\/([^/]+)\/games\/([0-9a-f-]{36})\/recordings\/([0-9a-f-]{36})\/([0-9a-f-]{36})\/([0-9a-f-]{36}_[0-9]{3}\.mp4)$/;

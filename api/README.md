@@ -6,17 +6,20 @@ TypeScript on Node 22, AWS SDK v3. License: Apache-2.0. Deployed by
 
 | Handler | Routes / trigger |
 |---|---|
-| `src/handlers/web.ts` | Website routes (Cognito JWT): `/me`, `/link-codes`, `/devices`, `/games` |
+| `src/handlers/web.ts` | Website routes (Cognito JWT): `/me`, `/link-codes`, `/devices`, `/games`, and processing jobs under `/games/{gameId}/recordings/{recordingId}/jobs` |
 | `src/handlers/device.ts` | Phone routes: `/devices/link` (link code is the credential), recording grants, manifest and report upload, multipart uploads |
-| `src/handlers/admin.ts` | Admin routes (Cognito JWT, `admins` group): `/admin/accounts`, and listing and deleting any account's games and recordings. Its own Lambda, the only one that may scan the table and list users |
+| `src/handlers/admin.ts` | Admin routes (Cognito JWT, `admins` group): `/admin/accounts`, listing and deleting any account's games and recordings, and switching cloud processing on for an account. Its own Lambda, the only one that may scan the table and list users |
 | `src/handlers/authorizer.ts` | Lambda authorizer for phone routes (device or grant token hash lookup, uncached) |
 | `src/handlers/ingest.ts` | S3 `ObjectCreated` for segment files |
+| `src/handlers/jobs.ts` | EventBridge "Batch Job State Change": moves a processing job on when its Batch job starts or ends, and emails the account |
 
 Shared logic is in `src/lib/`: `store.ts` (clients, config, the
 single-table key layout), `recordings.ts` (when a recording becomes
 `ready` and the `RecordingReady` hand-off), `manifest.ts` (schema from
-`shared/schemas/` plus rules the schema can't express), `tokens.ts`,
-`http.ts`.
+`shared/schemas/` plus rules the schema can't express), `jobs.ts`
+(processing jobs: starting them, the checks' answers, following Batch,
+cancelling), `settings.ts` (which accounts may process in the cloud),
+`email.ts`, `tokens.ts`, `http.ts`.
 
 The hand-off to processing happens exactly once: the switch to `ready` is a
 conditional write, and if publishing the event fails the status is rolled
@@ -52,7 +55,9 @@ aws cognito-idp list-users --user-pool-id <UserPoolId> --filter 'email = "<email
 
 The tests run the handlers against **moto**, a local AWS emulator
 (DynamoDB, S3 multipart and presigned URLs, EventBridge, SQS), so
-conditional writes, transactions and real uploads are exercised:
+conditional writes, transactions and real uploads are exercised. Batch,
+SES and (in the job tests) Cognito are stubbed with `aws-sdk-client-mock`:
+moto's Batch wants Docker.
 
 ```
 pip install "moto[server]"     # or set MOTO_SERVER=/path/to/moto_server

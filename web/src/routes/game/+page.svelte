@@ -7,15 +7,18 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
+	import FootageShare from '#lib/components/FootageShare.svelte';
+	import JobPanel from '#lib/components/JobPanel.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
-	import { formatBytes, formatDateTime, fraction, percent, recordedTime, roleLabel, shortId } from '#lib/format.ts';
+	import { formatBytes, formatDateTime, fraction, jobIsActive, percent, recordedTime, roleLabel, shortId } from '#lib/format.ts';
 	import { grantPageUrl } from '#lib/grant.ts';
-	import { poll } from '#lib/poll.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import type { Game, RecordingDevice } from '#lib/types.ts';
 
 	const REFRESH_MS = 15_000;
+	/** While a machine is working on a recording, to show it moving. */
+	const JOB_REFRESH_MS = 4_000;
 
 	const gameId = $derived(page.url.searchParams.get('id'));
 	let game = $state<Game | null>(null);
@@ -130,7 +133,19 @@
 		} catch (e) {
 			error = e;
 		}
-		return game?.recordings.some((r) => r.status !== 'ready') ?? true;
+		return game?.recordings.some((r) => r.status !== 'ready' || jobIsActive(r.job)) ?? true;
+	}
+
+	// Refreshes while anything is uploading or being processed: faster while
+	// a machine is at work, and not at all once everything has settled.
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let destroyed = false;
+	async function refresh() {
+		clearTimeout(timer);
+		const again = await load();
+		if (destroyed || !again) return;
+		const working = game?.recordings.some((r) => jobIsActive(r.job) && r.job?.status !== 'needs_answers') ?? false;
+		timer = setTimeout(refresh, working ? JOB_REFRESH_MS : REFRESH_MS);
 	}
 
 	async function loadModels() {
@@ -143,16 +158,14 @@
 	}
 
 	onMount(() => {
-		let stop = () => {};
-		let destroyed = false;
 		(async () => {
 			if (!(await session.requireSignIn()) || destroyed || !gameId) return;
 			void loadModels();
-			if (await load()) stop = poll(load, REFRESH_MS);
+			await refresh();
 		})();
 		return () => {
 			destroyed = true;
-			stop();
+			clearTimeout(timer);
 		};
 	});
 
@@ -172,7 +185,7 @@
 {#if !gameId}
 	<ErrorBanner error="No game selected. Pick one from the Games page." />
 {:else}
-	{#if error}<ErrorBanner {error} retry={() => void load()} />{/if}
+	{#if error}<ErrorBanner {error} retry={() => void refresh()} />{/if}
 	{#if deleteError}<ErrorBanner error={deleteError} />{/if}
 
 	{#if game === null && !error}
@@ -271,6 +284,12 @@
 							</li>
 						{/each}
 					</ul>
+
+					<JobPanel gameId={game.gameId} {rec} onchange={() => void refresh()} />
+
+					{#if rec.devices.some((d) => d.uploadedSegments > 0)}
+						<FootageShare gameId={game.gameId} recordingId={rec.recordingId} />
+					{/if}
 				</section>
 			{/each}
 		</div>
