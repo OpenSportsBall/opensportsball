@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 The OpenSportsBall Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:osb_core/osb_core.dart';
@@ -72,6 +74,11 @@ class GamesScreenState extends State<GamesScreen> {
     try {
       final g = await widget.session.games();
       setState(() => _games = g);
+      // A game opened while it was uploading (or that failed to load) is
+      // asked about again, so the list and the game say the same thing.
+      for (final c in _controllers.values) {
+        if (c.awaitingUpload || (c.game == null && c.error != null)) unawaited(c.open());
+      }
     } on SignedOut {
       widget.auth.signedOut();
     } on OsbException catch (e) {
@@ -234,7 +241,10 @@ class _GameTile extends StatelessWidget {
           Phase.running => 'Processing',
           Phase.paused => 'Paused',
           Phase.done => 'Video ready',
-          _ => game.status == 'ready' ? 'Ready to process' : 'Uploading from the phones',
+          // The opened game knows more recently than the list does.
+          _ => (ctl?.game != null ? !ctl!.awaitingUpload : game.status == 'ready')
+              ? 'Ready to process'
+              : 'Uploading from the phones',
         };
         return ListTile(
           selected: selected,

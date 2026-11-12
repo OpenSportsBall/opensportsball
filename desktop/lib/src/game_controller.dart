@@ -172,6 +172,10 @@ class GameController extends ChangeNotifier {
     return null;
   }
 
+  /// The phones haven't finished uploading, as of the last [open]. The
+  /// games list asks again on refresh ([GamesScreenState]).
+  bool awaitingUpload = false;
+
   /// Finds the recording and works out where it stands.
   Future<void> open() async {
     phase = Phase.loading;
@@ -181,6 +185,7 @@ class GameController extends ChangeNotifier {
     if (g == null) return;
     game = g;
     final ready = g.recordings.where((r) => r.ready).toList();
+    awaitingUpload = ready.isEmpty && g.recordings.isNotEmpty;
     if (ready.isEmpty) {
       recording = g.recordings.isEmpty ? null : g.recordings.first;
       phase = Phase.needsDownload;
@@ -192,11 +197,29 @@ class GameController extends ChangeNotifier {
       return;
     }
     recording = ready.first;
-    folder = Directory(
-      recordingFolder(settings.workFolder, summary, recording!.recordingId, onlyRecording: g.recordings.length == 1),
-    );
+    // Where it was put before, if that's still there (the work folder may
+    // have been changed since); else where it goes now.
+    final known = settings.knownGame(recording!.recordingId);
+    if (known != null && Directory(known.folder).existsSync()) {
+      folder = Directory(known.folder);
+      _knownMaxChunks = known.maxChunks;
+    } else {
+      folder = Directory(
+        recordingFolder(settings.workFolder, summary, recording!.recordingId, onlyRecording: g.recordings.length == 1),
+      );
+      _knownMaxChunks = null;
+    }
     await _refresh();
   }
+
+  /// The maxChunks this game was last processed with: kept while the
+  /// setting is unset, so a shortened game doesn't turn into an unfinished
+  /// whole one.
+  int? _knownMaxChunks;
+  int? get _maxChunks => settings.maxChunks ?? _knownMaxChunks;
+
+  Future<void> _remember() =>
+      settings.rememberGame(recording!.recordingId, KnownGame(folder!.path, maxChunks: _maxChunks));
 
   Future<void> _writeJob() async {
     await folder!.create(recursive: true);
@@ -206,10 +229,11 @@ class GameController extends ChangeNotifier {
           folder!.path,
           height: settings.outputHeight,
           youtubeCopy: settings.youtubeCopy,
-          maxChunks: settings.maxChunks,
+          maxChunks: _maxChunks,
         ),
       ),
     );
+    await _remember();
   }
 
   /// Works out the phase from the folder and the engine's status.
@@ -291,6 +315,7 @@ class GameController extends ChangeNotifier {
     activity = 'Downloading the footage';
     notifyListeners();
     final rec = recording!;
+    await _remember(); // a part-done download is found again too
     _downloader = FootageDownloader(
       folder: folder!,
       client: session.client,
@@ -651,6 +676,109 @@ class GameController extends ChangeNotifier {
       phase = Phase.readyToRun;
       notifyListeners();
     }
+  }
+
+  // --- deleting from this Mac -------------------------------------------------
+
+  /// The record of what was shared from this game: kept through
+  /// [deleteLocal], so it can still be withdrawn and isn't sent twice.
+  File? get _sentFile {
+    final f = SentRecord.fileIn(folder!);
+    return f.existsSync() ? f : null;
+  }
+
+  /// This game has files on this Mac to delete (more than the record of
+  /// what was shared).
+  bool get hasLocalFiles {
+    final dir = folder;
+    if (dir == null || !dir.existsSync()) return false;
+    final kept = _sentFile?.path;
+    try {
+      return dir
+          .listSync(recursive: kept != null, followLinks: false)
+          .any((e) => e.path != kept && (e is! Directory || kept == null || !kept.startsWith('${e.path}/')));
+    } on FileSystemException {
+      return false;
+    }
+  }
+
+  /// Nothing is working on the game's folder.
+  bool get canDeleteLocal => !busy && phase != Phase.paused && phase != Phase.loading && hasLocalFiles;
+
+  /// The game video is in the game's folder: [deleteLocal] deletes it too.
+  bool get videoInFolder =>
+      folder != null && [output, youtubeOutput].any((o) => o != null && o.startsWith('${folder!.path}/'));
+
+  /// How much of this Mac's disk the game's folder takes.
+  Future<int> localBytes() async {
+    var n = 0;
+    try {
+      await for (final e in folder!.list(recursive: true, followLinks: false)) {
+        if (e is File) n += await e.length();
+      }
+    } on FileSystemException {
+      // being deleted
+    }
+    return n;
+  }
+
+  /// Deletes the game's folder from this Mac, for good: the footage, the
+  /// engine's work and the game video. What's in the account isn't
+  /// touched, so the game can be downloaded and processed again. The record
+  /// of what was shared stays.
+  Future<void> deleteLocal() async {
+    final dir = folder;
+    if (dir == null || !canDeleteLocal) return;
+    phase = Phase.loading;
+    error = null;
+    errorLog = null;
+    notifyListeners();
+    await _sendingNow;
+    await _stopStale();
+    String? failure;
+    try {
+      final kept = _sentFile?.path;
+      Future<void> clear(Directory d) async {
+        await for (final e in d.list(followLinks: false)) {
+          if (e.path == kept) continue;
+          if (e is Directory && kept != null && kept.startsWith('${e.path}/')) {
+            await clear(e);
+          } else {
+            await e.delete(recursive: true);
+          }
+        }
+      }
+
+      await clear(dir);
+      if (kept == null) await dir.delete();
+    } on FileSystemException catch (e) {
+      failure = 'Not all of it could be deleted (${e.osError?.message ?? e.message}).';
+    }
+    // It starts again as a whole game, where the work folder now is.
+    _knownMaxChunks = null;
+    if (dir.existsSync()) {
+      await _remember();
+    } else {
+      await settings.forgetGame(recording!.recordingId);
+    }
+    output = null;
+    youtubeOutput = null;
+    questions = null;
+    chunkDetails = const [];
+    ball = null;
+    download = null;
+    step = null;
+    stepStartedAt = null;
+    stepLog = null;
+    fraction = null;
+    etaS = null;
+    chunks = null;
+    runElapsedS = null;
+    PaintingBinding.instance.imageCache
+      ..clear()
+      ..clearLiveImages();
+    await _refresh();
+    if (failure != null) _fail(failure);
   }
 
   /// Stops the engine and waits for it (the app is quitting).

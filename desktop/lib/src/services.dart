@@ -92,9 +92,41 @@ class Settings extends ChangeNotifier {
     } else {
       _values[key] = value;
     }
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> _save() async {
     await file.parent.create(recursive: true);
     await file.writeAsString(const JsonEncoder.withIndent(' ').convert(_values));
-    notifyListeners();
+  }
+
+  /// The games already on this Mac, by recording id: where each one's
+  /// folder is and how it was shortened. A game stays found (and as far
+  /// along as it was) when the work folder is changed afterwards, or the
+  /// app is next opened without the `OSB_*` variables it was started with.
+  KnownGame? knownGame(String recordingId) {
+    final g = (_values['games'] as Map?)?[recordingId];
+    final folder = g is Map ? g['folder'] : null;
+    return folder is String ? KnownGame(folder, maxChunks: (g['maxChunks'] as num?)?.toInt()) : null;
+  }
+
+  Future<void> rememberGame(String recordingId, KnownGame game) async {
+    final was = knownGame(recordingId);
+    if (was != null && was.folder == game.folder && was.maxChunks == game.maxChunks) return;
+    _values['games'] = {
+      ...?(_values['games'] as Map?),
+      recordingId: {'folder': game.folder, if (game.maxChunks != null) 'maxChunks': game.maxChunks},
+    };
+    await _save();
+  }
+
+  /// The game's folder was deleted from this Mac.
+  Future<void> forgetGame(String recordingId) async {
+    final games = {...?(_values['games'] as Map?)};
+    if (games.remove(recordingId) == null) return;
+    _values['games'] = games;
+    await _save();
   }
 
   /// The engine to run, or null when there is none.
@@ -110,6 +142,15 @@ class Settings extends ChangeNotifier {
     }
     return null;
   }
+}
+
+/// A game's folder on this Mac ([Settings.knownGame]).
+class KnownGame {
+  const KnownGame(this.folder, {this.maxChunks});
+  final String folder;
+
+  /// The job's maxChunks it was processed with (development), if any.
+  final int? maxChunks;
 }
 
 /// One finding of the pre-flight checks.

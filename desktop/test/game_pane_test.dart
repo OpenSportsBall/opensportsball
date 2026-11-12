@@ -100,6 +100,35 @@ void main() {
 
   Widget app(Widget child) => MaterialApp(home: Scaffold(body: child));
 
+  testWidgets('"Delete from this Mac" asks first, and only shows when the game has files and nothing is working', (
+    tester,
+  ) async {
+    final dir = Directory.systemTemp.createTempSync('osb_delete');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final ctl = _controller(dir)
+      ..phase = Phase.done
+      ..folder = (Directory('${dir.path}/game')..createSync())
+      ..output = '${dir.path}/game/fullgame/game.mp4';
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    expect(find.text('Delete from this Mac…'), findsNothing); // an empty folder
+
+    File(ctl.output!).createSync(recursive: true);
+    ctl.phase = Phase.running;
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    expect(find.text('Delete from this Mac…'), findsNothing); // the engine is using it
+
+    ctl.phase = Phase.done;
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    await tester.tap(find.text('Delete from this Mac…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete this game from this Mac?'), findsOneWidget);
+    expect(find.textContaining('The game video is only on this Mac.'), findsOneWidget);
+    expect(find.textContaining('the footage, the game video and everything'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(File(ctl.output!).existsSync(), isTrue);
+  });
+
   testWidgets('a ball the engine doesn\'t know is said from the second segment, with the segments to look at', (
     tester,
   ) async {
