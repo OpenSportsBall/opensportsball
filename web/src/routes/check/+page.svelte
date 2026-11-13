@@ -2,11 +2,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script lang="ts">
 	/**
-	 * The two checks a cloud job waits for between getting a game ready and
-	 * making its video: the pitch, then the kit groups (and first, when the
-	 * phones' views couldn't be matched up, which phone is on the left). The
-	 * engine wrote the questions and decides what is still open; this page
-	 * only draws them and sends back the answers.
+	 * The check a cloud job waits for between getting a game ready and
+	 * making its video: the pitch (and first, when the phones' views couldn't
+	 * be matched up, which phone is on the left). The engine wrote the
+	 * questions and decides what is still open; this page only draws them and
+	 * sends back the answers.
 	 */
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -14,7 +14,6 @@
 	import CamerasCheck from '#lib/components/CamerasCheck.svelte';
 	import ConsentText from '#lib/components/ConsentText.svelte';
 	import ErrorBanner from '#lib/components/ErrorBanner.svelte';
-	import KitsCheck from '#lib/components/KitsCheck.svelte';
 	import PitchCheck from '#lib/components/PitchCheck.svelte';
 	import ProgressBar from '#lib/components/ProgressBar.svelte';
 	import { hasAgreedToShare, rememberAgreedToShare, SHARE_CONSENT_VERSION } from '#lib/consent.ts';
@@ -34,16 +33,14 @@
 	let busy = $state(false);
 	/** The check being redone, to say what we are waiting for. */
 	let redoing = $state<CheckName | null>(null);
-	/** Who was tapped before a group was split, kept for when the groups come back. */
-	let marked = $state<Record<string, string[]>>({});
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let destroyed = false;
 
-	/** The check to show: the pitch first, then the kits. */
+	/** The check to show: the cameras first when they are asked, then the pitch. */
 	const current = $derived<CheckName | null>(
 		job?.status !== 'needs_answers'
 			? null
-			: ((['cameras', 'pitch', 'kits'] as const).find((c) => job?.checks[c] === 'open' && questions?.[c]) ?? null)
+			: ((['cameras', 'pitch'] as const).find((c) => job?.checks[c] === 'open' && questions?.[c]) ?? null)
 	);
 	const waiting = $derived(job?.phase === 'prepare' && ['queued', 'preparing', 'refitting'].includes(job.status));
 
@@ -93,7 +90,6 @@
 		try {
 			const next = await session.api.answerCheck(job, a);
 			if (next.status === 'refitting') redoing = a.question;
-			if (a.question === 'kits') marked = a.tapped ?? {};
 			job = next;
 			await load();
 			window.scrollTo({ top: 0 });
@@ -133,10 +129,11 @@
 	{#if job === null && !error}
 		<p class="muted">Loading…</p>
 	{:else if job}
-		{#if job.where === 'cloud' && job.phase === 'prepare' && !['failed', 'cancelled'].includes(job.status)}
+		<!-- One check needs no list; the steps are shown when the cameras are asked too. -->
+		{#if job.where === 'cloud' && job.phase === 'prepare' && job.checks.cameras && !['failed', 'cancelled'].includes(job.status)}
 			<ol class="steps" aria-label="Checks">
-				<li class={step('pitch')}><span class="n">{job.checks.pitch === 'answered' ? '✓' : '1'}</span> The pitch</li>
-				<li class={step('kits')}><span class="n">{job.checks.kits === 'answered' ? '✓' : '2'}</span> The kits</li>
+				<li class={step('cameras')}><span class="n">{job.checks.cameras === 'answered' ? '✓' : '1'}</span> The phones</li>
+				<li class={step('pitch')}><span class="n">{job.checks.pitch === 'answered' ? '✓' : '2'}</span> The pitch</li>
 			</ol>
 		{/if}
 
@@ -156,15 +153,10 @@
 				{#if current === 'cameras' && questions.cameras}
 					<h2>Which way round are the phones?</h2>
 					<CamerasCheck q={questions.cameras} {busy} onanswer={answer} />
-				{:else if current === 'pitch' && questions.pitch}
+				{:else if questions.pitch}
 					<h2>Did we find the pitch?</h2>
 					{#key questions.pitch.round}
 						<PitchCheck q={questions.pitch} {busy} onanswer={answer} />
-					{/key}
-				{:else if questions.kits}
-					<h2>Did we sort the kits?</h2>
-					{#key questions.kits.round}
-						<KitsCheck q={questions.kits} {busy} {marked} onanswer={answer} />
 					{/key}
 				{/if}
 			</section>
@@ -173,8 +165,6 @@
 				<h2>
 					{#if job.status !== 'refitting'}
 						Getting the game ready
-					{:else if redoing === 'kits'}
-						Sorting the groups again
 					{:else if redoing === 'cameras'}
 						Lining up the two phones
 					{:else}
@@ -185,7 +175,7 @@
 				<p class="muted small">
 					{job.status === 'refitting'
 						? "This takes a minute or two. We'll show you the result here."
-						: 'The checks will appear here in a few minutes.'}
+						: 'The pitch check will appear here in a few minutes.'}
 				</p>
 			</section>
 		{:else if job.status === 'failed' || job.status === 'cancelled'}
@@ -198,7 +188,7 @@
 			</div>
 		{:else}
 			<div class="card done" aria-live="polite">
-				<h2>Thanks, that's both checks</h2>
+				<h2>Thanks, that's all we need</h2>
 				<p>
 					{job.status === 'done'
 						? 'The video is ready.'

@@ -219,59 +219,6 @@ class PitchQuestion {
       );
 }
 
-class KitCrop {
-  const KitCrop({required this.id, required this.image});
-  final String id;
-  final String image;
-}
-
-class KitGroup {
-  const KitGroup(
-      {required this.component,
-      required this.people,
-      required this.perMoment,
-      required this.proposed,
-      required this.crops});
-  final int component;
-  final int people;
-  final double perMoment;
-
-  /// `A`, `B` (the two sides, in no order), `keeperOrReferee` or `other`.
-  final String proposed;
-  final List<KitCrop> crops;
-
-  factory KitGroup.fromJson(Map<String, Object?> j) => KitGroup(
-        component: (j['component'] as num).toInt(),
-        people: (j['people'] as num?)?.toInt() ?? 0,
-        perMoment: (j['perMoment'] as num?)?.toDouble() ?? 0,
-        proposed: j['proposed'] as String? ?? 'other',
-        crops: [
-          for (final c in (j['crops'] as List? ?? []))
-            KitCrop(id: (c as Map)['id'] as String, image: c['image'] as String)
-        ],
-      );
-}
-
-class KitsQuestion {
-  const KitsQuestion(
-      {required this.round, required this.status, required this.groups, required this.splitAllowed, this.problem});
-  final int round;
-  final String status;
-  final List<KitGroup> groups;
-  final bool splitAllowed;
-  final String? problem;
-
-  bool get pending => status == 'pending';
-
-  factory KitsQuestion.fromJson(Map<String, Object?> j) => KitsQuestion(
-        round: (j['round'] as num).toInt(),
-        status: j['status'] as String,
-        splitAllowed: j['splitAllowed'] as bool? ?? false,
-        problem: j['problem'] as String?,
-        groups: [for (final g in (j['groups'] as List? ?? [])) KitGroup.fromJson((g as Map).cast())],
-      );
-}
-
 class CamerasQuestion {
   const CamerasQuestion(
       {required this.round, required this.status, required this.mainLeft, required this.secondaryLeft, this.reason});
@@ -297,16 +244,19 @@ class CamerasQuestion {
 
 /// `<recording>/engine/questions.json`.
 class EngineQuestions {
-  const EngineQuestions({required this.pending, this.pitch, this.kits, this.cameras});
+  const EngineQuestions({required this.pending, this.pitch, this.cameras});
   final List<String> pending;
   final PitchQuestion? pitch;
-  final KitsQuestion? kits;
   final CamerasQuestion? cameras;
 
   factory EngineQuestions.fromJson(Map<String, Object?> j) => EngineQuestions(
-        pending: [for (final p in (j['pending'] as List? ?? [])) '$p'],
+        // A game prepared before the kit check was removed may still list it:
+        // the engine no longer waits for it.
+        pending: [
+          for (final p in (j['pending'] as List? ?? []))
+            if (p != 'kits') '$p'
+        ],
         pitch: j['pitch'] is Map ? PitchQuestion.fromJson((j['pitch'] as Map).cast()) : null,
-        kits: j['kits'] is Map ? KitsQuestion.fromJson((j['kits'] as Map).cast()) : null,
         cameras: j['cameras'] is Map ? CamerasQuestion.fromJson((j['cameras'] as Map).cast()) : null,
       );
 
@@ -350,18 +300,15 @@ class EngineAnswers {
   EngineAnswers();
 
   Map<String, Object?>? pitch;
-  Map<String, Object?>? kits;
   Map<String, Object?>? cameras;
 
   factory EngineAnswers.fromJson(Map<String, Object?> j) => EngineAnswers()
     ..pitch = (j['pitch'] as Map?)?.cast()
-    ..kits = (j['kits'] as Map?)?.cast()
     ..cameras = (j['cameras'] as Map?)?.cast();
 
   Map<String, Object?> toJson() => {
         if (cameras != null) 'cameras': cameras,
         if (pitch != null) 'pitch': pitch,
-        if (kits != null) 'kits': kits,
       };
 
   void approvePitch(int round, {required bool share}) => pitch = {'round': round, 'approve': true, 'share': share};
@@ -374,32 +321,6 @@ class EngineAnswers {
 
   void answerCameras(int round, {required bool mainLeft}) =>
       cameras = {'round': round, 'leftPhone': mainLeft ? 'main' : 'secondary'};
-
-  void answerKits(
-    int round, {
-    Map<int, Set<String>> tapped = const {},
-    List<Set<int>> merge = const [],
-    int? split,
-    Set<int>? keeperOrReferee,
-    Set<int> notKit = const {},
-    required bool share,
-  }) =>
-      kits = {
-        'round': round,
-        if (tapped.isNotEmpty)
-          'tapped': {
-            for (final e in tapped.entries)
-              if (e.value.isNotEmpty) '${e.key}': [...e.value]..sort()
-          },
-        if (merge.isNotEmpty)
-          'merge': [
-            for (final m in merge) [...m]..sort()
-          ],
-        if (split != null) 'split': split,
-        if (keeperOrReferee != null) 'keeperOrReferee': [...keeperOrReferee]..sort(),
-        if (notKit.isNotEmpty) 'notKit': [...notKit]..sort(),
-        'share': share,
-      };
 
   static File fileIn(Directory recording) => File('${recording.path}/engine/answers.json');
 

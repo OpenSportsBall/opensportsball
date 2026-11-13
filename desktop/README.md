@@ -13,8 +13,8 @@ a separate program, talking to it only through files and its progress
 lines (docs/LICENSING.md; formats in `shared/schemas/engine-*`).
 
 Steps, per game: download → get ready (`osb-engine prepare`) → the checks
-(which phone is on the left when the views can't be stitched, the pitch,
-the kit groups) → process overnight (`osb-engine run`) → watch. Where a
+(which phone is on the left when the views can't be stitched, then the
+pitch) → process overnight (`osb-engine run`) → watch. Where a
 game stands comes from its folder and `osb-engine status`, so quitting or
 a reboot loses nothing.
 

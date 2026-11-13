@@ -13,9 +13,9 @@ S3 + CloudFront, and talks to the API described in
 | `/` | What OpenSportsBall is, plus **Sign in** (Cognito managed login also handles sign up). Signed-in users go to `/games`. |
 | `/callback` | Finishes the Cognito sign-in redirect. |
 | `/games` | Games, newest first, with recording count and status. |
-| `/game?id=<gameId>` | Recordings with per-phone upload progress, and for each ready recording its processing: **Process in the cloud** (accounts an admin has switched it on for), progress, Cancel, the link to the checks, then the video to watch and download, and **Share the raw video…** (a download page for someone without an account, below). Refreshes every 15 s while anything is uploading, every 4 s while a machine is working. |
+| `/game?id=<gameId>` | Recordings with per-phone upload progress, and for each ready recording its processing: **Process in the cloud** (accounts an admin has switched it on for), progress, Cancel, the link to the pitch check, then the video to watch and download, and **Share the raw video…** (a download page for someone without an account, below). Refreshes every 15 s while anything is uploading, every 4 s while a machine is working. |
 | `/footage#<token>` | No sign-in: a page of download links to every raw video file of one recording, by phone, for whoever was sent the link. The game page makes it (**Share the raw video…** on a recording: works for 1, 3 or 7 days, and can be stopped there). See `docs/API.md`, "Footage links". |
-| `/check?game=…&recording=…&job=…` | The questions a cloud job waits for, drawn from the engine's own files as the Mac app draws them: the pitch (approve the drawn lines, or drag the named points and have it redrawn), the kit groups (tap who doesn't belong; say what each group is and whether groups should be merged or one split), and, when the phones' views couldn't be matched up, which phone is on the left. See `docs/API.md`, "Processing jobs". |
+| `/check?game=…&recording=…&job=…` | The questions a cloud job waits for, drawn from the engine's own files as the Mac app draws them: the pitch (approve the drawn lines, or drag the named points and have it redrawn), and, when the phones' views couldn't be matched up, which phone is on the left. See `docs/API.md`, "Processing jobs". |
 | `/devices` | Linked phones, Unlink, and **Link a phone** (QR code, `ABCD-EFGH` code, expiry countdown; polls every 3 s until the phone shows up). |
 | `/admin` | Admins only (Cognito `admins` group; the nav link shows for them): totals, then every account with status, phones, games, recordings and storage, sortable and filterable; a row expands to the account id, phones, the **Cloud processing** switch, oldest footage, and the account's games and recordings with their size, each with a two-step **Delete** (also for footage left with no record). See `api/README.md` to add an admin. |
 
@@ -46,9 +46,8 @@ npm run dev:mock      # http://localhost:5173
   moves forward every 15 s. After **Link a phone**, a "Samsung Galaxy S24"
   links itself about 5 seconds later. The oldest game has a processed
   recording and one to process: a job there takes about 15 seconds to
-  reach the checks (a drawn pitch whose first fit is off, and kit groups
-  with one to split), a few seconds per redo, and 30 seconds to "make" a
-  test-pattern video.
+  reach the pitch check (a drawn pitch whose first fit is off), a few
+  seconds per redo, and 30 seconds to "make" a test-pattern video.
 
 Mock data lives in memory, so a full page reload starts over. Any
 `config.json` with `"apiUrl": "mock"` turns mock mode on, including a built
@@ -130,7 +129,7 @@ src/
     session.svelte.ts         app-wide state (config, auth, API client)
     types.ts                  API shapes from docs/API.md
     components/               StatusBadge, ProgressBar, ErrorBanner,
-                              JobPanel, PitchCheck, KitsCheck, CamerasCheck
+                              JobPanel, PitchCheck, CamerasCheck
   routes/                     /, /callback, /games, /game, /check, /devices
 tests/                        vitest suites
 ```

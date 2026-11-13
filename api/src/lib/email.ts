@@ -17,7 +17,7 @@ const TEXT: Record<JobEvent['kind'], { subject: string; body: (link: string, rea
   check: {
     subject: 'Check the pitch for your game',
     body: (link) =>
-      `Your game is ready for two quick checks: the pitch lines and the team kits. The video is made once you have answered them.\n\n${link}\n`,
+      `Your game is ready for one quick check: the pitch lines. The video is made once you have answered it.\n\n${link}\n`,
   },
   done: {
     subject: 'Your game video is ready',

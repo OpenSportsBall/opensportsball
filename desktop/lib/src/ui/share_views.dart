@@ -171,7 +171,7 @@ Future<bool> showShareConsent(BuildContext context, Settings settings) async {
 /// What a contribution is called on screen.
 String sharedName(String name) => switch (name) {
   'pitch' => 'the pitch map',
-  'kits' => 'the kit groups',
+  'kits' => 'the kit groups', // sent by games checked before the kit check was removed
   _ when name.startsWith('ball-') => 'ball marks',
   _ when name.startsWith('moments-') => 'must-see moments',
   _ => name,
@@ -204,8 +204,8 @@ class ShareCard extends StatelessWidget {
       title = 'Help OpenSportsBall get better';
       body = [
         Text(
-          'Share what you checked for this game (the pitch map and the kit groups, where you left their switches '
-          'on) so the next version maps pitches and tells teams apart better. Nothing is sent until you agree.',
+          'Share what you checked for this game (the pitch map, where you left its switch on) so the next version '
+          'maps pitches better. Nothing is sent until you agree.',
           style: muted,
         ),
         const SizedBox(height: 10),

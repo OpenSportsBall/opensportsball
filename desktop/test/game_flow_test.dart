@@ -156,23 +156,14 @@ void main() {
     expect(ctl.error, isNull);
     expect(File('${ctl.folder!.path}/main/main_000.mp4').readAsBytesSync(), seg);
     expect(ctl.phase, Phase.questions);
-    expect(ctl.questions!.pending, ['pitch', 'kits']);
+    expect(ctl.questions!.pending, ['pitch']);
     // The last step's name, start and log, for the step clock.
     expect(ctl.step, 'pitch');
     expect(ctl.stepStartedAt, isNotNull);
     expect(ctl.stepLog, '${ctl.folder!.path}/engine/logs/pitch.log');
 
     await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
-    expect(ctl.questions!.pending, ['kits']);
-    await ctl.answer(
-      (a) => a.answerKits(
-        ctl.questions!.kits!.round,
-        tapped: {
-          0: {'c0_00'},
-        },
-        share: false,
-      ),
-    );
+    expect(ctl.questions!.pending, isEmpty); // the teams aren't asked about
     expect(ctl.phase, Phase.readyToRun);
 
     // The engine got the job and every answer.
@@ -182,13 +173,6 @@ void main() {
     final last = calls.lastWhere((c) => c['cmd'] == 'prepare');
     expect(last['answers'], {
       'pitch': {'round': 1, 'approve': true, 'share': true},
-      'kits': {
-        'round': 1,
-        'tapped': {
-          '0': ['c0_00'],
-        },
-        'share': false,
-      },
     });
     expect((last['job'] as Map)['recording'], ctl.folder!.path);
 
@@ -245,14 +229,13 @@ void main() {
   });
 
   test(
-    'what was agreed is sent: the pitch map, the kit groups by their switches, the ball marks; and withdrawn',
+    'what was agreed is sent: the pitch map by its switch, the ball marks; and withdrawn',
     () async {
       final shared = Shared();
       final ctl = controller(fakeServer(shared: shared));
       await ctl.open();
       await ctl.startDownload();
       await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
-      await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: false));
       expect(ctl.phase, Phase.readyToRun);
 
       // The checks are answered, but the sharing wording isn't agreed: nothing goes.
@@ -260,7 +243,7 @@ void main() {
       expect(shared.live, isEmpty);
       expect(File('${ctl.folder!.path}/engine/share/pitch.json').existsSync(), isFalse);
 
-      // Agreed: the pitch map goes; the kit groups' switch was off.
+      // Agreed: the pitch map goes.
       await settings.setSharingAgreed(true);
       await ctl.sendAgreed();
       expect(ctl.shareError, isNull);
@@ -309,7 +292,6 @@ void main() {
     await ctl.open();
     await ctl.startDownload();
     await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: false));
-    await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: false));
     await ctl.run();
     expect(ctl.phase, Phase.done);
     expect(ctl.youtubeOutput, isNull);
@@ -350,7 +332,6 @@ void main() {
     await ctl.open();
     await ctl.startDownload();
     await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
-    await ctl.answer((a) => a.answerKits(ctl.questions!.kits!.round, share: true));
     await settings.setSharingAgreed(true);
     await ctl.sendAgreed();
     expect(ctl.shareError, contains('404'));

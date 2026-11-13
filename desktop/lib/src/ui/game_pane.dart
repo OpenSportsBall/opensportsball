@@ -12,7 +12,6 @@ import '../services.dart';
 import 'ball_views.dart';
 import 'cameras_check.dart';
 import 'games_screen.dart';
-import 'kits_check.dart';
 import 'pitch_check.dart';
 import 'share_views.dart';
 
@@ -103,8 +102,6 @@ class GamePane extends StatelessWidget {
         ? CamerasCheck(controller: ctl, question: q.cameras!)
         : (q.pitch?.pending ?? false)
         ? PitchCheck(controller: ctl, question: q.pitch!)
-        : (q.kits?.pending ?? false)
-        ? KitsCheck(controller: ctl, question: q.kits!)
         : null;
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(28, 36, 28, 12),

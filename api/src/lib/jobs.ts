@@ -11,15 +11,14 @@
  *   queued -> preparing -> needs_answers -> queued -> running -> done
  *                           ^        |
  *                           +- refitting (an answer the engine has to work on:
- *                              the pitch marked, a kit group split, the cameras)
+ *                              the pitch marked, the cameras)
  *
  * The questions and answers are the engine's own files
  * (shared/schemas/engine-questions and engine-answers, the ones the Mac
  * app draws): this server passes them through. The engine decides what is
  * still to ask: `pending` in its questions.json. An answer that needs no
- * work (the pitch approved, the kit groups settled) only closes the check
- * here; the run starts when nothing is open, and the engine applies the
- * answers first. If it then refuses one, it writes its questions again and
+ * work (the pitch approved) only closes the check here; the run starts when
+ * nothing is open, and the engine applies the answers first. If it then refuses one, it writes its questions again and
  * the job goes back to waiting.
  *
  * The API submits the Batch jobs and owns the record. The engine's
@@ -59,9 +58,9 @@ export type JobStatus =
   | 'cancelled';
 export type Command = 'prepare' | 'run' | 'refit';
 /** The engine's questions. `cameras` is asked only when the phones' views
- *  couldn't be stitched, and then before the other two. */
-export type Check = 'cameras' | 'pitch' | 'kits';
-const CHECKS: Check[] = ['cameras', 'pitch', 'kits'];
+ *  couldn't be stitched, and then before the pitch. */
+export type Check = 'cameras' | 'pitch';
+const CHECKS: Check[] = ['cameras', 'pitch'];
 export type Where = 'cloud' | 'local';
 
 const FINAL: JobStatus[] = ['done', 'failed', 'cancelled'];
@@ -110,7 +109,7 @@ export interface JobItem {
    *  when they chose to share a check's result; absent when they didn't.
    *  What the engine then writes to share is filed as a contribution
    *  (lib/jobShares.ts). */
-  shareConsent?: Partial<Record<'pitch' | 'kits', string>>;
+  shareConsent?: Partial<Record<'pitch', string>>;
 }
 
 interface JobRef {
@@ -120,6 +119,13 @@ interface JobRef {
   recordingId: string;
   createdAt: string;
 }
+
+/** A record's checks, less any that are no longer asked. Jobs started
+ *  while the kit groups were still checked have `kits` stored (and a `kits`
+ *  entry in their questions and answers files): nothing waits for it now,
+ *  and the engine ignores the answer. */
+const currentChecks = (checks: JobItem['checks']): JobItem['checks'] =>
+  Object.fromEntries(CHECKS.filter((c) => checks[c]).map((c) => [c, checks[c]]));
 
 /** The job as the API returns it (shared/schemas/job.schema.json). */
 export function jobView(job: JobItem, rec?: Pick<RecordingItem, 'readyAt'>) {
@@ -131,7 +137,7 @@ export function jobView(job: JobItem, rec?: Pick<RecordingItem, 'readyAt'>) {
     where: job.where,
     status: job.status,
     phase: job.phase,
-    checks: job.checks,
+    checks: currentChecks(job.checks),
     progress: job.progress ?? null,
     error: job.error ?? null,
     stale: Boolean(rec?.readyAt && job.recordingReadyAt && rec.readyAt !== job.recordingReadyAt),
@@ -169,7 +175,16 @@ export async function getJob(acct: string, gameId: string, recordingId: string, 
 
 export async function getJobView(acct: string, gameId: string, recordingId: string, jobId: string) {
   const [job, rec] = await Promise.all([getJob(acct, gameId, recordingId, jobId), loadRecording(acct, gameId, recordingId)]);
-  return jobView(job, rec);
+  return jobView(await startIfNothingOpen(job), rec);
+}
+
+/** A cloud job that was waiting only for the kit check when it was dropped
+ *  has nothing left to answer: its run starts when it is next looked at. */
+async function startIfNothingOpen(job: JobItem): Promise<JobItem> {
+  const checks = currentChecks(job.checks);
+  if (job.where !== 'cloud' || job.status !== 'needs_answers' || Object.values(checks).includes('open')) return job;
+  await startRun(job, checks, ['needs_answers']);
+  return (await loadJob(job.jobId)) ?? job;
 }
 
 /** The newest job of each recording in a game, by recording id. */
@@ -350,7 +365,7 @@ export async function startJob(acct: string, gameId: string, recordingId: string
     // A local job is under way as soon as the app says so.
     status: where === 'cloud' ? 'queued' : 'preparing',
     phase: 'prepare',
-    checks: { pitch: 'open', kits: 'open' },
+    checks: { pitch: 'open' },
     recordingReadyAt: rec.readyAt,
     createdAt: now,
     updatedAt: now,
@@ -451,8 +466,16 @@ interface Questions {
   pending: Check[];
   cameras?: { round: number; status: string };
   pitch?: { round: number; status: string; approveAllowed?: boolean; points: Record<string, unknown> };
-  kits?: { round: number; status: string; splitAllowed: boolean; groups: { component: number; crops: { id: string }[] }[] };
   [k: string]: unknown;
+}
+
+/** The engine's questions.json, if it has written one. A file from before
+ *  the kit check was dropped is read without it (currentChecks). */
+async function readQuestions(job: JobItem): Promise<Questions | undefined> {
+  const q = await readJson<Questions>(questionsKey(job));
+  if (!q || !Array.isArray(q.pending)) return q;
+  const { kits: _kits, ...rest } = q;
+  return { ...rest, pending: q.pending.filter((c) => CHECKS.includes(c)) };
 }
 
 /** The checks as the engine left them: open while it lists the question as pending. */
@@ -460,15 +483,14 @@ function checksFrom(q: Questions): JobItem['checks'] {
   const checks: JobItem['checks'] = {};
   for (const c of CHECKS) if (q[c]) checks[c] = q.pending.includes(c) ? 'open' : 'answered';
   if (q.pending.includes('cameras')) {
-    // Asked alone; the other two follow once the cameras are known.
+    // Asked alone; the pitch follows once the cameras are known.
     checks.pitch = 'open';
-    checks.kits = 'open';
   }
   return checks;
 }
 
 /** The fields of the questions that name a picture, relative to the recording. */
-const PICTURE_KEYS = new Set(['image', 'overlay', 'background', 'sheet', 'mainLeft', 'secondaryLeft']);
+const PICTURE_KEYS = new Set(['image', 'overlay', 'background', 'mainLeft', 'secondaryLeft']);
 
 /** Adds a signed `<field>Url` next to every picture the questions name.
  *  The engine's files are not trusted with where they point: a path that
@@ -495,14 +517,14 @@ function withPictureUrls(node: unknown, sign: (relative: string) => string): unk
 /** The engine's questions with links to their pictures, and which checks
  *  are still open. 409 before the engine has written any. */
 export async function questionsView(job: JobItem) {
-  const q = await readJson<Questions>(questionsKey(job));
+  const q = await readQuestions(job);
   if (!q) throw conflict('This job has no questions yet.');
   const signer = await deployedFootageSigner();
   const expiresAt = new Date(Date.now() + config.downloadUrlTtlSeconds * 1000);
   const dir = questionsKey(job).replace(/questions\.json$/, '');
   return {
     status: job.status,
-    checks: job.checks,
+    checks: currentChecks(job.checks),
     expiresAt: expiresAt.toISOString(),
     questions: withPictureUrls(q, (relative) => signer.url(dir + relative, expiresAt)),
   };
@@ -528,16 +550,7 @@ interface PitchAnswer {
   points?: Record<string, unknown>;
   share?: boolean;
 }
-interface KitsAnswer {
-  round: number;
-  tapped?: Record<string, string[]>;
-  merge?: number[][];
-  split?: number | null;
-  keeperOrReferee?: number[];
-  notKit?: number[];
-  share?: boolean;
-}
-type Answer = CamerasAnswer | PitchAnswer | KitsAnswer;
+type Answer = CamerasAnswer | PitchAnswer;
 
 const invalid = (message: string) => new ApiError(400, 'invalid_answers', message);
 
@@ -559,33 +572,22 @@ function checkAgainstQuestions(check: Check, answer: Answer, q: Questions) {
     }
     const unknown = Object.keys(a.points ?? {}).filter((name) => !(name in q.pitch!.points));
     if (unknown.length) throw invalid(`The question has no pitch point called "${unknown[0]}".`);
-  } else if (check === 'kits') {
-    const a = answer as KitsAnswer;
-    const crops = new Map(q.kits!.groups.map((g) => [g.component, new Set(g.crops.map((c) => c.id))]));
-    const named = [...(a.merge ?? []).flat(), ...(a.keeperOrReferee ?? []), ...(a.notKit ?? []), ...(a.split != null ? [a.split] : [])];
-    if (named.some((c) => !crops.has(c))) throw invalid('An answer names a kit group the question does not have.');
-    for (const [group, ids] of Object.entries(a.tapped ?? {})) {
-      const have = crops.get(Number(group));
-      if (!have || ids.some((id) => !have.has(id))) throw invalid('An answer names a person the question does not have.');
-    }
-    if (a.split != null && !q.kits!.splitAllowed) throw invalid('A group can only be split once.');
   }
 }
 
 /** Whether the engine has to work on an answer before anything else can be
- *  asked: it draws the pitch or the groups again from it. */
-const needsEngine = (check: Check, a: Answer) =>
-  check === 'cameras' || (check === 'pitch' && !(a as PitchAnswer).approve) || (check === 'kits' && (a as KitsAnswer).split != null);
+ *  asked: it draws the pitch again from it. */
+const needsEngine = (check: Check, a: Answer) => check === 'cameras' || !(a as PitchAnswer).approve;
 
 /** Records the answer to one question (body: `question`, plus that
  *  question's answer from engine-answers.schema.json). An approved pitch
- *  or settled kit groups close the check, and the run starts when none is
- *  open. A marked pitch, a group to split or the cameras start a refit,
- *  after which the engine's questions say what is still open. */
+ *  closes the check, and the run starts when none is open. A marked pitch
+ *  or the cameras start a refit, after which the engine's questions say
+ *  what is still open. */
 export async function answerCheck(job: JobItem, input: Record<string, unknown>) {
   const { question, consentVersion, ...answer } = input;
   const check = question as Check;
-  if (!CHECKS.includes(check)) throw badRequest('"question" must be "cameras", "pitch" or "kits".');
+  if (!CHECKS.includes(check)) throw badRequest('"question" must be "cameras" or "pitch".');
   if (job.where !== 'cloud') throw forbidden('A job on your own computer is answered in its app.');
   if (job.status !== 'needs_answers') throw conflict('This job is not waiting for answers.');
   if (job.checks[check] !== 'open') throw conflict('This check is already answered.');
@@ -598,7 +600,7 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
       (validate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`.trim()),
     );
   }
-  const q = await readJson<Questions>(questionsKey(job));
+  const q = await readQuestions(job);
   if (!q) throw conflict('This job has no questions yet.');
   const a = answer as unknown as Answer;
   checkAgainstQuestions(check, a, q);
@@ -606,19 +608,17 @@ export async function answerCheck(job: JobItem, input: Record<string, unknown>) 
   // where they are asked: never by leaving a field out, and only with the
   // wording they were shown.
   let shareConsent = job.shareConsent;
-  if (check !== 'cameras') {
+  if (check === 'pitch') {
     const sharing = (a as PitchAnswer).share === true;
     if (sharing && !(SHARE_CONSENT_VERSIONS as readonly unknown[]).includes(consentVersion)) {
       throw invalid(`Sharing needs "consentVersion": the wording that was agreed to (${SHARE_CONSENT_VERSIONS.join(', ')}).`);
     }
     (a as PitchAnswer).share = sharing;
-    shareConsent = { ...job.shareConsent };
-    if (sharing) shareConsent[check] = consentVersion as string;
-    else delete shareConsent[check];
+    shareConsent = sharing ? { pitch: consentVersion as string } : {};
   }
 
   const refit = needsEngine(check, a);
-  const checks = { ...job.checks, [check]: refit ? 'open' : 'answered' } as JobItem['checks'];
+  const checks = { ...currentChecks(job.checks), [check]: refit ? 'open' : 'answered' } as JobItem['checks'];
   const run = !refit && Object.values(checks).every((c) => c === 'answered');
 
   // The state first, so two answers at once can't both start a Batch job.
@@ -730,9 +730,13 @@ export interface BatchStateChange {
 export type JobEvent = { job: JobItem; kind: 'check' | 'done' | 'failed' };
 
 /** Nothing is left to ask after a prepare or a refit: the run starts. */
-async function startRun(job: JobItem, checks: JobItem['checks']): Promise<JobEvent | null> {
+async function startRun(
+  job: JobItem,
+  checks: JobItem['checks'],
+  from: JobStatus[] = ['queued', 'preparing', 'refitting'],
+): Promise<JobEvent | null> {
   const now = new Date().toISOString();
-  if (!(await transition(job, ['queued', 'preparing', 'refitting'], { status: 'queued', phase: 'run', checks }, ['progress']))) {
+  if (!(await transition(job, from, { status: 'queued', phase: 'run', checks }, ['progress']))) {
     return null;
   }
   try {
@@ -789,7 +793,7 @@ export async function onBatchStateChange(d: BatchStateChange): Promise<JobEvent 
     const fresh =
       written &&
       (command === 'prepare' || !job.batchSubmittedAt || (written.LastModified?.getTime() ?? 0) >= Math.floor(Date.parse(job.batchSubmittedAt) / 1000) * 1000);
-    const q = fresh ? await readJson<Questions>(questionsKey(job)) : undefined;
+    const q = fresh ? await readQuestions(job) : undefined;
     if (q && Array.isArray(q.pending)) {
       const checks = checksFrom(q);
       if (q.pending.length === 0 && command !== 'run') return startRun(job, checks);

@@ -68,10 +68,8 @@
 
 			{#if job.status === 'needs_answers'}
 				{#if job.where === 'cloud'}
-					<p class="small">
-						Two quick checks before the video is made: that we found the pitch, and that we sorted the kits.
-					</p>
-					<a class="btn btn-primary" href={checkHref(job)}>Do the checks</a>
+					<p class="small">One quick check before the video is made: that we found the pitch.</p>
+					<a class="btn btn-primary" href={checkHref(job)}>Check the pitch</a>
 				{:else}
 					<p class="muted small">Answer the checks in the app on your computer.</p>
 				{/if}
@@ -144,7 +142,7 @@
 						{busy ? 'Starting…' : 'Process in the cloud'}
 					</button>
 					<p class="muted small detail">
-						Makes the followed game video on our machines. You answer two quick checks first; the video takes a few
+						Makes the followed game video on our machines. You answer one quick check first; the video takes a few
 						hours.
 					</p>
 				{:else if job.status !== 'done' || job.stale}

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * What a cloud job's user agreed to share (the pitch map, the kit groups)
- * becomes a contribution, exactly as when the Mac app uploads one
+ * What a cloud job's user agreed to share (the pitch map) becomes a
+ * contribution, exactly as when the Mac app uploads one
  * (lib/contributions.ts): the same record, the same bucket, the same
  * consent version, listed and withdrawn on the Account page.
  *
@@ -23,7 +23,7 @@ import { completeContribution, createContribution, deleteContribution, fileKey }
 import type { JobItem } from './jobs.js';
 import { config, jobPrefix, s3 } from './store.js';
 
-const SHARED_KINDS = ['pitch', 'kits'] as const;
+const SHARED_KINDS = ['pitch'] as const;
 
 export async function deliverShares(job: JobItem): Promise<string[]> {
   const consent = job.shareConsent ?? {};

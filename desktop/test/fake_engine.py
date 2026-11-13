@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """A stand-in for osb-engine in the app's tests: the same commands, files
 and progress lines (shared/schemas/engine-*), none of the work. prepare asks
-for the pitch and the kits until answers approve them; run writes a game.mp4
+for the pitch until an answer approves it; run writes a game.mp4
 and says, from its second chunk, that it doesn't know the ball; label makes a
 ball set of three frames and stores the answers it is given."""
 import json
@@ -29,8 +29,6 @@ def pending():
     p = []
     if (answers.get("pitch") or {}).get("approve") is not True:
         p.append("pitch")
-    if "kits" not in answers:
-        p.append("kits")
     return p
 
 
@@ -110,8 +108,7 @@ elif cmd == "share":
         (eng / "share" / f"{name}.json").write_text(json.dumps(doc))
         emit("share", name=name, path=str(eng / "share" / f"{name}.json"), files=len(files))
 
-    for q, paths in (("pitch", {"pitch/pitch.json": b"{}", "pitch/background.png": PNG}),
-                     ("kits", {"engine/crops/c0_00.jpg": PNG})):
+    for q, paths in (("pitch", {"pitch/pitch.json": b"{}", "pitch/background.png": PNG}),):
         a = given.get(q)
         if a is None:
             emit("share", name=q, path=None, reason="not answered yet")
@@ -136,9 +133,6 @@ elif cmd == "prepare":
                   "panorama": {"image": "background.png", "degPerPx": 0.5, "yawRange": [-50, 50], "pitchRange": [0, 20]},
                   "fit": {}, "lines": [[[-40, 10], [40, 10]]], "goals": [],
                   "points": {"left corner flag": {"yaw": -40, "pitch": 10}}, "approveAllowed": True},
-        "kits": {"round": 1, "status": "pending" if "kits" in pending() else "answered", "k": 8, "splitAllowed": True,
-                 "groups": [{"component": 0, "people": 10, "perMoment": 5, "proposed": "A",
-                             "crops": [{"id": "c0_00", "image": "engine/crops/c0_00.jpg", "frame": "f", "box": [0, 0, 1, 1]}]}]},
     }
     (eng / "questions.json").write_text(json.dumps(q))
     emit("questions", path="engine/questions.json", pending=pending())
