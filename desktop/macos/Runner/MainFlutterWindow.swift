@@ -7,7 +7,7 @@ import FlutterMacOS
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
-    // Room for the pitch panorama and the kit groups beside the games list.
+    // Room for the pitch panorama beside the games list.
     let size = NSSize(width: 1320, height: 860)
     let screen = NSScreen.main?.visibleFrame ?? NSRect(origin: .zero, size: size)
     let frame = NSRect(

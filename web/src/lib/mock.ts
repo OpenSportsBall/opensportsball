@@ -12,9 +12,9 @@
  * - A phone "scans" each link code 5 seconds after POST /link-codes: the
  *   next GET /devices after that includes the new device.
  * - A processing job moves with wall-clock time too: a few seconds queued,
- *   then preparing, then it waits for the checks (a made-up pitch and kit
- *   groups, lib/mockScene.ts); once both are answered it runs and ends
- *   with a short test-pattern video.
+ *   then preparing, then it waits for the pitch check (a made-up pitch,
+ *   lib/mockScene.ts); once that is approved it runs and ends with a short
+ *   test-pattern video.
  * - To see the checks drawn from a real game, copy a prepared recording's
  *   `engine/questions.json` and the pictures it names (same paths) into
  *   `web/mock-real/` (git-ignored, and served only by `npm run dev:mock`,
@@ -43,7 +43,7 @@ import type {
 	RecordingDevice,
 	RecordingStatus
 } from './types';
-import { applyAnswer, firstChecks, kitsQuestion, pendingChecks, pitchQuestion, type MockChecks } from './mockScene';
+import { applyAnswer, firstChecks, pendingChecks, pitchQuestion, type MockChecks } from './mockScene';
 import { VIDEO_BASE64 } from './mockVideo';
 
 /** How long a mock job spends in each state. */
@@ -212,7 +212,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				where: 'cloud',
 				status: 'queued',
 				phase: 'prepare',
-				checks: { pitch: 'open', kits: 'open' },
+				checks: { pitch: 'open' },
 				progress: null,
 				error: null,
 				stale: false,
@@ -283,7 +283,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		Object.assign(seeded.job, {
 			status: 'done',
 			phase: 'run',
-			checks: { pitch: 'answered', kits: 'answered' },
+			checks: { pitch: 'answered' },
 			finishedAt: iso(at + 3 * 3600_000),
 			updatedAt: iso(at + 3 * 3600_000)
 		});
@@ -611,33 +611,27 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 				questions: {
 					schemaVersion: 1,
 					pending: pendingChecks(m.engine),
-					pitch: pitchQuestion(m.engine),
-					kits: kitsQuestion(m.engine)
+					pitch: pitchQuestion(m.engine)
 				}
 			};
 			return json(200, q);
 		}
 		if (method === 'PUT' && action === 'answers') {
-			const check = body?.question as 'pitch' | 'kits';
-			if (check !== 'pitch' && check !== 'kits') return fail(400, 'bad_request', '"question" must be "cameras", "pitch" or "kits".');
+			const check = body?.question;
+			if (check !== 'pitch') return fail(400, 'bad_request', '"question" must be "cameras" or "pitch".');
 			if (j.status !== 'needs_answers') return fail(409, 'conflict', 'This job is not waiting for answers.');
-			if (j.checks[check] !== 'open') return fail(409, 'conflict', 'This check is already answered.');
-			if (body.round !== m.engine[check].round) {
+			if (j.checks.pitch !== 'open') return fail(409, 'conflict', 'This check is already answered.');
+			if (body.round !== m.engine.pitch.round) {
 				return fail(409, 'conflict', 'These questions have changed since you opened them. Reload and answer again.');
-			}
-			if (check === 'kits' && body.split != null && !m.engine.kits.splitAllowed) {
-				return fail(400, 'invalid_answers', 'A group can only be split once.');
 			}
 			const refit = applyAnswer(m.engine, body);
 			m.since = now();
 			j.updatedAt = iso(now());
 			if (refit) j.status = 'refitting';
 			else {
-				j.checks[check] = 'answered';
-				if (j.checks.pitch === 'answered' && j.checks.kits === 'answered') {
-					j.status = 'queued';
-					j.phase = 'run';
-				}
+				j.checks.pitch = 'answered';
+				j.status = 'queued';
+				j.phase = 'run';
 			}
 			return json(200, j);
 		}
@@ -861,7 +855,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 
 	/** A real game's questions from web/mock-real/ (the dev server serves it), if someone put them there. */
 	let real: Promise<JobQuestions['questions'] | null> | undefined;
-	const PICTURES = new Set(['image', 'overlay', 'background', 'sheet', 'mainLeft', 'secondaryLeft']);
+	const PICTURES = new Set(['image', 'overlay', 'background', 'mainLeft', 'secondaryLeft']);
 	function withUrls(node: any): any {
 		if (Array.isArray(node)) return node.map(withUrls);
 		if (typeof node !== 'object' || node === null) return node;
@@ -915,7 +909,7 @@ export function createMockFetch(opts: MockOptions = {}): typeof fetch {
 		const res = route(req.method.toUpperCase(), url.pathname, body);
 		if (req.method === 'GET' && res.ok && url.pathname.endsWith('/questions')) {
 			const q = await realQuestions();
-			if (q) return json(200, { ...(await res.json()), questions: { ...q, pending: ['pitch', 'kits'] } });
+			if (q) return json(200, { ...(await res.json()), questions: { ...q, pending: ['pitch'] } });
 		}
 		return res;
 	};

@@ -28,12 +28,12 @@ describe('processing a game in the cloud (mock API)', () => {
 		expect((await api.me()).cloudProcessing).toBe(true);
 	});
 
-	it('walks from the button to the video through both checks', async () => {
+	it('walks from the button to the video through the pitch check', async () => {
 		const { api, advance } = setup();
 		const reload = (j: Job) => api.getJob(j.gameId, j.recordingId, j.jobId);
 
 		let job = await api.startJob(GAME, FRESH);
-		expect(job).toMatchObject({ status: 'queued', phase: 'prepare', checks: { pitch: 'open', kits: 'open' } });
+		expect(job).toMatchObject({ status: 'queued', phase: 'prepare', checks: { pitch: 'open' } });
 		await expect(api.startJob(GAME, FRESH)).rejects.toSatisfy(refuses(409));
 		await expect(api.jobQuestions(job)).rejects.toSatisfy(refuses(409));
 
@@ -49,7 +49,7 @@ describe('processing a game in the cloud (mock API)', () => {
 
 		// The pitch: the first fit is off, so a point is moved and it is asked again.
 		let q = (await api.jobQuestions(job)).questions;
-		expect(q.pending).toEqual(['pitch', 'kits']);
+		expect(q.pending).toEqual(['pitch']);
 		let pitch = q.pitch!;
 		expect(pitch.round).toBe(1);
 		expect(pitch.overlayUrl).toMatch(/^data:image\/svg\+xml,/);
@@ -68,7 +68,7 @@ describe('processing a game in the cloud (mock API)', () => {
 		await expect(api.answerCheck(job, { question: 'pitch', round: 1, approve: true })).rejects.toSatisfy(refuses(409));
 		advance(MOCK_JOB_MS.refit);
 		job = await reload(job);
-		expect(job).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open', kits: 'open' } });
+		expect(job).toMatchObject({ status: 'needs_answers', checks: { pitch: 'open' } });
 		q = (await api.jobQuestions(job)).questions;
 		pitch = q.pitch!;
 		expect(pitch.round).toBe(2);
@@ -76,34 +76,8 @@ describe('processing a game in the cloud (mock API)', () => {
 		// An answer to the old drawing is refused; the new one is approved.
 		await expect(api.answerCheck(job, { question: 'pitch', round: 1, approve: true })).rejects.toSatisfy(refuses(409));
 		job = await api.answerCheck(job, { question: 'pitch', round: 2, approve: true });
-		expect(job).toMatchObject({ status: 'needs_answers', checks: { pitch: 'answered', kits: 'open' } });
-
-		// The kits: one group is two kits, so it is split and shown again, once.
-		let kits = q.kits!;
-		expect(kits.groups.map((g) => [g.component, g.proposed])).toEqual([
-			[0, 'A'],
-			[1, 'B'],
-			[2, 'other'],
-			[3, 'keeperOrReferee'],
-			[4, 'other']
-		]);
-		expect(kits.groups[0].crops[0]).toMatchObject({ id: 'c0_00', imageUrl: expect.stringMatching(/^data:image\/svg\+xml,/) });
-		job = await api.answerCheck(job, { question: 'kits', round: 1, split: 2 });
-		expect(job.status).toBe('refitting');
-		advance(MOCK_JOB_MS.refit);
-		job = await reload(job);
-		kits = (await api.jobQuestions(job)).questions.kits!;
-		expect(kits).toMatchObject({ round: 2, splitAllowed: false });
-		expect(kits.groups).toHaveLength(6);
-		await expect(api.answerCheck(job, { question: 'kits', round: 2, split: 0 })).rejects.toSatisfy(refuses(400));
-		job = await api.answerCheck(job, {
-			question: 'kits',
-			round: 2,
-			tapped: { '0': ['c0_07'] },
-			keeperOrReferee: [4],
-			notKit: [5]
-		});
-		expect(job).toMatchObject({ status: 'queued', phase: 'run', checks: { pitch: 'answered', kits: 'answered' } });
+		expect(job).toMatchObject({ status: 'queued', phase: 'run', checks: { pitch: 'answered' } });
+		await expect(api.answerCheck(job, { question: 'pitch', round: 2, approve: true })).rejects.toSatisfy(refuses(409));
 
 		// The run, then the video.
 		await expect(api.jobVideo(job)).rejects.toSatisfy(refuses(409));

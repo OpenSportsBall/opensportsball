@@ -69,13 +69,6 @@ void main() {
         expect(File('${ctl.folder!.path}/${pitch.background}').existsSync(), isTrue);
         await ctl.answer((a) => a.approvePitch(pitch.round, share: true));
       }
-      final kits = ctl.questions!.kits!;
-      if (kits.pending) {
-        expect(kits.groups, isNotEmpty);
-        final crop = kits.groups.first.crops.first;
-        expect(File('${ctl.folder!.path}/${crop.image}').existsSync(), isTrue);
-        await ctl.answer((a) => a.answerKits(kits.round, share: true));
-      }
       expect(ctl.error, isNull, reason: ctl.errorLog);
       expect(ctl.phase, Phase.readyToRun);
 

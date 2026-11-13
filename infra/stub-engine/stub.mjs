@@ -18,7 +18,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { FIRST_FIT, FIRST_GROUPS, PANORAMA, kitFiles, linesPx, pitchSvg, splitGroup, toDeg, toPx } from './scene.mjs';
+import { FIRST_FIT, PANORAMA, linesPx, pitchSvg, toDeg, toPx } from './scene.mjs';
 import { VIDEO_BASE64 } from './video.mjs';
 
 const ENGINE_VERSION = 'stub-engine 0.1.0';
@@ -113,19 +113,14 @@ async function pretend(stages, from = 0, checkpoint) {
 const ASK_PITCH =
   'This is the empty pitch with our fitted lines drawn in red. Do the red lines sit on the painted lines? ' +
   'If not, give each named point where it really is, or say it cannot be seen.';
-const ASK_KITS =
-  'Each group should be one kit and every kit one group. Name anyone in the wrong group, then say whether ' +
-  'groups are the same kit, one group holds two kits, and which groups are keepers, the referee or not a kit.';
 
-const pending = (st) => ['pitch', 'kits'].filter((n) => st[n].status === 'pending');
+const pending = (st) => (st.pitch.status === 'pending' ? ['pitch'] : []);
 
 /** questions.json as the real engine writes it, and its pictures, at the
  *  paths it names them by. */
 async function writeQuestions(st) {
-  const kits = kitFiles(st.kits.groups, st.kits.round);
   await put(`${out}questions/pitch/background.svg`, pitchSvg());
   await put(`${out}questions/pitch/overlay.svg`, pitchSvg(st.pitch.points));
-  await Promise.all(kits.files.map((f) => put(`${out}questions/${f.path}`, f.body)));
   await put(
     `${out}questions/questions.json`,
     JSON.stringify({
@@ -143,15 +138,6 @@ async function writeQuestions(st) {
         goals: [],
         points: Object.fromEntries(Object.entries(st.pitch.points).map(([name, p]) => [name, toDeg(p)])),
         ask: ASK_PITCH,
-      },
-      kits: {
-        round: st.kits.round,
-        status: st.kits.status,
-        k: st.kits.groups.length,
-        splitAllowed: st.kits.splitAllowed,
-        groups: kits.groups,
-        ask: ASK_KITS,
-        ...(st.kits.problem ? { problem: st.kits.problem } : {}),
       },
     }),
   );
@@ -174,20 +160,6 @@ function applyAnswers(st, answers) {
       st.pitch.round += 1;
     }
   }
-  const k = answers?.kits;
-  if (k && k.round === st.kits.round && st.kits.status === 'pending') {
-    delete st.kits.problem;
-    const out = new Set([...(k.keeperOrReferee ?? []), ...(k.notKit ?? [])]);
-    const merged = (k.merge ?? []).reduce((n, set) => n + set.length - 1, 0);
-    if (k.split != null && st.kits.splitAllowed) {
-      st.kits.groups = splitGroup(st.kits.groups, k.split);
-      st.kits.splitAllowed = false;
-      st.kits.round += 1;
-    } else if (k.keeperOrReferee && st.kits.groups.length - out.size - merged < 2) {
-      st.kits.round += 1;
-      st.kits.problem = 'fewer than two kit groups left: merge fewer, or mark fewer as not a kit';
-    } else st.kits.status = 'answered';
-  }
 }
 
 const loadState = async () => (await getJson(`${work}state.json`)) ?? null;
@@ -195,10 +167,7 @@ const loadState = async () => (await getJson(`${work}state.json`)) ?? null;
 async function prepare() {
   await requireManifest();
   await pretend(['sync', 'pitch', 'kits']);
-  await writeQuestions({
-    pitch: { round: 1, status: 'pending', points: FIRST_FIT },
-    kits: { round: 1, status: 'pending', groups: FIRST_GROUPS, splitAllowed: true },
-  });
+  await writeQuestions({ pitch: { round: 1, status: 'pending', points: FIRST_FIT } });
 }
 
 async function refit() {

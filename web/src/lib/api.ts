@@ -143,9 +143,9 @@ export function createApiClient(opts: ApiClientOptions) {
 		getJob: (gameId: string, recordingId: string, jobId: string) =>
 			request<Job>('GET', job({ gameId, recordingId, jobId })),
 		cancelJob: (j: Job) => request<void>('DELETE', job(j)),
-		/** The pitch and kit checks, with links to their pictures. */
+		/** The engine's questions (cameras, pitch), with links to their pictures. */
 		jobQuestions: (j: Job) => request<JobQuestions>('GET', `${job(j)}/questions`),
-		/** Answers one of the engine's questions (cameras, pitch or kits). */
+		/** Answers one of the engine's questions (cameras or pitch). */
 		answerCheck: (j: Job, answer: CheckAnswer) => request<Job>('PUT', `${job(j)}/answers`, answer),
 		/** A signed link to the finished game video. */
 		jobVideo: (j: Job) => request<JobVideo>('POST', `${job(j)}/downloads`),

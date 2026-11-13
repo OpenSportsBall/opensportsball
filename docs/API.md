@@ -445,7 +445,7 @@ The job, as every route here returns it:
   "where": "cloud | local",
   "status": "queued | preparing | needs_answers | refitting | running | done | failed | cancelled",
   "phase": "prepare | run",
-  "checks": {"cameras": "open | answered", "pitch": "open | answered", "kits": "open | answered"},
+  "checks": {"cameras": "open | answered", "pitch": "open | answered"},
   "progress": {"stage": "ball", "fraction": 0.4, "etaSeconds": 5400, "at": "..."},
   "error": {"code": "footage_corrupt", "message": "..."},
   "stale": false,
@@ -456,9 +456,11 @@ The job, as every route here returns it:
 
 - `checks` are the engine's questions and whether each is still open.
   `cameras` is there only when the engine asked it (the two phones' views
-  couldn't be stitched), and is answered before the other two. The engine
+  couldn't be stitched), and is answered before the pitch. The engine
   decides what is open: after each prepare or refit the server reads
-  `pending` from its questions.
+  `pending` from its questions. A job started while the kit groups were
+  still checked is returned without its `kits` check, and nothing waits
+  for it.
 - `progress` and `error` are null when there is none. `error.code` is the
   engine's own (e.g. `footage_corrupt`, `not_enough_disk`) or one of the
   server's: `engine_failed`, `engine_no_result` (it ended without its
@@ -496,15 +498,15 @@ The engine's questions, once it has written them. → `200`
 ```json
 {
   "status": "needs_answers",
-  "checks": {"pitch": "open", "kits": "open"},
+  "checks": {"pitch": "open"},
   "expiresAt": "...",
-  "questions": { "schemaVersion": 1, "pending": ["pitch", "kits"], "pitch": {...}, "kits": {...} }
+  "questions": { "schemaVersion": 1, "pending": ["pitch"], "pitch": {...} }
 }
 ```
 
 - `questions` is the engine's `questions.json`
   (`shared/schemas/engine-questions.schema.json`), unchanged except that
-  every field naming a picture (`image`, `overlay`, `background`, `sheet`,
+  every field naming a picture (`image`, `overlay`, `background`,
   `mainLeft`, `secondaryLeft`) gets a signed link next to it: `imageUrl`,
   `overlayUrl` and so on, good until `expiresAt` (12 hours). A path that
   points outside the questions folder gets null.
@@ -514,45 +516,41 @@ The engine's questions, once it has written them. → `200`
   distribution.
 
 ### `PUT /games/{gameId}/recordings/{recordingId}/jobs/{jobId}/answers`
-Answers one question. Body: `"question": "cameras"`, `"pitch"` or
-`"kits"`, plus that question's answer from
-`shared/schemas/engine-answers.schema.json`. → `200` the job.
+Answers one question. Body: `"question": "cameras"` or `"pitch"`, plus
+that question's answer from `shared/schemas/engine-answers.schema.json`.
+→ `200` the job.
 
 ```json
 {"question": "pitch", "round": 1, "approve": true}
 {"question": "pitch", "round": 1,
  "points": {"left corner flag": {"yaw": -79.2, "pitch": 21.0},
             "right corner flag": {"skipped": true}, "halfway far end": {"fromFit": true}}}
-{"question": "kits", "round": 1, "tapped": {"0": ["c0_07"]}}
-{"question": "kits", "round": 1, "merge": [[0, 7], [1, 2]], "keeperOrReferee": [5, 6], "notKit": [3, 4]}
-{"question": "kits", "round": 1, "split": 3}
 {"question": "cameras", "round": 1, "leftPhone": "secondary"}
 ```
 
 - `round` is the `round` of the question being answered.
-- An approved pitch, or kit groups without a split, close that check
-  here. When none is open the run job is submitted (`status: queued`,
-  `phase: run`), and the engine applies the answers before it starts. If
-  it will not use one (for example fewer than two kit groups are left),
-  it writes its questions again with the reason in `problem`, and the job
-  returns to `needs_answers`.
-- Pitch points, a group to split, or the cameras submit a refit
-  (`status: refitting`): the engine redraws and asks again with the next
-  `round`. If nothing is left to ask afterwards, the run starts by itself.
-- `share` (pitch and kits: whether the user agrees to share the result to
+- An approved pitch closes that check here. When none is open the run job
+  is submitted (`status: queued`, `phase: run`), and the engine applies
+  the answers before it starts. If it will not use one, it writes its
+  questions again with the reason in `problem`, and the job returns to
+  `needs_answers`.
+- Pitch points or the cameras submit a refit (`status: refitting`): the
+  engine redraws and asks again with the next `round`. If nothing is left
+  to ask afterwards, the run starts by itself.
+- `share` (pitch only: whether the user agrees to share the result to
   improve the models) is recorded as false unless the body says true, and
   true needs `"consentVersion"`: the wording they agreed to
   (`shared/consent/<version>.md`, today `share-v1`). The version is kept on
   the job, not in the engine's answers. When the job is done, what the
-  engine wrote for the checks they shared is filed as contributions
-  ("Contributions" above): the same records, listed and withdrawn the same
+  engine wrote for a pitch they shared is filed as a contribution
+  ("Contributions" above): the same record, listed and withdrawn the same
   way.
 - The answers are kept as `answers.json` in the job's output folder, as
   the engine reads them.
 - `400 invalid_answers`: `share` without a known `consentVersion`; it does
-  not match the schema; it names a point,
-  group or person the question does not have, approves a pitch that must
-  be marked first (`approveAllowed: false`), or splits a second time.
+  not match the schema; it names a point the question does not have, or
+  approves a pitch that must be marked first (`approveAllowed: false`).
+  `400 bad_request`: `question` is anything else, `"kits"` included.
   `409 conflict`: the job is not waiting for answers, the check is already
   answered or not asked yet, or `round` is not the current one (reload the
   questions). `403 forbidden`: a local job, which is answered in its app.
@@ -865,7 +863,7 @@ What each command must leave behind, and how it ends:
 |---|---|---|---|
 | `prepare` | the manifest and footage | `questions/questions.json` (engine-questions) and every picture it names, at `questions/<its path>` | 1 hour |
 | `refit` | `answers.json` (engine-answers), and what it kept in `work/` | `questions/questions.json` again | 15 minutes |
-| `run` | the footage and `answers.json` | `game.mp4` (and `result.json`: the engine's done event); or `questions/questions.json` again, if it will not use an answer. For each check whose answer says `share: true`: `share/<name>.json` (engine-contribution) and every file it lists at `share/files/<path>` | 12 hours |
+| `run` | the footage and `answers.json` | `game.mp4` (and `result.json`: the engine's done event); or `questions/questions.json` again, if it will not use an answer. When the pitch answer says `share: true`: `share/pitch.json` (engine-contribution) and every file it lists at `share/files/<path>` | 12 hours |
 
 `pending` in the questions is what the server goes by: after `prepare` or
 `refit`, an empty list starts the run; after a `run` that left no video,

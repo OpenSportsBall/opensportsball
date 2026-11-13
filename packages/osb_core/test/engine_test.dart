@@ -11,7 +11,7 @@ import 'package:test/test.dart';
 Map<String, Object?> questions() => {
       'schemaVersion': 1,
       'recording': '.',
-      'pending': ['pitch', 'kits'],
+      'pending': ['pitch'],
       'pitch': {
         'round': 2,
         'status': 'pending',
@@ -48,35 +48,13 @@ Map<String, Object?> questions() => {
         'approveAllowed': false,
         'problem': 'mark the pitch first',
       },
-      'kits': {
-        'round': 1,
-        'status': 'pending',
-        'k': 8,
-        'splitAllowed': true,
-        'groups': [
-          {
-            'component': 0,
-            'people': 561,
-            'perMoment': 6.9,
-            'proposed': 'A',
-            'crops': [
-              {
-                'id': 'c0_00',
-                'image': 'engine/crops/kits1/c0_00.jpg',
-                'frame': 'f',
-                'box': [1, 2, 3, 4]
-              }
-            ]
-          }
-        ]
-      },
       'futureField': {'ignored': true},
     };
 
 void main() {
   test('reads questions, and maps panorama degrees to pixels and back', () {
     final q = EngineQuestions.fromJson(questions());
-    expect(q.pending, ['pitch', 'kits']);
+    expect(q.pending, ['pitch']);
     final p = q.pitch!;
     expect(p.pending, isTrue);
     expect(p.approveAllowed, isFalse);
@@ -88,7 +66,15 @@ void main() {
     final back = p.panorama!.toDeg(3000, 600);
     expect(back.yaw, closeTo(-10, 1e-9));
     expect(back.pitch, closeTo(16, 1e-9));
-    expect(q.kits!.groups.single.crops.single.id, 'c0_00');
+  });
+
+  test('a game prepared when the kit groups were still checked is not left waiting for them', () {
+    final q = EngineQuestions.fromJson({
+      ...questions(),
+      'pending': ['kits'],
+      'kits': {'round': 1, 'status': 'pending', 'groups': []},
+    });
+    expect(q.pending, isEmpty);
   });
 
   test('writes answers the engine schema accepts', () async {
@@ -103,16 +89,6 @@ void main() {
             'x': const FromFitPoint()
           },
           share: true)
-      ..answerKits(1,
-          tapped: {
-            0: {'c0_03', 'c0_00'},
-            1: {}
-          },
-          merge: [
-            {3, 2}
-          ],
-          notKit: {7},
-          share: false)
       ..answerCameras(1, mainLeft: false);
     await a.write(dir);
     final j = jsonDecode(await EngineAnswers.fileIn(dir).readAsString()) as Map;
@@ -125,22 +101,11 @@ void main() {
       },
       'share': true,
     });
-    expect(j['kits'], {
-      'round': 1,
-      'tapped': {
-        '0': ['c0_00', 'c0_03']
-      },
-      'merge': [
-        [2, 3]
-      ],
-      'notKit': [7],
-      'share': false,
-    });
     expect(j['cameras'], {'round': 1, 'leftPhone': 'secondary'});
     // Read back and changed: the other answers stay.
     final again = await EngineAnswers.read(dir);
     again.approvePitch(3, share: true);
-    expect(again.toJson()['kits'], j['kits']);
+    expect(again.toJson()['cameras'], j['cameras']);
     expect(again.toJson()['pitch'], {'round': 3, 'approve': true, 'share': true});
   });
 

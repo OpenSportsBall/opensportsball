@@ -14,18 +14,17 @@
     "where": { "enum": ["cloud", "local"], "description": "cloud: AWS Batch. local: the user's own computer (the Mac app)." },
     "status": {
       "enum": ["queued", "preparing", "needs_answers", "refitting", "running", "done", "failed", "cancelled"],
-      "description": "queued: waiting for a machine. preparing: the engine's prepare command. needs_answers: waiting for the user to answer the engine's questions. refitting: the engine is working on an answer (the pitch marked, a kit group split, the cameras) and will ask again. running: the engine's run command. done, failed and cancelled are final."
+      "description": "queued: waiting for a machine. preparing: the engine's prepare command. needs_answers: waiting for the user to answer the engine's questions. refitting: the engine is working on an answer (the pitch marked, the cameras) and will ask again. running: the engine's run command. done, failed and cancelled are final."
     },
     "phase": { "enum": ["prepare", "run"], "description": "Which half the job is in: up to the checks, or after them. Tells the two queued states apart." },
     "checks": {
       "type": "object",
       "description": "The engine's questions the user answers between prepare and run (engine-questions.schema.json), and whether each is still open. `cameras` is there only when the engine asked it: the phones' views couldn't be stitched. The run starts when none is open.",
-      "required": ["pitch", "kits"],
+      "required": ["pitch"],
       "additionalProperties": false,
       "properties": {
         "cameras": { "enum": ["open", "answered"] },
-        "pitch": { "enum": ["open", "answered"] },
-        "kits": { "enum": ["open", "answered"] }
+        "pitch": { "enum": ["open", "answered"] }
       }
     },
     "progress": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/progress" }] },

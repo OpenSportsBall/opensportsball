@@ -15,15 +15,15 @@ The overall plan is in [PLAN.md](PLAN.md); open work in
 | Footage | Downloaded through the footage CloudFront distribution with the API's signed links | Already built (`POST .../recordings/{id}/downloads`, [API.md](API.md)); the phones need no changes |
 | Minimum Mac | Apple Silicon (M1 or newer), 16 GB | Measured peak 8.4 GB with the ball stage and render overlapped; Intel Macs lack the GPU path |
 | Pitch | The user approves our best guess at the lines, or marks the pitch, before every game | Wrong pitch geometry spoils everything after it; one check costs a minute |
-| Kits | No "which is your team". The user sees the kit groups and scores how clean they are | Automatic sides failed on rec4, rec5 and rec7; the score both fixes the game and measures us |
-| Sharing | Pitch and kit results are shared by default (a switch, on). Ball labels and must-see moments are only offered to users who agree to share them | The labels are only worth making for model training |
+| Kits | No "which is your team", and no kit check: the engine sorts the sides, keepers and referee itself | The camera follows play, not a team; the check that was here was removed on 2026-11-12 (see [Teams](#teams)) |
+| Sharing | The pitch result is shared by default (a switch, on). Ball labels and must-see moments are only offered to users who agree to share them | The labels are only worth making for model training |
 | Distribution | Notarized DMG with Sparkle updates, not the Mac App Store | The App Store's sandbox and review don't fit a bundled Python engine running for hours, and its terms conflict with the AGPL |
 
 ## Architecture
 
 ```
                  osb-engine (AGPL, opensportsball-processing)
-   prepare: job.json -> questions/ (pitch guess, kit groups)
+   prepare: job.json -> questions/ (pitch guess)
    run:     job.json + answers.json -> sync, calibrate, ball, roles,
             follow, render -> game.mp4
    label:   job.json -> ball frames and must-see panoramas to label
@@ -60,14 +60,13 @@ The overall plan is in [PLAN.md](PLAN.md); open work in
    background panorama, fit the pitch, and group a sample of people by
    kit. Minutes, not hours (to be measured in step A below).
 5. **Check the pitch** (required). See [Pitch check](#pitch-check).
-6. **Check the kit groups.** See [Kit-group check](#kit-group-check).
-7. **Process overnight** (`osb-engine run`): progress and time left, an
+6. **Process overnight** (`osb-engine run`): progress and time left, an
    `IOPMAssertion` to keep the Mac awake, pause on battery, resume after a
    quit or reboot, a notification at the end. The app says "overnight", not
    a time.
-8. **Watch and deliver:** `game.mp4` on disk, the YouTube upload (Phase 5's
+7. **Watch and deliver:** `game.mp4` on disk, the YouTube upload (Phase 5's
    flow), "done" to the API.
-9. **Help improve tracking** (optional, sharing required): label the ball
+8. **Help improve tracking** (optional, sharing required): label the ball
    and mark must-see moments. See [Contributions](#ball-labels-and-must-see-moments).
 
 ### Pitch check
@@ -93,39 +92,14 @@ review page draws it today.
   approved or corrected it. Approving our guess unchanged is a useful
   result too: it is a measured success.
 
-### Kit-group check
+### Teams
 
-There is no "which is your team" question: the camera follows play, not a
-team. Instead the user checks the groups `teams.py` made, and the check
-both corrects this game and scores us.
-
-What the user sees: one card per group, each a grid of 24 people from that
-group, chosen at random from across the game.
-
-1. **Tap anyone in the wrong group**, or anyone who isn't a player in kit
-   (spectators, subs in bibs, coaches).
-2. **Then one question about the groups as a whole:**
-   - Every kit has exactly one group (the right answer most of the time)
-   - Two groups are the same kit (pick them: they're merged)
-   - One group has two kits in it (pick it: the engine splits it and the
-     card is shown again, once)
-
-**The score**, defined so games can be compared:
-
-- *Group purity:* for each group, the share of the 24 people the user
-  didn't tap. Weighted by group size, it gives one number per game.
-- *Structure:* whether the groups matched the kits (yes / merged / split).
-- Kept per game, by recording and engine version, so a model change shows
-  up as a change in the average.
-
-Merges and splits are applied to this game's roles before the overnight
-run. The taps are recorded, and only used to fix the game later once the
-reassignment has been tested.
-
-**Share** switch, on by default: "Share these groups and your answers to
-help improve team detection." Shared: the 24 crops per group (the people
-crops shown on screen), the user's taps, the structure answer and the
-score.
+There is no "which is your team" question, and no check of the teams: the
+camera follows play, not a team. The engine sorts the two sides, the
+keepers and the referee by kit colour itself (`teams.py`) and uses what it
+finds. An earlier version showed the user the kit groups to check; it was
+removed on 2026-11-12. Where the sorting is wrong (white kits, two shades
+of one colour), the cost is in the processing repository's FINDINGS.md.
 
 ### Ball labels and must-see moments
 
@@ -183,9 +157,9 @@ progress as JSON lines. The GUI is one client of it, not the only one.
   list games, download a recording (resume, sha256, fresh links). It
   shares the app's code for them, so there is one implementation.
 - **Questions stand on their own:** each one carries the paths of its
-  images (pitch overlay, kit-group grids) and says in plain text what is
+  images (the pitch overlay and close-ups) and says in plain text what is
   being asked and what the answers mean, so a model that reads images can
-  answer the pitch and kit checks from the files alone.
+  answer the pitch check from the files alone.
 - **Later, if wanted:** an MCP server over those commands. It is a thin
   layer once they exist.
 

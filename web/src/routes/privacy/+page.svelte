@@ -45,11 +45,12 @@
 		</li>
 		<li>
 			<strong>Results you choose to share</strong> (only if you turn sharing on, in the Mac app): when you process a
-			game on your own computer, you check the pitch lines and the kit groups, and you may label the ball or mark
-			moments the camera missed. If you agree, the app sends those results to improve OpenSportsBall: the empty-pitch
-			panorama and the points you marked, small pictures of people on the pitch grouped by kit, still frames and
-			panoramas of the game, and your labels. These are pictures of the game, so they show players, often children,
-			and anyone else in view. We record which wording of the agreement you accepted.
+			game on your own computer, you check the pitch lines, and you may label the ball or mark moments the camera
+			missed. If you agree, the app sends those results to improve OpenSportsBall: the empty-pitch panorama and the
+			points you marked, still frames and panoramas of the game, and your labels. Results shared while the app still
+			asked you to check the kit groups also include small pictures of people on the pitch grouped by kit. These are
+			pictures of the game, so they show players, often children, and anyone else in view. We record which wording of
+			the agreement you accepted.
 		</li>
 	</ul>
 	<p>

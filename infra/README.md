@@ -123,8 +123,8 @@ that run the engine's container (`docs/CLOUD-PROCESSING-PLAN.md`, and
 `docs/API.md` for the routes and for what the container is given and must
 write). The engine itself is in the opensportsball-processing repository.
 Until its image exists, `stub-engine/` stands in: it keeps the container's
-side of the contract with a drawn pitch, made-up kit groups and a
-3-second test-pattern video, and reads no footage.
+side of the contract with a drawn pitch and a 3-second test-pattern
+video, and reads no footage.
 
 To try it end to end:
 
@@ -141,7 +141,7 @@ To try it end to end:
    processing** on. Sign out and in, or reload, to see it.
 4. On a game with a `Ready` recording, press **Process in the cloud**. The
    first Fargate task takes a minute or two to start; the stub then takes
-   about 20 seconds a step. Answer the two checks, and the video appears
+   about 20 seconds a step. Answer the pitch check, and the video appears
    on the game's page.
 
 The footage distribution ("Footage downloads") must be set up: the

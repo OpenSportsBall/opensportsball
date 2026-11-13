@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Renders the game pane's screens to PNGs, with the brand fonts and a
-/// prepared recording's real pictures (its questions.json, panorama and
-/// kit crops), to look at without clicking through the app:
+/// prepared recording's real pictures (its questions.json and panorama),
+/// to look at without clicking through the app:
 ///
 ///     OSB_SCREENS_RECORDING=/path/to/prepared/rec OSB_SCREENS_OUT=/tmp/screens \
 ///     flutter test test/screens_test.dart
@@ -171,7 +171,7 @@ void main() {
     final p = (raw['pitch'] as Map).cast<String, Object?>()..['status'] = 'pending';
     ctl
       ..phase = Phase.questions
-      ..questions = EngineQuestions(pending: const ['pitch', 'kits'], pitch: PitchQuestion.fromJson(p));
+      ..questions = EngineQuestions(pending: const ['pitch'], pitch: PitchQuestion.fromJson(p));
     final images = [p['background'] as String];
     await shoot(tester, '3-pitch', images: images);
     await shoot(
@@ -185,26 +185,6 @@ void main() {
         // Click a little beside the first point, which the view is zoomed to.
         final view = tester.getRect(find.byType(InteractiveViewer));
         await tester.tapAt(view.center + const Offset(30, 12));
-        await tester.pump();
-      },
-    );
-  }, skip: skip != null);
-
-  testWidgets('kit check', (tester) async {
-    final k = (raw['kits'] as Map).cast<String, Object?>()..['status'] = 'pending';
-    final q = KitsQuestion.fromJson(k);
-    ctl
-      ..phase = Phase.questions
-      ..questions = EngineQuestions(pending: const ['kits'], kits: q);
-    await shoot(
-      tester,
-      '5-kits',
-      images: [
-        for (final g in q.groups.take(3))
-          for (final c in g.crops) c.image,
-      ],
-      before: () async {
-        await tester.tap(find.byType(Image).at(2));
         await tester.pump();
       },
     );

@@ -1,8 +1,8 @@
 # Cloud processing plan
 
 The paid cloud path: a game's footage, already in S3, becomes the followed
-game video on a Spot GPU, with the pitch and kit checks answered on the
-website. It runs the same engine as the Mac app
+game video on a Spot GPU, with the pitch check answered on the website.
+It runs the same engine as the Mac app
 ([MAC-APP-PLAN.md](MAC-APP-PLAN.md), step F there). The overall plan is in
 [PLAN.md](PLAN.md); open work in [BACKLOG.md](BACKLOG.md).
 
@@ -49,11 +49,11 @@ website: "Process in the cloud"
         |
    Batch: osb-engine prepare           job: preparing
      manifest + segments from S3 -> sync, background panorama,
-     pitch guess, kit groups -> questions/ in outputs/
+     pitch guess -> questions/ in outputs/
         |                              job: needs_answers  (email)
-website: pitch check, kit check
+website: pitch check
    PUT .../jobs/{id}/answers
-     pitch marked or a kit group split -> short refit job, questions again
+     pitch marked -> short refit job, questions again
         |
    Batch: osb-engine run               job: running (stage, %, time left)
      chunks -> work/ ; game.mp4 -> outputs/
@@ -88,7 +88,7 @@ plan already calls for (rec7), built once and used by both.
 | 0. Now | File a quota request for on-demand G instances (the fallback when Spot has none; the Spot quota is granted). Agree the remaining decisions above | Request filed |
 | 1. Job record and API (1-1.5 wk) | `job`, `questions`, `answers`, `progress` schemas in `shared/schemas/` (the Mac plan's, written once). `JOB#<gameId>#<recordingId>#<jobId>` items. Routes: start, get, cancel, questions (with signed image links), answers, output link; job state in `GET /games/{id}`. The `cloudProcessing` flag and an admin route to set it. Deletion covers `outputs/`, `work/` and running jobs. `footageUrls` signs an account's own outputs | API tests pass for every state change, the second-ready case and deletion mid-job |
 | 2. Batch stack (1-1.5 wk) | VPC, Spot compute environment, queue, `prepare` / `run` / `refit` job definitions (timeouts 1 h / 12 h / 15 min), ECR repository, job role (read `accounts/` and `models/`, write `outputs/` and `work/`, update job items), launch template with the scratch disk, the state-change Lambda, lifecycle rules, log retention, an alarm for a job waiting over an hour. A CPU queue (Fargate) for the stub and for refits | From the API, the stub image goes queued to done in the deployed stack, and a killed job shows `failed` |
-| 3. Website (2-3 wk) | Game page: start, progress, cancel, watch and download. Pitch check (approve, or drag the named keypoints and refit) and kit check (tap the wrong ones, merge or split), drawn from the question files as the Mac app draws them. Emails for "check the pitch" and "video ready" through SES (already on the backlog for Cognito) | With the mock API and the rec7 fixture, a test walks start to done through both checks |
+| 3. Website (2-3 wk) | Game page: start, progress, cancel, watch and download. Pitch check (approve, or drag the named keypoints and refit), drawn from the question files as the Mac app draws it. Emails for "check the pitch" and "video ready" through SES (already on the backlog for Cognito) | With the mock API and the rec7 fixture, a test walks start to done through the pitch check |
 | 4. Engine on CUDA (2-3 wk, processing repo, after the Mac plan's step A) | The platform module's CUDA side: NVDEC decode, `h264_nvenc`, PyTorch on CUDA for the detectors (fp16, ONNX Runtime or TensorRT later). The image: CUDA base, ffmpeg with NVDEC/NVENC, `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`. The cloud entrypoint: fetch from S3, models by pin, checkpoints to `work/`, progress to the job record, outputs up. The image carries its commit, and the website links to that source (AGPL section 13) | The must-see bench run on a GPU instance is within its rerun noise of the Mac's 34/46, and a whole game's time and cost are measured |
 | 5. First real games (1 wk) | rec7 from the website's button to a watched video. Stop the instance mid-run and see it resume. A late Secondary. Delete mid-run. Write the measured time and cost into PLAN.md | A non-author's game goes through with no one touching AWS |
 | 6. Later | Payments and price, start automatically per account, an admin page of jobs with retry and cost per job, the cost dashboard, self-host docs for the Batch part (Phase 6) | |
@@ -126,9 +126,9 @@ commands and file formats, so step 4 became two things.
   the engine won't start (it refused an answer) sends the job back to the
   user with the engine's reason.
 - The website's checks are redone on those formats, asked as the Mac app
-  asks them: the pitch in panorama degrees, the kit groups with what each
-  group is (a kit, keepers or referee, not a kit), and the cameras
-  question for games whose views couldn't be stitched.
+  asks them: the pitch in panorama degrees, and the cameras question for
+  games whose views couldn't be stitched. The kit groups are not asked
+  about: the engine sorts the two sides, keepers and referee itself.
 - The stub engine speaks the same formats, so the deployed stack can be
   tried end to end before a GPU is paid for.
 - The stack: the job-events function may start the run; GPU jobs carry
@@ -163,7 +163,7 @@ website against its mock and in a browser. The image builds and starts.
   cloud added before this is deployed.
 - **Emails need a sender.** Set (`emailFrom`); not yet seen to arrive.
 - **The fixture is drawn, not a real game.** The stub and the website's
-  mock show a made-up pitch and kit groups.
+  mock show a made-up pitch.
 - **No alarm.** A GPU job that cannot start fails after 1 hour (no
   instance fits) or 12 (no Spot capacity) and its owner is emailed. Nobody
   is told on our side; that comes with the admin page of jobs (step 6).
@@ -212,7 +212,7 @@ time, so cost per game is known from the first run.
   match a local one.
 - **The PyTorch build wants a recent NVIDIA driver** (CUDA 13). If the ECS
   GPU image's driver is older, the image needs a CUDA 12 build pinned.
-- **Refit wait.** Marking the pitch or splitting a kit group means a
+- **Refit wait.** Marking the pitch means a
   Fargate task pulling a 3.6 GB image (a few minutes, to be measured)
   before the user sees the result, against seconds on the Mac. If that is
   too slow, build a small CPU-only image for refits: they need no PyTorch

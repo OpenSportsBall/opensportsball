@@ -462,8 +462,8 @@ class GameController extends ChangeNotifier {
   bool get shareStopped => sent?.stopped ?? false;
 
   /// Sends what the user agreed to share and hasn't been sent as it now
-  /// stands: the pitch map and the kit groups (each check's own switch) and
-  /// the ball sets with marks. The engine lists them (`share`); nothing is
+  /// stands: the pitch map (its check's switch) and the ball sets with
+  /// marks. The engine lists them (`share`); nothing is
   /// sent before the sharing wording is agreed, or after this game's
   /// contributions were withdrawn. Never throws: [shareError] says what
   /// went wrong, and the next call carries on.

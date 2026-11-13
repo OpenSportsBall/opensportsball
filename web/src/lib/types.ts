@@ -37,8 +37,8 @@ export type JobStatus =
 	| 'failed'
 	| 'cancelled';
 /** The engine's questions. `cameras` is asked only when the phones' views
- *  couldn't be stitched, and then before the other two. */
-export type CheckName = 'cameras' | 'pitch' | 'kits';
+ *  couldn't be stitched, and then before the pitch. */
+export type CheckName = 'cameras' | 'pitch';
 
 export interface Job {
 	schemaVersion: 1;
@@ -97,31 +97,6 @@ export interface PitchQuestion {
 	problem?: string;
 }
 
-export interface KitCrop {
-	id: string;
-	image: string;
-	imageUrl: string | null;
-}
-
-export interface KitGroup {
-	/** The group's number in answers. */
-	component: number;
-	people: number;
-	perMoment: number;
-	/** The engine's guess. A and B are the two sides, in no order. */
-	proposed: 'A' | 'B' | 'keeperOrReferee' | 'other';
-	crops: KitCrop[];
-}
-
-export interface KitsQuestion {
-	round: number;
-	status: 'pending' | 'answered';
-	k: number;
-	splitAllowed: boolean;
-	problem?: string;
-	groups: KitGroup[];
-}
-
 /** Asked only when the phones' views couldn't be stitched: which order of
  *  the phones shows the pitch in one piece. */
 export interface CamerasQuestion {
@@ -141,7 +116,6 @@ export interface JobQuestions {
 		pending: CheckName[];
 		cameras?: CamerasQuestion;
 		pitch?: PitchQuestion;
-		kits?: KitsQuestion;
 	};
 }
 
@@ -160,27 +134,13 @@ export type PitchAnswer = ShareChoice &
 		| { question: 'pitch'; round: number; points: Record<string, PitchPointAnswer> }
 	);
 
-export interface KitsAnswer extends ShareChoice {
-	question: 'kits';
-	round: number;
-	/** Per group (its component number), the crops tapped as not belonging. */
-	tapped?: Record<string, string[]>;
-	/** Sets of groups that are the same kit. */
-	merge?: number[][];
-	/** A group that holds two kits. */
-	split?: number;
-	/** Only when the user changed a group's role; otherwise the engine keeps its guess. */
-	keeperOrReferee?: number[];
-	notKit?: number[];
-}
-
 export interface CamerasAnswer {
 	question: 'cameras';
 	round: number;
 	leftPhone: 'main' | 'secondary';
 }
 
-export type CheckAnswer = PitchAnswer | KitsAnswer | CamerasAnswer;
+export type CheckAnswer = PitchAnswer | CamerasAnswer;
 
 /** POST .../jobs/{jobId}/downloads */
 export interface JobVideo {
