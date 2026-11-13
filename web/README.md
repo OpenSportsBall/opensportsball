@@ -82,9 +82,12 @@ The Cognito app client needs:
 - authorization code grant, scopes `openid` and `email`, no client secret
 
 Sign-in uses authorization code + PKCE (`oidc-client-ts`), and the session
-is kept in `localStorage`. There is no silent renew: when the access token
-expires, or the API returns 401, the user is sent through managed login
-again and comes back to the same page. Sign out clears the local session
+is kept in `localStorage`. The access token lasts an hour and is renewed
+with the refresh token, with no redirect, so a person stays signed in for
+as long as the refresh token lasts (30 days from signing in; the Web
+client's `refreshTokenValidity` in `infra/lib/stack.ts`). When that runs
+out, or the API returns 401, the user is sent through managed login again
+and comes back to the same page. Sign out clears the local session
 and goes to Cognito's `/logout`, which returns to `/`.
 
 ## Build and deploy output
