@@ -3,18 +3,20 @@
 
 /**
  * Sign-in: Cognito hosted login, authorization code + PKCE (oidc-client-ts).
- * No silent renew: when the access token expires the user is sent through the
- * hosted login again (Cognito keeps its own session, so this is usually a
- * quick bounce). In mock mode there is no Cognito at all.
+ * The access token lasts an hour; when it is about to run out it is renewed
+ * with the refresh token, with no redirect, for as long as the refresh token
+ * lasts (refreshTokenValidity of the Web client in infra/lib/stack.ts). After
+ * that the user is sent through the hosted login again. In mock mode there is
+ * no Cognito at all.
  */
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import type { SiteConfig } from './types';
 
 export interface Auth {
 	readonly mock: boolean;
-	/** True when there is a stored, unexpired session. */
+	/** True when there is a stored session that is unexpired or could be renewed. */
 	isSignedIn(): Promise<boolean>;
-	/** The access token, or null when signed out or expired. */
+	/** The access token (renewed if need be), or null when signed out or expired for good. */
 	getToken(): Promise<string | null>;
 	/** Email from the ID token, if known (the header prefers GET /me). */
 	email(): Promise<string | null>;
@@ -36,6 +38,48 @@ export function safeReturnTo(value: unknown): string {
 
 export function currentPath(): string {
 	return window.location.pathname + window.location.search;
+}
+
+/** The parts of a stored session that [createSessionReader] looks at. */
+export interface StoredSession {
+	expired?: boolean;
+	/** Seconds until the access token expires. */
+	expires_in?: number;
+	refresh_token?: string;
+}
+
+/** Renew this long before the access token expires, so a request never carries one about to lapse. */
+const RENEW_BEFORE_SECONDS = 60;
+
+/**
+ * Returns a function giving the current session, renewed with its refresh
+ * token when the access token has expired or is about to; null when signed
+ * out. Calls made while a renewal is running share it. If the renewal fails
+ * (refresh token expired or revoked, or no network) the old session is still
+ * returned until its access token actually expires.
+ */
+export function createSessionReader<U extends StoredSession>(source: {
+	getUser(): Promise<U | null>;
+	renew(): Promise<U | null>;
+}): () => Promise<U | null> {
+	let renewing: Promise<U | null> | null = null;
+	return async () => {
+		const user = await source.getUser();
+		if (!user) return null;
+		const fresh = !user.expired && (user.expires_in ?? 0) > RENEW_BEFORE_SECONDS;
+		if (fresh) return user;
+		if (user.refresh_token) {
+			renewing ??= source
+				.renew()
+				.catch(() => null)
+				.finally(() => {
+					renewing = null;
+				});
+			const renewed = await renewing;
+			if (renewed && !renewed.expired) return renewed;
+		}
+		return user.expired ? null : user;
+	};
 }
 
 export function createCognitoAuth(config: SiteConfig): Auth {
@@ -67,10 +111,12 @@ export function createCognitoAuth(config: SiteConfig): Auth {
 	});
 
 	let redirecting = false;
-	const validUser = async (): Promise<User | null> => {
-		const user = await manager.getUser();
-		return user && !user.expired ? user : null;
-	};
+	// With a refresh token stored, signinSilent() asks the token endpoint for
+	// new tokens; no iframe, no redirect.
+	const validUser = createSessionReader<User>({
+		getUser: () => manager.getUser(),
+		renew: () => manager.signinSilent()
+	});
 
 	return {
 		mock: false,
