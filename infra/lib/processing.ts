@@ -136,7 +136,26 @@ export class Processing extends Construct {
     // --- GPU: Spot (or On-Demand), scaling to zero ---------------------------------------------
 
     const gpuSpot = props.gpuSpot ?? true;
+    // Jobs keep their files in /scratch (the job definitions' host volume).
+    // A g5.xlarge or g6.xlarge comes with a 250 GB NVMe drive of its own,
+    // many times faster than the root volume (gp3 at its default 125 MiB/s,
+    // which is what limited the footage download): it is formatted and
+    // mounted there at boot. If that fails, /scratch stays on the root
+    // volume, which is still sized for a game.
+    const userData = new ec2.MultipartUserData();
+    const mountScratch = ec2.UserData.forLinux();
+    mountScratch.addCommands(
+      'mkdir -p /scratch',
+      "dev=$(ls /dev/disk/by-id/nvme-Amazon_EC2_NVMe_Instance_Storage_* 2>/dev/null | grep -v -- '-part' | head -n 1)",
+      'if [ -n "$dev" ] && mkfs.xfs -f -K "$dev" && mount -o noatime "$dev" /scratch; then',
+      '  echo "scratch: on the instance drive $dev"',
+      'else',
+      '  echo "scratch: no instance drive mounted; using the root volume"',
+      'fi',
+    );
+    userData.addUserDataPart(mountScratch, ec2.MultipartBody.SHELL_SCRIPT, true);
     const launchTemplate = new ec2.LaunchTemplate(this, 'GpuTemplate', {
+      userData,
       // The ECS AMI keeps images and container storage on the root volume.
       blockDevices: [
         {

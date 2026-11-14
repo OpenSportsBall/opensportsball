@@ -499,6 +499,15 @@ describe('cloud processing', () => {
     });
   });
 
+  it("mounts the GPU instance's own NVMe drive as the jobs' scratch at boot", () => {
+    const [template] = Object.values(t.findResources('AWS::EC2::LaunchTemplate'));
+    const userData = JSON.stringify(template!.Properties.LaunchTemplateData.UserData);
+    // Batch only takes user data in MIME multi-part form.
+    expect(userData).toContain('Content-Type: multipart/mixed');
+    expect(userData).toContain('nvme-Amazon_EC2_NVMe_Instance_Storage_');
+    expect(userData).toContain('mount -o noatime \\"$dev\\" /scratch');
+  });
+
   it('runs the stub on Fargate by default, with a timeout per command', () => {
     const d = defs(t);
     expect(Object.keys(d).sort()).toEqual(['Prepare', 'Refit', 'Run']);
