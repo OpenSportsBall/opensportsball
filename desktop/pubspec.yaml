@@ -4,7 +4,7 @@ description: >-
   video on your own computer, with the processing engine
   (opensportsball-processing) running beside it.
 publish_to: none
-version: 0.1.7+8
+version: 0.1.8+9
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
