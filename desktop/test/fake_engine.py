@@ -55,7 +55,9 @@ if cmd == "status":
     out = rec / "fullgame" / "game.mp4"
     copy = out.with_name("game-youtube.mp4")
     done = 4 if out.exists() else 0
+    need = eng / "disk-needed"  # a test puts the figure here
     emit("status", prepared=(eng / "questions.json").exists(), pending=pending(), pieces=0,
+         **({"diskNeededBytes": int(need.read_text())} if need.exists() else {}),
          output=str(out) if out.exists() else None, youtubeOutput=str(copy) if copy.exists() else None,
          chunkDetails=chunk_details(done) if done else [],
          **(ball(done) if done else {}))
@@ -126,6 +128,9 @@ elif cmd == "prepare":
         emit("step", step=s, status="started", log=f"engine/logs/{s}.log")
         emit("step", step=s, status="done", seconds=0.1)
     (rec / "pitch").mkdir(exist_ok=True)
+    for name in ("background.png", "overlay.jpg"):  # the pitch check shows them
+        if not (rec / "pitch" / name).exists():
+            (rec / "pitch" / name).write_bytes(PNG)
     q = {
         "schemaVersion": 1, "recording": str(rec), "pending": pending(),
         "pitch": {"round": 1, "status": "pending" if "pitch" in pending() else "approved",

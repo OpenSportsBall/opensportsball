@@ -327,6 +327,43 @@ void main() {
     expect(settings.youtubeCopy, isFalse);
   });
 
+  test('the disk space line is the engine\'s figure, and a game without room is not started', () async {
+    final ctl = controller(fakeServer());
+    await ctl.open();
+    await ctl.startDownload();
+    await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: false));
+    expect(ctl.phase, Phase.readyToRun);
+    Check disk() => ctl.checks.firstWhere((c) => c.title == 'Disk space');
+    // Before the engine says: the app's estimate (a tiny game: the margin).
+    expect(disk().detail, endsWith('this game needs about 3 GB.'));
+    expect(disk().refreshable, isTrue);
+    expect(ctl.blocked, isFalse);
+
+    // The engine asks for more than any disk has: asked again, the line says its figure.
+    final need = File('${ctl.folder!.path}/engine/disk-needed')..writeAsStringSync('${39000000 * gb}');
+    await ctl.recheck();
+    expect(disk().ok, isFalse);
+    expect(disk().detail, contains('this game needs about 39000000 GB. Free '));
+    expect(ctl.blocked, isTrue);
+    await ctl.run();
+    expect(ctl.phase, Phase.readyToRun); // not started
+
+    // Space was freed (here: the engine needs less), and the refresh finds it.
+    need.writeAsStringSync('${2 * gb}');
+    await ctl.recheck();
+    expect(disk().detail, endsWith('this game needs about 2 GB.'));
+    await ctl.run();
+    expect(ctl.phase, Phase.done);
+  });
+
+  test('the app\'s estimate of the room a game needs is the engine\'s sum', () {
+    // 100 minutes: pieces, their join and game.mp4 at 12 GB each, and the margin (the engine said 39 GB).
+    expect(estimateRunBytes(6000), 39 * gb);
+    expect(estimateRunBytes(6000, height: 1440), closeTo(51.75 * gb, 1));
+    expect(estimateRunBytes(6000, youtubeCopy: true), closeTo(63.75 * gb, 1));
+    expect(estimateRunBytes(6000, height: 1440, youtubeCopy: true), estimateRunBytes(6000, height: 1440));
+  });
+
   test('offline, sharing says so and the game carries on', () async {
     final ctl = controller(fakeServer()); // no contributions routes: 404
     await ctl.open();
@@ -344,8 +381,13 @@ void main() {
     final ctl = controller(fakeServer(status: 'uploading'));
     await ctl.open();
     expect(ctl.phase, Phase.needsDownload);
-    expect(ctl.error, contains('still uploading'));
     expect(ctl.awaitingUpload, isTrue);
+    // No error: the game says what is missing and how to get it (local_video_test.dart).
+    expect(ctl.error, isNull);
+    expect(ctl.needsFootage, isTrue);
+    await ctl.startDownload();
+    expect(ctl.error, contains('still uploading'));
+    expect(ctl.phase, Phase.needsDownload);
   });
 
   test('a game opened while uploading is ready when asked again after the upload finishes', () async {

@@ -70,12 +70,27 @@ const usualChunkSeconds = 3320;
 String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
 
 class GameController extends ChangeNotifier {
-  GameController({required this.summary, required this.session, required this.settings, required this.onSignedOut});
+  GameController({
+    required this.summary,
+    required this.session,
+    required this.settings,
+    required this.onSignedOut,
+    this.local,
+    this.onRemoved,
+  });
 
   final GameSummary summary;
   final Session session;
   final Settings settings;
   final VoidCallback onSignedOut;
+
+  /// Set for a game added from video on this Mac: the account has none of
+  /// it, so nothing is asked of the API, downloaded or shared.
+  final LocalGame? local;
+  bool get isLocal => local != null;
+
+  /// A local game was removed from this Mac: it is no longer in the list.
+  final VoidCallback? onRemoved;
 
   Phase phase = Phase.loading;
   Game? game;
@@ -143,6 +158,7 @@ class GameController extends ChangeNotifier {
   bool _disposed = false;
 
   FootageDownloader? _downloader;
+  FootageImport? _import;
   EngineRun? _engine;
   Process? _caffeinate;
   Timer? _powerTimer;
@@ -176,27 +192,61 @@ class GameController extends ChangeNotifier {
   /// games list asks again on refresh ([GamesScreenState]).
   bool awaitingUpload = false;
 
+  /// The footage is whole in the game's folder, as of the last look.
+  bool footageHere = false;
+
+  /// The engine stitches two phones' views: the account's recording can't
+  /// be processed as it is, because a phone's video hasn't arrived (or it
+  /// was finished with the main phone alone). The game pane then offers to
+  /// ask that phone for it, or to take it from a folder on this Mac.
+  bool get needsFootage {
+    final r = recording;
+    if (isLocal || r == null || footageHere) return false;
+    return !r.ready || !{'main', 'secondary'}.every((role) => r.devices.any((d) => d.role == role));
+  }
+
+  /// The folders this game's video was (or was being) added from.
+  List<String> get sources =>
+      local?.sources ??
+      (recording == null ? const [] : settings.knownGame(recording!.recordingId)?.sources ?? const []);
+
+  Future<void>? _opening;
+
+  /// Done once the game has been looked up ([open]).
+  Future<void> get opened => _opening ?? Future.value();
+
   /// Finds the recording and works out where it stands.
-  Future<void> open() async {
+  Future<void> open() => _opening = _open();
+
+  /// [open], once the frame being built is done (it notifies at once).
+  void openSoon() => _opening = Future.microtask(_open);
+
+  Future<void> _open() async {
+    if (busy) return;
     phase = Phase.loading;
     error = null;
     notifyListeners();
+    if (isLocal) return _openLocal();
     final g = await _api(() => session.game(summary.gameId));
     if (g == null) return;
     game = g;
-    final ready = g.recordings.where((r) => r.ready).toList();
-    awaitingUpload = ready.isEmpty && g.recordings.isNotEmpty;
-    if (ready.isEmpty) {
-      recording = g.recordings.isEmpty ? null : g.recordings.first;
+    if (g.recordings.isEmpty) {
+      recording = null;
+      awaitingUpload = false;
       phase = Phase.needsDownload;
-      _fail(
-        g.recordings.isEmpty
-            ? 'This game has no recordings.'
-            : 'This game is still uploading from the phones. It can be processed once both have finished.',
-      );
+      _fail('This game has no recordings.');
       return;
     }
-    recording = ready.first;
+    // A recording made whole on this Mac from video on disk is used whatever
+    // the account says of it; else the first the account has all of.
+    Recording? rec;
+    for (final r in g.recordings) {
+      final known = settings.knownGame(r.recordingId);
+      if (known != null && await FootageDownloader.isComplete(Directory(known.folder))) rec ??= r;
+    }
+    rec ??= g.recordings.where((r) => r.ready).firstOrNull;
+    awaitingUpload = rec == null;
+    recording = rec ?? g.recordings.first;
     // Where it was put before, if that's still there (the work folder may
     // have been changed since); else where it goes now.
     final known = settings.knownGame(recording!.recordingId);
@@ -209,6 +259,27 @@ class GameController extends ChangeNotifier {
       );
       _knownMaxChunks = null;
     }
+    await _refresh();
+  }
+
+  Future<void> _openLocal() async {
+    final l = local!;
+    awaitingUpload = false;
+    folder = Directory(l.folder);
+    _knownMaxChunks = settings.knownGame(l.recordingId)?.maxChunks;
+    // What the phones recorded: from the folder once it is whole, else from
+    // the folders it is being added from.
+    Map<String, Object?>? manifest;
+    try {
+      manifest = (jsonDecode(await File('${l.folder}/manifest.json').readAsString()) as Map).cast();
+    } on Object {
+      try {
+        manifest = FootageImport(folder: folder!, sources: [for (final s in l.sources) Directory(s)]).merged;
+      } on Object {
+        // The folders went away: adding again says so.
+      }
+    }
+    recording = manifest == null ? Recording(recordingId: l.recordingId, status: 'ready') : manifestRecording(manifest);
     await _refresh();
   }
 
@@ -239,7 +310,7 @@ class GameController extends ChangeNotifier {
   /// Works out the phase from the folder and the engine's status.
   Future<void> _refresh() async {
     await _stopStale();
-    final complete = await FootageDownloader.isComplete(folder!);
+    final complete = footageHere = await FootageDownloader.isComplete(folder!);
     if (!complete) {
       phase = Phase.needsDownload;
       await _runChecks();
@@ -272,7 +343,12 @@ class GameController extends ChangeNotifier {
     if (phase == Phase.readyToRun || phase == Phase.done) unawaited(sendAgreed());
   }
 
+  /// Free space the engine asks for before `run`, from its status (null
+  /// before it can say, or with an engine that doesn't).
+  int? _engineNeedBytes;
+
   void _takeStatus(EngineEvent status) {
+    _engineNeedBytes = (status.raw['diskNeededBytes'] as num?)?.toInt();
     ball = BallCheck.of(status.raw) ?? ball;
     chunkDetails = ChunkDetail.listOf(status.raw['chunkDetails']);
     youtubeOutput = status.youtubeOutput;
@@ -292,9 +368,49 @@ class GameController extends ChangeNotifier {
 
   Future<void> _runChecks() async {
     final bytes = recording?.expectedBytes ?? 0;
-    var have = 0;
-    if (await FootageDownloader.isComplete(folder!)) have = bytes;
-    checks = await preflight(workFolder: settings.workFolder, footageBytes: bytes, haveBytes: have);
+    final complete = await FootageDownloader.isComplete(folder!);
+    // The engine's own figure once it has one; until then the app's, from
+    // the game's length (the footage's, or about that from its size).
+    final run =
+        _engineNeedBytes ??
+        estimateRunBytes(
+          (complete ? await _footageSeconds() : null) ?? bytes / footageBps,
+          height: settings.outputHeight,
+          youtubeCopy: settings.youtubeCopy,
+        );
+    checks = await preflight(folder: folder!.path, footageBytes: complete ? 0 : bytes, runBytes: run);
+  }
+
+  /// The game's length from the footage here: the main phone's segments.
+  Future<double?> _footageSeconds() async {
+    try {
+      final m = (jsonDecode(await File('${folder!.path}/manifest.json').readAsString()) as Map).cast<String, Object?>();
+      final main = (m['devices'] as List).cast<Map>().firstWhere((d) => d['role'] == 'main');
+      final ms = (main['segments'] as List).fold<num>(0, (a, s) => a + ((s as Map)['durationMs'] as num));
+      return ms > 0 ? ms / 1000 : null;
+    } on Object {
+      return null;
+    }
+  }
+
+  bool get blocked => checks.any((x) => x.blocking && !x.ok);
+
+  /// Looks again at what the checks look at (the user freed some space):
+  /// the engine is asked for its figure again, as Settings now stand.
+  Future<void> recheck() async {
+    await _recheck();
+    notifyListeners();
+  }
+
+  Future<void> _recheck() async {
+    if (folder == null || busy) return;
+    final engine = settings.findEngine();
+    if (engine != null && await FootageDownloader.isComplete(folder!)) {
+      await _writeJob();
+      final status = statusLine((await Process.run(engine, ['status', _job.path])).stdout as String);
+      if (status != null) _takeStatus(status);
+    }
+    await _runChecks();
   }
 
   Future<void> _loadQuestions() async {
@@ -310,6 +426,16 @@ class GameController extends ChangeNotifier {
 
   Future<void> startDownload() async {
     if (busy || recording == null) return;
+    // Video that came from this Mac comes from there again.
+    if (isLocal || (needsFootage && sources.isNotEmpty)) {
+      await addFromDisk(sources);
+      return;
+    }
+    await _runChecks();
+    if (blocked) {
+      notifyListeners();
+      return;
+    }
     error = null;
     phase = Phase.downloading;
     activity = 'Downloading the footage';
@@ -358,6 +484,119 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  // --- video on this Mac ------------------------------------------------------
+
+  /// Makes the game's folder whole from [folders] (copied off the phones:
+  /// local_footage.dart) and, for a game in the account, from what the
+  /// account has, then carries on to getting ready. Returns the phone whose
+  /// video is in neither, for the caller to ask for its folder too (nothing
+  /// is copied then); null once it has started.
+  Future<PhoneMissing?> addFromDisk(List<String> folders) async {
+    if (busy || recording == null || folder == null) return null;
+    error = null;
+    errorLog = null;
+    final was = phase;
+    phase = Phase.downloading;
+    activity = 'Adding the footage';
+    download = null;
+    notifyListeners();
+    try {
+      DownloadLinks? links;
+      if (!isLocal) links = await session.downloads(summary.gameId, recording!.recordingId);
+      final imp = _import = FootageImport(
+        folder: folder!,
+        sources: [for (final f in folders) Directory(f)],
+        manifest: links?.manifest,
+        reports: links?.reports ?? const [],
+      );
+      try {
+        imp.merged;
+      } on PhoneMissing catch (e) {
+        phase = was;
+        notifyListeners();
+        return e;
+      }
+      // So a stopped copy carries on from the same folders.
+      if (isLocal) {
+        await settings.saveLocalGame(
+          LocalGame(
+            gameId: local!.gameId,
+            recordingId: local!.recordingId,
+            when: local!.when,
+            folder: local!.folder,
+            sources: folders,
+          ),
+        );
+      } else {
+        await settings.rememberGame(
+          recording!.recordingId,
+          KnownGame(folder!.path, maxChunks: _maxChunks, sources: folders),
+        );
+      }
+      final total = imp.totalBytes;
+      final missing = await imp.copy(
+        onProgress: (p) {
+          download = p;
+          notifyListeners();
+        },
+      );
+      if (missing.isNotEmpty) {
+        if (isLocal) throw OsbException('${missing.first} isn’t in the folders chosen.');
+        // The rest is the account's.
+        final copied = download?.doneBytes ?? 0;
+        activity = 'Downloading the footage';
+        _downloader = FootageDownloader(
+          folder: folder!,
+          client: session.client,
+          only: missing,
+          links: () => session.downloads(summary.gameId, recording!.recordingId),
+        );
+        await _downloader!.run(
+          onProgress: (p) {
+            download = DownloadProgress(
+              doneBytes: copied + p.doneBytes,
+              totalBytes: total,
+              filesDone: p.filesDone,
+              files: p.files,
+              current: p.current,
+              bytesPerSecond: p.bytesPerSecond,
+            );
+            etaS = p.bytesPerSecond == null || p.bytesPerSecond == 0
+                ? null
+                : (p.totalBytes - p.doneBytes) / p.bytesPerSecond!;
+            notifyListeners();
+          },
+        );
+      }
+      await imp.finish();
+      _import = null;
+      _downloader = null;
+      etaS = null;
+      phase = Phase.needsDownload; // not busy, for the look at the folder
+      await _refresh();
+      if (phase == Phase.needsPrepare && error == null) await prepare();
+    } on DownloadStopped {
+      phase = Phase.needsDownload;
+      notifyListeners();
+    } on SignedOut {
+      phase = Phase.needsDownload;
+      onSignedOut();
+    } on FootageCorrupt catch (e) {
+      phase = Phase.needsDownload;
+      _fail('$e');
+    } on OsbException catch (e) {
+      phase = Phase.needsDownload;
+      _fail(e.message);
+    } on FileSystemException catch (e) {
+      phase = Phase.needsDownload;
+      _fail('Could not copy the footage (${e.osError?.message ?? e.message}). Is there room on the disk?');
+    } finally {
+      _import = null;
+      _downloader = null;
+    }
+    return null;
+  }
+
   // --- the engine -------------------------------------------------------------
 
   File get _pidFile => File('${folder!.path}/engine/app-run.pid');
@@ -380,6 +619,9 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// The code of the engine's last error (engine-event's `code`).
+  String? _failureCode;
+
   Future<EngineExit?> _runEngine(List<String> args, {required void Function(EngineEvent) onEvent}) async {
     final engine = settings.findEngine();
     if (engine == null) {
@@ -396,8 +638,10 @@ class GameController extends ChangeNotifier {
     // Keep the Mac awake while it works (not the display).
     _caffeinate = await Process.start('/usr/bin/caffeinate', ['-i', '-w', '${run.pid}']);
     String? failure, failureLog;
+    _failureCode = null;
     final sub = run.events.listen((e) {
       if (e.event == 'error') {
+        _failureCode = e.code;
         failure = e.message;
         failureLog = e.log;
       }
@@ -471,7 +715,7 @@ class GameController extends ChangeNotifier {
 
   Future<void> _sendAgreed() async {
     final dir = folder, rec = recording;
-    if (dir == null || rec == null) return;
+    if (dir == null || rec == null || isLocal) return; // a local game isn't in the account to share from
     try {
       sent = await SentRecord.read(dir);
       if (!settings.sharingAgreed || shareStopped || !await _job.exists()) return;
@@ -620,7 +864,13 @@ class GameController extends ChangeNotifier {
   Future<void> run() async {
     if (busy) return;
     final wasDone = phase == Phase.done; // only the YouTube copy is to be made
-    await _writeJob(); // what Settings say now (the video size, the YouTube copy)
+    // What Settings say now (the video size, the YouTube copy), and the room
+    // there is now: no start the engine would refuse.
+    await _recheck();
+    if (blocked) {
+      notifyListeners();
+      return;
+    }
     phase = Phase.running;
     pausedForBattery = false;
     activity = 'Processing the game';
@@ -648,6 +898,8 @@ class GameController extends ChangeNotifier {
       if (pausedForBattery) _powerTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkPower());
     } else {
       phase = wasDone ? Phase.done : Phase.readyToRun;
+      // The engine found too little room: the disk space line says so too.
+      if (_failureCode == 'not_enough_disk') await recheck();
     }
     notifyListeners();
   }
@@ -668,6 +920,7 @@ class GameController extends ChangeNotifier {
   /// Stops whatever it's doing; the same step carries on later.
   void stop() {
     pausedForBattery = false;
+    _import?.stop();
     _downloader?.stop();
     _engine?.stop();
     if (phase == Phase.paused) {
@@ -703,7 +956,8 @@ class GameController extends ChangeNotifier {
   }
 
   /// Nothing is working on the game's folder.
-  bool get canDeleteLocal => !busy && phase != Phase.paused && phase != Phase.loading && hasLocalFiles;
+  /// A local game can always go: with its folder empty it is still listed.
+  bool get canDeleteLocal => !busy && phase != Phase.paused && phase != Phase.loading && (isLocal || hasLocalFiles);
 
   /// The game video is in the game's folder: [deleteLocal] deletes it too.
   bool get videoInFolder =>
@@ -749,10 +1003,19 @@ class GameController extends ChangeNotifier {
         }
       }
 
-      await clear(dir);
-      if (kept == null) await dir.delete();
+      if (dir.existsSync()) {
+        await clear(dir);
+        if (kept == null) await dir.delete();
+      }
     } on FileSystemException catch (e) {
       failure = 'Not all of it could be deleted (${e.osError?.message ?? e.message}).';
+    }
+    if (isLocal && failure == null) {
+      // The account has none of it: gone from this Mac, it is gone from the list.
+      await settings.forgetGame(recording!.recordingId);
+      await settings.removeLocalGame(local!.gameId);
+      onRemoved?.call();
+      return;
     }
     // It starts again as a whole game, where the work folder now is.
     _knownMaxChunks = null;
@@ -783,6 +1046,7 @@ class GameController extends ChangeNotifier {
 
   /// Stops the engine and waits for it (the app is quitting).
   Future<void> shutdown() async {
+    _import?.stop();
     _downloader?.stop();
     final e = _engine;
     if (e == null) return;

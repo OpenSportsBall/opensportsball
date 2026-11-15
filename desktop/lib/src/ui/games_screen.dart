@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,7 @@ import '../auth.dart';
 import '../brand.dart';
 import '../game_controller.dart';
 import '../services.dart';
+import 'footage_views.dart';
 import 'game_pane.dart';
 import 'settings_dialog.dart';
 
@@ -39,7 +41,118 @@ class GamesScreen extends StatefulWidget {
 }
 
 class GamesScreenState extends State<GamesScreen> {
-  List<GameSummary>? _games;
+  /// The account's games (null until first asked).
+  List<GameSummary>? _account;
+
+  /// The account's games and those added from video on this Mac, newest first.
+  List<GameSummary>? get _games {
+    final account = _account;
+    if (account == null) return null;
+    final ids = {for (final g in account) g.gameId};
+    return [
+      ...account,
+      for (final l in widget.settings.localGames)
+        if (!ids.contains(l.gameId)) l.summary,
+    ]..sort((a, b) => b.when.compareTo(a.when));
+  }
+
+  LocalGame? _local(String gameId) => widget.settings.localGames.where((l) => l.gameId == gameId).firstOrNull;
+
+  void _drop(String gameId) {
+    _controllers.remove(gameId)
+      ?..removeListener(_changed)
+      ..dispose();
+  }
+
+  /// A game added from this Mac that the account has since got (its phones
+  /// uploaded after all) becomes the account's game, in the folder it has.
+  Future<void> _adoptLocal(List<GameSummary> account) async {
+    final ids = {for (final g in account) g.gameId};
+    for (final l in widget.settings.localGames.where((l) => ids.contains(l.gameId))) {
+      if (_controllers[l.gameId]?.busy ?? false) continue; // once it has stopped
+      await widget.settings.rememberGame(l.recordingId, KnownGame(l.folder, sources: l.sources));
+      await widget.settings.removeLocalGame(l.gameId);
+      _drop(l.gameId);
+    }
+  }
+
+  bool _adding = false;
+
+  void _say(String message) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// A game from folders copied off the phones onto this Mac: one of the
+  /// account's games (its missing video), or a game of its own.
+  Future<void> _addFromDisk() async {
+    var folders = await pickFolders();
+    if (folders.isEmpty || !mounted) return;
+    setState(() => _adding = true);
+    try {
+      Map<String, Object?> manifest;
+      while (true) {
+        final imp = FootageImport(
+          folder: Directory(widget.settings.workFolder),
+          sources: [for (final f in folders) Directory(f)],
+        );
+        final sources = imp.sources;
+        // One of the account's games: its own pane fills in what is missing.
+        final mine = _account?.where((g) => g.gameId == sources.gameId).firstOrNull;
+        if (mine != null) {
+          setState(() => _selected = mine.gameId);
+          final ctl = _controller(mine);
+          await ctl.opened;
+          if (mounted) await addVideoFromDisk(context, ctl, folders: folders);
+          return;
+        }
+        if (sources.manifest == null && sources.reports.isEmpty) {
+          _say('No recording there. $footageFolderHelp');
+          return;
+        }
+        try {
+          manifest = imp.merged;
+          break;
+        } on PhoneMissing catch (e) {
+          if (!mounted) return;
+          final more = await askForMissingPhone(context, e);
+          if (more == null) return;
+          folders = [...folders, ...more];
+        }
+      }
+      final gameId = '${manifest['gameId']}', recordingId = '${manifest['sessionId']}';
+      final when = manifestWhen(manifest) ?? DateTime.now();
+      final game = LocalGame(
+        gameId: gameId,
+        recordingId: recordingId,
+        when: when,
+        folder:
+            _local(gameId)?.folder ??
+            recordingFolder(
+              widget.settings.workFolder,
+              GameSummary(gameId: gameId.padRight(8, '0'), createdAt: when),
+              recordingId,
+              onlyRecording: true,
+            ),
+        sources: folders,
+      );
+      if (_controllers[gameId]?.busy ?? false) {
+        setState(() => _selected = gameId);
+        return;
+      }
+      await widget.settings.saveLocalGame(game);
+      _drop(gameId); // one made for the folders it had before
+      if (!mounted) return;
+      setState(() => _selected = gameId);
+      final ctl = _controller(game.summary);
+      await ctl.opened;
+      if (mounted && !ctl.busy && !ctl.footageHere) await addVideoFromDisk(context, ctl, folders: folders);
+    } on OsbException catch (e) {
+      _say(e.message);
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
   String? _error;
   bool _loading = false;
   String? _selected;
@@ -73,11 +186,12 @@ class GamesScreenState extends State<GamesScreen> {
     });
     try {
       final g = await widget.session.games();
-      setState(() => _games = g);
+      await _adoptLocal(g);
+      setState(() => _account = g);
       // A game opened while it was uploading (or that failed to load) is
       // asked about again, so the list and the game say the same thing.
       for (final c in _controllers.values) {
-        if (c.awaitingUpload || (c.game == null && c.error != null)) unawaited(c.open());
+        if (!c.isLocal && !c.busy && (c.awaitingUpload || (c.game == null && c.error != null))) unawaited(c.open());
       }
     } on SignedOut {
       widget.auth.signedOut();
@@ -94,9 +208,15 @@ class GamesScreenState extends State<GamesScreen> {
       session: widget.session,
       settings: widget.settings,
       onSignedOut: widget.auth.signedOut,
+      local: (_account?.any((a) => a.gameId == g.gameId) ?? false) ? null : _local(g.gameId),
+      // After the delete has finished with the controller.
+      onRemoved: () => Future.microtask(() {
+        _drop(g.gameId);
+        if (mounted) setState(() => _selected = _selected == g.gameId ? null : _selected);
+      }),
     );
     c.addListener(_changed);
-    Future.microtask(c.open);
+    c.openSoon();
     return c;
   });
 
@@ -132,6 +252,11 @@ class GamesScreenState extends State<GamesScreen> {
                     child: Row(
                       children: [
                         Expanded(child: Text('Games', style: t.titleLarge)),
+                        IconButton(
+                          tooltip: 'Add a game from video on this Mac',
+                          onPressed: games == null || _adding ? null : _addFromDisk,
+                          icon: const Icon(Icons.add),
+                        ),
                         IconButton(
                           tooltip: 'Refresh',
                           onPressed: _loading ? null : _load,
@@ -170,7 +295,7 @@ class GamesScreenState extends State<GamesScreen> {
                     Padding(
                       padding: const EdgeInsets.all(20),
                       child: Text(
-                        'No games yet. Record one with the phone app.',
+                        'No games yet. Record one with the phone app, or add one from video on this Mac with +.',
                         style: t.bodyMedium?.copyWith(color: c.inkMuted),
                       ),
                     ),
@@ -183,6 +308,7 @@ class GamesScreenState extends State<GamesScreen> {
                               game: g,
                               selected: g.gameId == _selected,
                               controller: _controllers[g.gameId],
+                              onThisMac: _account!.every((a) => a.gameId != g.gameId),
                               onTap: () => setState(() => _selected = g.gameId),
                             ),
                         ],
@@ -220,7 +346,16 @@ class GamesScreenState extends State<GamesScreen> {
 }
 
 class _GameTile extends StatelessWidget {
-  const _GameTile({required this.game, required this.selected, required this.onTap, this.controller});
+  const _GameTile({
+    required this.game,
+    required this.selected,
+    required this.onTap,
+    this.controller,
+    this.onThisMac = false,
+  });
+
+  /// Added from video on this Mac: the account doesn't have it.
+  final bool onThisMac;
   final GameSummary game;
   final bool selected;
   final VoidCallback onTap;
@@ -241,10 +376,12 @@ class _GameTile extends StatelessWidget {
           Phase.running => 'Processing',
           Phase.paused => 'Paused',
           Phase.done => 'Video ready',
+          _ when onThisMac => 'On this Mac',
           // The opened game knows more recently than the list does.
-          _ => (ctl?.game != null ? !ctl!.awaitingUpload : game.status == 'ready')
-              ? 'Ready to process'
-              : 'Uploading from the phones',
+          _ =>
+            (ctl?.game != null ? !ctl!.awaitingUpload : game.status == 'ready')
+                ? 'Ready to process'
+                : 'Uploading from the phones',
         };
         return ListTile(
           selected: selected,

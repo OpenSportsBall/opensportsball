@@ -238,14 +238,19 @@ class _PitchCheckState extends State<PitchCheck> {
           padding: const EdgeInsets.fromLTRB(28, 14, 28, 20),
           child: Row(
             children: [
-              Switch(value: _share, onChanged: (v) => setState(() => _share = v)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Share this pitch map to help improve pitch detection',
-                  style: t.bodyMedium?.copyWith(color: c.inkMuted),
+              // A game added from this Mac isn't in the account: nothing of it is shared.
+              if (ctl.isLocal)
+                const Spacer()
+              else ...[
+                Switch(value: _share, onChanged: (v) => setState(() => _share = v)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Share this pitch map to help improve pitch detection',
+                    style: t.bodyMedium?.copyWith(color: c.inkMuted),
+                  ),
                 ),
-              ),
+              ],
               if (!_marking) ...[
                 OutlinedButton(
                   onPressed: () {
@@ -259,7 +264,7 @@ class _PitchCheckState extends State<PitchCheck> {
                 FilledButton(
                   onPressed: !q.approveAllowed || ctl.busy
                       ? null
-                      : () => ctl.answer((a) => a.approvePitch(q.round, share: _share)),
+                      : () => ctl.answer((a) => a.approvePitch(q.round, share: _share && !ctl.isLocal)),
                   child: const Text('Yes, they sit on the lines'),
                 ),
               ] else ...[
@@ -276,7 +281,7 @@ class _PitchCheckState extends State<PitchCheck> {
                 FilledButton(
                   onPressed: _moved == 0 || ctl.busy
                       ? null
-                      : () => ctl.answer((a) => a.markPitch(q.round, Map.of(_points), share: _share)),
+                      : () => ctl.answer((a) => a.markPitch(q.round, Map.of(_points), share: _share && !ctl.isLocal)),
                   child: Text(_moved == 0 ? 'Move at least one point' : 'Refit with $_moved moved'),
                 ),
               ],

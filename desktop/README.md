@@ -21,6 +21,45 @@ a reboot loses nothing.
 The non-Flutter parts (sign-in, the API, the download, the engine driver)
 are in `../packages/osb_core`, tested with `dart test` there.
 
+## Video on this Mac
+
+The engine stitches two phones' views, so a game needs both phones' video.
+When some of it never reached the account, it can come from the folders
+copied off the phones (`<gameId>/<recordingId>/` with Main's
+`manifest.json` or another phone's `report.json` beside that phone's
+`<deviceId>_NNN.mp4` files: app/lib/src/storage/store.dart):
+
+- **+ in the games list** adds a game from such folders. If the account has
+  that game, its missing video is filled in; if not, the game is listed as
+  "On this Mac" and exists only here (`localGames` in settings.json). Such a
+  game shares nothing (it isn't in the account to share from), and
+  "Remove from this Mac…" takes it off the list.
+- **A game missing a phone's video** (still uploading, or finished with the
+  main phone alone) shows what each phone has sent and two ways on:
+  "Request footage from another phone" makes the same upload-permission
+  link and QR code as the website's game page
+  (`POST /games/{gameId}/grant-tickets`), and "Select video on this Mac…"
+  takes that phone's folder. What the account has is downloaded, the rest
+  is copied from the folder, and the manifest is merged as the API merges
+  it, from what `POST .../downloads` says the phones reported.
+
+Nothing is uploaded: the website goes on showing such a game as uploading,
+and it can't be processed in the cloud. The folders chosen are only read;
+segments are checked against the size and SHA-256 their phone recorded and
+copied into the game's folder (an APFS clone on the same disk, so it takes
+no time or room). `packages/osb_core/lib/src/local_footage.dart` does it.
+
+## Disk space
+
+The "Disk space" check asks for room on the disk holding the game's own
+folder. Once a game is prepared the figure is the engine's own
+(`osb-engine status`: `diskNeededBytes`, the same sum as `run`'s
+`not_enough_disk` refusal), so the line and the engine can't disagree;
+before that, or with an engine that doesn't say, the app estimates with
+the same sum (`estimateRunBytes` in `lib/src/services.dart`). The refresh
+icon beside the line looks again after space is freed, and "Process the
+game" looks again before it starts.
+
 ## Run it
 
 ```sh

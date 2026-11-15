@@ -11,6 +11,7 @@ export 'src/download.dart';
 export 'src/engine.dart';
 export 'src/engine_game.dart';
 export 'src/layout.dart';
+export 'src/local_footage.dart';
 export 'src/loopback_login.dart';
 export 'src/sign_in.dart';
 export 'src/site.dart';

@@ -237,7 +237,9 @@ on your own computer. → `200`
       "bytes": 1100000000, "sha256": "... | null",
       "url": "https://<footage CDN>/accounts/.../<deviceId>/<deviceId>_000.mp4?Expires=..."
     }
-  ]
+  ],
+  "manifest": { "...": "Main's manifest as it sent it" },
+  "reports": [{ "deviceId": "...", "role": "secondary", "segments": ["..."] }]
 }
 ```
 
@@ -248,6 +250,11 @@ on your own computer. → `200`
   downloading.
 - `manifestUrl` is the merged manifest (both phones' segments), written
   when the recording turns `ready`; null before that.
+- `manifest` is Main's manifest as it sent it (null before it has), and
+  `reports` each other phone's report of its own segments (a manifest
+  device entry), whether or not the recording is ready. The Mac app merges
+  them with a phone's folder on the computer when that phone's video never
+  reached the account (packages/osb_core, `local_footage.dart`).
 - Links work for 12 hours (`expiresAt`), with plain `GET`s, including
   range requests for resuming. Ask again for fresh ones. They are served
   by the footage CloudFront distribution (infra/README.md, "Footage

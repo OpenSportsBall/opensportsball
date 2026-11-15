@@ -11,6 +11,7 @@ import '../game_controller.dart';
 import '../services.dart';
 import 'ball_views.dart';
 import 'cameras_check.dart';
+import 'footage_views.dart';
 import 'games_screen.dart';
 import 'pitch_check.dart';
 import 'share_views.dart';
@@ -35,7 +36,7 @@ Future<void> confirmDeleteLocal(BuildContext context, GameController ctl) async 
       final t = Theme.of(context).textTheme;
       final c = BrandColors.of(context);
       return AlertDialog(
-        title: const Text('Delete this game from this Mac?'),
+        title: Text(ctl.isLocal ? 'Remove this game from this Mac?' : 'Delete this game from this Mac?'),
         content: SizedBox(
           width: 460,
           child: Column(
@@ -60,8 +61,11 @@ Future<void> confirmDeleteLocal(BuildContext context, GameController ctl) async 
                 const SizedBox(height: 12),
               ],
               Text(
-                'The footage in your account isn’t touched: the game can be downloaded and processed again, '
-                'from the start.',
+                ctl.isLocal
+                    ? 'The folders it was added from aren’t touched: the game can be added and processed again, '
+                          'from the start. It goes from the games list.'
+                    : 'The footage in your account isn’t touched: the game can be downloaded and processed again, '
+                          'from the start.',
                 style: t.bodyMedium?.copyWith(color: c.inkMuted),
               ),
               const SizedBox(height: 12),
@@ -74,7 +78,7 @@ Future<void> confirmDeleteLocal(BuildContext context, GameController ctl) async 
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: c.coral),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: Text(ctl.isLocal ? 'Remove' : 'Delete'),
           ),
         ],
       );
@@ -129,7 +133,7 @@ class GamePane extends StatelessWidget {
             TextButton.icon(
               onPressed: () => confirmDeleteLocal(context, ctl),
               icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Delete from this Mac…'),
+              label: Text(ctl.isLocal ? 'Remove from this Mac…' : 'Delete from this Mac…'),
             ),
         ],
       ),
@@ -198,14 +202,14 @@ class _Body extends StatelessWidget {
     final ctl = controller;
     final t = Theme.of(context).textTheme;
     final c = BrandColors.of(context);
-    final blocked = ctl.checks.any((x) => x.blocking && !x.ok);
+    final blocked = ctl.blocked;
     final engineNote = otherBusy == null
         ? null
         : Text(
             'The game of ${formatWhen(otherBusy!.when)} is using the engine. One game at a time.',
             style: t.bodyMedium?.copyWith(color: c.inkMuted),
           );
-    final steps = _Steps(phase: ctl.phase);
+    final steps = _Steps(phase: ctl.phase, local: ctl.isLocal);
     final segments = TextButton(onPressed: () => showSegmentDetails(context, ctl), child: const Text('Segments'));
     switch (ctl.phase) {
       case Phase.loading:
@@ -215,6 +219,50 @@ class _Body extends StatelessWidget {
         );
       case Phase.needsDownload:
         final bytes = ctl.recording?.expectedBytes;
+        if (ctl.isLocal) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              steps,
+              const SizedBox(height: 24),
+              Text('This game’s footage comes from folders on this Mac.', style: t.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                'Each file is checked against what its phone recorded, then put in the game’s folder. The folders '
+                'it comes from aren’t changed.',
+                style: t.bodyMedium?.copyWith(color: c.inkMuted),
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  if (ctl.sources.isNotEmpty)
+                    FilledButton.icon(
+                      onPressed: ctl.startDownload,
+                      icon: const Icon(Icons.folder_copy_outlined),
+                      label: Text(bytes == null ? 'Add the footage' : 'Add the footage (${formatGb(bytes)})'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: () => addVideoFromDisk(context, ctl),
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: const Text('Choose the folders…'),
+                  ),
+                ],
+              ),
+            ],
+          );
+        }
+        if (ctl.needsFootage) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              steps,
+              const SizedBox(height: 24),
+              MissingFootageCard(controller: ctl),
+            ],
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -227,7 +275,7 @@ class _Body extends StatelessWidget {
               style: t.bodyMedium?.copyWith(color: c.inkMuted),
             ),
             const SizedBox(height: 16),
-            _Checks(checks: ctl.checks),
+            _Checks(checks: ctl.checks, onRefresh: ctl.recheck),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: blocked || ctl.recording?.ready != true ? null : ctl.startDownload,
@@ -244,7 +292,7 @@ class _Body extends StatelessWidget {
             steps,
             const SizedBox(height: 24),
             _Progress(
-              title: 'Downloading the footage',
+              title: ctl.activity ?? 'Downloading the footage',
               fraction: p?.fraction,
               detail: p == null
                   ? 'Starting…'
@@ -322,7 +370,7 @@ class _Body extends StatelessWidget {
               style: t.bodyMedium?.copyWith(color: c.inkMuted),
             ),
             const SizedBox(height: 16),
-            _Checks(checks: ctl.checks),
+            _Checks(checks: ctl.checks, onRefresh: ctl.recheck),
             const SizedBox(height: 16),
             ?engineNote,
             const SizedBox(height: 8),
@@ -334,7 +382,7 @@ class _Body extends StatelessWidget {
             // A game stopped part-way has segments to show, and may already know about its ball.
             if (ctl.chunkDetails.isNotEmpty) ...[const SizedBox(height: 8), segments],
             BallNotice(controller: ctl),
-            ShareCard(controller: ctl),
+            if (!ctl.isLocal) ShareCard(controller: ctl),
           ],
         );
       case Phase.running:
@@ -361,7 +409,7 @@ class _Body extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Paused or quit, it carries on where it was.', style: t.bodySmall?.copyWith(color: c.inkMuted)),
             BallNotice(controller: ctl),
-            ShareCard(controller: ctl),
+            if (!ctl.isLocal) ShareCard(controller: ctl),
           ],
         );
       case Phase.paused:
@@ -382,7 +430,7 @@ class _Body extends StatelessWidget {
               ],
             ),
             BallNotice(controller: ctl),
-            ShareCard(controller: ctl),
+            if (!ctl.isLocal) ShareCard(controller: ctl),
           ],
         );
       case Phase.done:
@@ -439,8 +487,8 @@ class _Body extends StatelessWidget {
               ],
             ),
             BallNotice(controller: ctl),
-            ShareCard(controller: ctl),
-            if (!ctl.ballLow && ctl.chunkDetails.isNotEmpty) ...[
+            if (!ctl.isLocal) ShareCard(controller: ctl),
+            if (!ctl.isLocal && !ctl.ballLow && ctl.chunkDetails.isNotEmpty) ...[
               const SizedBox(height: 24),
               Text('Help the engine follow the ball better', style: t.titleSmall),
               const SizedBox(height: 4),
@@ -458,8 +506,11 @@ class _Body extends StatelessWidget {
 }
 
 class _Steps extends StatelessWidget {
-  const _Steps({required this.phase});
+  const _Steps({required this.phase, this.local = false});
   final Phase phase;
+
+  /// The footage is added from this Mac, not downloaded.
+  final bool local;
 
   @override
   Widget build(BuildContext context) {
@@ -472,7 +523,7 @@ class _Steps extends StatelessWidget {
       Phase.readyToRun || Phase.running || Phase.paused => 3,
       Phase.done => 4,
     };
-    const names = ['Download', 'Get ready', 'Check', 'Process', 'Watch'];
+    final names = [local ? 'Add' : 'Download', 'Get ready', 'Check', 'Process', 'Watch'];
     return Row(
       children: [
         for (var i = 0; i < names.length; i++) ...[
@@ -518,9 +569,28 @@ class _Progress extends StatelessWidget {
   }
 }
 
-class _Checks extends StatelessWidget {
-  const _Checks({required this.checks});
+class _Checks extends StatefulWidget {
+  const _Checks({required this.checks, this.onRefresh});
   final List<Check> checks;
+
+  /// Looks again; shown beside the checks worth asking again.
+  final Future<void> Function()? onRefresh;
+
+  @override
+  State<_Checks> createState() => _ChecksState();
+}
+
+class _ChecksState extends State<_Checks> {
+  bool _checking = false;
+
+  Future<void> _refresh() async {
+    setState(() => _checking = true);
+    try {
+      await widget.onRefresh!();
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -529,7 +599,7 @@ class _Checks extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final x in checks)
+        for (final x in widget.checks)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Row(
@@ -541,7 +611,22 @@ class _Checks extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text('${x.title}: ', style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                Expanded(child: Text(x.detail, style: t.bodyMedium)),
+                Flexible(child: Text(x.detail, style: t.bodyMedium)),
+                if (x.refreshable && widget.onRefresh != null) ...[
+                  const SizedBox(width: 4),
+                  SizedBox.square(
+                    dimension: 28,
+                    child: _checking
+                        ? const Padding(padding: EdgeInsets.all(7), child: CircularProgressIndicator(strokeWidth: 2))
+                        : IconButton(
+                            tooltip: 'Check the ${x.title.toLowerCase()} again',
+                            padding: EdgeInsets.zero,
+                            iconSize: 18,
+                            onPressed: _refresh,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                  ),
+                ],
               ],
             ),
           ),

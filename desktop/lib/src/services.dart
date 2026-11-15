@@ -8,6 +8,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:osb_core/osb_core.dart';
@@ -108,17 +109,69 @@ class Settings extends ChangeNotifier {
   KnownGame? knownGame(String recordingId) {
     final g = (_values['games'] as Map?)?[recordingId];
     final folder = g is Map ? g['folder'] : null;
-    return folder is String ? KnownGame(folder, maxChunks: (g['maxChunks'] as num?)?.toInt()) : null;
+    return folder is String
+        ? KnownGame(
+            folder,
+            maxChunks: (g['maxChunks'] as num?)?.toInt(),
+            sources: [for (final s in (g['sources'] as List? ?? [])) '$s'],
+          )
+        : null;
   }
 
   Future<void> rememberGame(String recordingId, KnownGame game) async {
     final was = knownGame(recordingId);
-    if (was != null && was.folder == game.folder && was.maxChunks == game.maxChunks) return;
+    // The folders its video was added from stay known unless new ones are given.
+    final sources = game.sources.isEmpty ? (was?.sources ?? const <String>[]) : game.sources;
+    if (was != null && was.folder == game.folder && was.maxChunks == game.maxChunks && _same(was.sources, sources)) {
+      return;
+    }
     _values['games'] = {
       ...?(_values['games'] as Map?),
-      recordingId: {'folder': game.folder, if (game.maxChunks != null) 'maxChunks': game.maxChunks},
+      recordingId: {
+        'folder': game.folder,
+        if (game.maxChunks != null) 'maxChunks': game.maxChunks,
+        if (sources.isNotEmpty) 'sources': sources,
+      },
     };
     await _save();
+  }
+
+  static bool _same(List<String> a, List<String> b) => a.length == b.length && a.join('\n') == b.join('\n');
+
+  /// The games added from video on this Mac, which the account doesn't
+  /// have: they are listed beside the account's.
+  List<LocalGame> get localGames => [
+    for (final g in (_values['localGames'] as List? ?? []))
+      if (g is Map && g['gameId'] is String && g['recordingId'] is String && g['folder'] is String)
+        LocalGame(
+          gameId: g['gameId'] as String,
+          recordingId: g['recordingId'] as String,
+          when: DateTime.tryParse('${g['when']}') ?? DateTime.fromMillisecondsSinceEpoch(0),
+          folder: g['folder'] as String,
+          sources: [for (final s in (g['sources'] as List? ?? [])) '$s'],
+        ),
+  ];
+
+  /// Adds [game], or replaces the one with its game id.
+  Future<void> saveLocalGame(LocalGame game) async {
+    _values['localGames'] = [
+      for (final g in localGames)
+        if (g.gameId != game.gameId) g.toJson(),
+      game.toJson(),
+    ];
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> removeLocalGame(String gameId) async {
+    final games = localGames;
+    if (!games.any((g) => g.gameId == gameId)) return;
+    _values['localGames'] = [
+      for (final g in games)
+        if (g.gameId != gameId) g.toJson(),
+    ];
+    await _save();
+    notifyListeners();
   }
 
   /// The game's folder was deleted from this Mac.
@@ -146,22 +199,65 @@ class Settings extends ChangeNotifier {
 
 /// A game's folder on this Mac ([Settings.knownGame]).
 class KnownGame {
-  const KnownGame(this.folder, {this.maxChunks});
+  const KnownGame(this.folder, {this.maxChunks, this.sources = const []});
   final String folder;
+
+  /// The folders on this Mac that video the account doesn't have was added
+  /// from, so a stopped copy carries on without asking again.
+  final List<String> sources;
 
   /// The job's maxChunks it was processed with (development), if any.
   final int? maxChunks;
 }
 
+/// A game added from video on this Mac ([Settings.localGames]): the account
+/// has none of it, so it is only ever on this Mac.
+class LocalGame {
+  const LocalGame({
+    required this.gameId,
+    required this.recordingId,
+    required this.when,
+    required this.folder,
+    required this.sources,
+  });
+  final String gameId;
+  final String recordingId;
+  final DateTime when;
+
+  /// The game's folder (the engine job's recording).
+  final String folder;
+
+  /// The folders copied off the phones that it was added from.
+  final List<String> sources;
+
+  GameSummary get summary =>
+      GameSummary(gameId: gameId, createdAt: when, recordedAt: when, recordingCount: 1, status: 'ready');
+
+  Map<String, Object?> toJson() => {
+    'gameId': gameId,
+    'recordingId': recordingId,
+    'when': when.toUtc().toIso8601String(),
+    'folder': folder,
+    'sources': sources,
+  };
+}
+
+/// Asks for folders with the Mac's own panel. Tests put their own here.
+Future<List<String>> Function() pickFolders = () async =>
+    (await getDirectoryPaths(confirmButtonText: 'Choose')).whereType<String>().toList();
+
 /// One finding of the pre-flight checks.
 class Check {
-  const Check(this.ok, this.title, this.detail, {this.blocking = false});
+  const Check(this.ok, this.title, this.detail, {this.blocking = false, this.refreshable = false});
   final bool ok;
   final String title;
   final String detail;
 
   /// Processing can't start until it's fixed.
   final bool blocking;
+
+  /// Worth asking again after the user did something about it (freed space).
+  final bool refreshable;
 }
 
 Future<String> _sh(String exe, List<String> args) async {
@@ -197,16 +293,34 @@ Future<bool?> onMains() async {
 
 const gb = 1000 * 1000 * 1000;
 
+/// What `run` writes, in bytes a second of game, as the engine counts it
+/// (engine.py: PIECE_BPS, GAME_BPS, DISK_MARGIN): the pieces, their join
+/// and game.mp4 are on disk together at the end.
+const _pieceBps = 16e6 / 8, _game1440Bps = 33e6 / 8, _runMargin = 3 * gb;
+
+/// Two phones' footage, in bytes a second of game (38 GB for 100 minutes).
+const footageBps = 6.3e6;
+
+/// The app's own estimate of the free space `run` asks for a game of
+/// [seconds], for before the engine can say (its status's diskNeededBytes).
+int estimateRunBytes(double seconds, {int height = 1080, bool youtubeCopy = false}) {
+  final game = height >= 1440 ? _game1440Bps : _pieceBps;
+  final copy = youtubeCopy && height < 1440 ? _game1440Bps : 0;
+  return (seconds * (2 * _pieceBps + game + copy)).round() + _runMargin;
+}
+
 /// docs/MAC-APP-PLAN.md, "Pre-flight": Apple Silicon, 16 GB, room for the
-/// footage and the output, on mains power.
-Future<List<Check>> preflight({required String workFolder, required int footageBytes, required int haveBytes}) async {
+/// footage and the output, on mains power. The room is asked for on the
+/// disk holding [folder] (the game's own folder): [footageBytes] still to
+/// arrive, then [runBytes] for the engine's work.
+Future<List<Check>> preflight({required String folder, required int footageBytes, required int runBytes}) async {
   final arm = await _sh('/usr/sbin/sysctl', ['-n', 'hw.optional.arm64']);
   final mem = int.tryParse(await _sh('/usr/sbin/sysctl', ['-n', 'hw.memsize'])) ?? 0;
-  final free = await freeBytes(workFolder);
+  final free = await freeBytes(folder);
   final mains = await onMains();
-  // The rest of the footage, then the engine's output and working files
-  // (run checks its own share precisely before it starts).
-  final need = (footageBytes - haveBytes).clamp(0, footageBytes) + 30 * gb;
+  final need = footageBytes + runBytes;
+  // As the engine words its own refusal: whole GB, so the two agree.
+  String whole(int bytes) => (bytes / gb).toStringAsFixed(0);
   return [
     Check(
       arm == '1',
@@ -226,8 +340,12 @@ Future<List<Check>> preflight({required String workFolder, required int footageB
       'Disk space',
       free == null
           ? "Couldn't check the free space."
-          : '${(free / gb).toStringAsFixed(0)} GB free; this game needs about ${(need / gb).toStringAsFixed(0)} GB.',
+          : free >= need
+          ? '${whole(free)} GB free; this game needs about ${whole(need)} GB.'
+          : '${whole(free)} GB free; this game needs about ${whole(need)} GB. '
+                'Free ${((need - free) / gb).ceil()} GB more.',
       blocking: free != null && free < need,
+      refreshable: true,
     ),
     Check(
       mains != false,

@@ -214,6 +214,10 @@ async function postDownloads(acct: string, gameId: string, recordingId: string) 
     status: rec.status,
     expiresAt: expiresAt.toISOString(),
     ...(await signedFootage(acct, rec, reports, expiresAt)),
+    // What the phones have said so far, for putting the recording together
+    // with video that never reached the account (the Mac app).
+    manifest: rec.manifest ?? null,
+    reports: reports.map((r) => r.device),
   });
 }
 
