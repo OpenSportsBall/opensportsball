@@ -10,9 +10,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:osb_core/osb_core.dart';
 import 'package:osb_desktop/src/game_controller.dart';
+import 'package:osb_desktop/src/regenerate.dart';
 import 'package:osb_desktop/src/services.dart';
 import 'package:osb_desktop/src/ui/ball_views.dart';
 import 'package:osb_desktop/src/ui/game_pane.dart';
+import 'package:osb_desktop/src/ui/regenerate_dialog.dart';
 import 'package:osb_desktop/src/ui/share_views.dart';
 
 GameController _controller(Directory dir) => GameController(
@@ -60,6 +62,72 @@ void main() {
     expect(ctl.etaIsEstimate, isFalse);
     expect(ctl.shownFraction, 0.1);
     expect(runDetail(ctl), '10% · 52 min so far · about 3 h 24 min left');
+  });
+
+  testWidgets('Regenerate video: each stage switched on or off, with what follows from it', (tester) async {
+    Set<RegenPart>? picked;
+    Future<void> open({required bool hasVideo, required bool youtubeCopy}) async {
+      picked = null;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async => picked = await showDialog<Set<RegenPart>>(
+                  context: context,
+                  builder: (_) => RegenerateDialog(hasVideo: hasVideo, youtubeCopy: youtubeCopy),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    CheckboxListTile tile(RegenPart p) => tester.widget(find.byKey(ValueKey(p)));
+    Future<void> toggle(RegenPart p) async {
+      await tester.ensureVisible(find.byKey(ValueKey(p)));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey(p)));
+      await tester.pump();
+    }
+
+    // As it opens: the video (and the copy made from it), from the ball and the players found before.
+    await open(hasVideo: true, youtubeCopy: true);
+    expect(tile(RegenPart.ball).value, isFalse);
+    expect(tile(RegenPart.players).value, isFalse);
+    expect(tile(RegenPart.video).value, isTrue);
+    expect(tile(RegenPart.youtube).value, isTrue);
+    expect(tile(RegenPart.youtube).onChanged, isNull); // follows the video
+    expect(find.textContaining('is deleted before the new one is made'), findsOneWidget);
+
+    // The ball again: the video can't be switched off.
+    await toggle(RegenPart.ball);
+    expect(tile(RegenPart.video).onChanged, isNull);
+    await toggle(RegenPart.ball);
+
+    // The video off: the copy is the user's to choose; with nothing chosen there is nothing to do.
+    await toggle(RegenPart.video);
+    expect(tile(RegenPart.youtube).value, isFalse);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Regenerate')).onPressed, isNull);
+    await toggle(RegenPart.youtube);
+    expect(find.textContaining('the game video stays'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Regenerate'));
+    await tester.pumpAndSettle();
+    expect(picked, {RegenPart.youtube});
+
+    // No video yet (stopped part-way, or moved away): it is always made; no copy unless Settings ask.
+    await open(hasVideo: false, youtubeCopy: false);
+    expect(tile(RegenPart.video).value, isTrue);
+    expect(tile(RegenPart.video).onChanged, isNull);
+    expect(find.byKey(const ValueKey(RegenPart.youtube)), findsNothing);
+    await toggle(RegenPart.players);
+    await tester.tap(find.widgetWithText(FilledButton, 'Regenerate'));
+    await tester.pumpAndSettle();
+    expect(picked, {RegenPart.players, RegenPart.video});
   });
 
   testWidgets('"Show in Finder" only once the game has a folder', (tester) async {
@@ -127,6 +195,20 @@ void main() {
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(File(ctl.output!).existsSync(), isTrue);
+
+    // A finished game can be made again: the button opens the choice of stages, and Cancel changes nothing.
+    await tester.tap(find.text('Regenerate video'));
+    await tester.pumpAndSettle();
+    expect(find.text('Regenerate the video'), findsOneWidget);
+    expect(find.text('Find the ball'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(File(ctl.output!).existsSync(), isTrue);
+    expect(ctl.phase, Phase.done);
+    // Not while the engine is working on it.
+    ctl.phase = Phase.running;
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    expect(find.text('Regenerate video'), findsNothing);
   });
 
   testWidgets('the disk space line has a refresh that looks again', (tester) async {
@@ -191,7 +273,7 @@ void main() {
           chunk: 1,
           startS: 600,
           seconds: 600,
-          ball: ChunkStage(status: 'done', seconds: 3100),
+          ball: ChunkStage(status: 'done', kept: true), // found by an earlier run
           follow: ChunkStage(status: 'done', seconds: 2500),
           ballAimPct: 2,
         ),
@@ -214,6 +296,9 @@ void main() {
     expect(find.text('0:00 – 10:00'), findsOneWidget);
     expect(find.text('20:00 – 30:00'), findsOneWidget);
     expect(find.text('Done in 50 min'), findsOneWidget);
+    expect(find.text('Kept from last time'), findsOneWidget);
+    expect(ChunkStage.fromJson({'status': 'done', 'kept': true}).kept, isTrue);
+    expect(ChunkStage.fromJson({'status': 'done', 'seconds': 0.0}).kept, isFalse); // an engine that doesn't say
     expect(find.text('Working, 12 min so far'), findsOneWidget);
     expect(find.text('Waiting'), findsOneWidget);
     expect(find.text('31%'), findsOneWidget);

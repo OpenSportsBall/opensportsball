@@ -14,6 +14,7 @@ import 'cameras_check.dart';
 import 'footage_views.dart';
 import 'games_screen.dart';
 import 'pitch_check.dart';
+import 'regenerate_dialog.dart';
 import 'share_views.dart';
 
 String formatGb(int bytes) => '${(bytes / gb).toStringAsFixed(bytes < 10 * gb ? 1 : 0)} GB';
@@ -381,6 +382,22 @@ class _Body extends StatelessWidget {
             ),
             // A game stopped part-way has segments to show, and may already know about its ball.
             if (ctl.chunkDetails.isNotEmpty) ...[const SizedBox(height: 8), segments],
+            // Processed before (stopped part-way, or its video moved away): what was found then is used again
+            // unless asked otherwise.
+            if (ctl.canRegenerate) ...[
+              const SizedBox(height: 8),
+              Text(
+                'This game was processed before. Processing carries on from what was found then; '
+                'to find the ball or the players again, regenerate.',
+                style: t.bodySmall?.copyWith(color: c.inkMuted),
+              ),
+              const SizedBox(height: 4),
+              OutlinedButton.icon(
+                onPressed: otherBusy != null || blocked ? null : () => showRegenerate(context, ctl),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Regenerate video'),
+              ),
+            ],
             BallNotice(controller: ctl),
             if (!ctl.isLocal) ShareCard(controller: ctl),
           ],
@@ -484,6 +501,11 @@ class _Body extends StatelessWidget {
                     label: const Text('Make the YouTube copy'),
                   ),
                 if (ctl.chunkDetails.isNotEmpty) segments,
+                OutlinedButton.icon(
+                  onPressed: otherBusy != null || !ctl.canRegenerate ? null : () => showRegenerate(context, ctl),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Regenerate video'),
+                ),
               ],
             ),
             BallNotice(controller: ctl),
