@@ -55,7 +55,7 @@
 		<h2>OpenSportsBall for Mac</h2>
 		<p>
 			Open the downloaded file and drag OpenSportsBall to Applications, then sign in with the same account
-			as your phones. Needs a Mac with Apple silicon (M1 or later) and macOS 13 or later, and about 100 GB
+			as your phones. Needs a Mac with Apple silicon (M1 or later) and macOS 15 or later, and about 100 GB
 			free while a game is processed.
 		</p>
 		<div class="actions">
