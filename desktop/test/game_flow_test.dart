@@ -16,6 +16,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:osb_core/osb_core.dart';
 import 'package:osb_desktop/src/game_controller.dart';
+import 'package:osb_desktop/src/regenerate.dart';
 import 'package:osb_desktop/src/services.dart';
 
 const gameId = '11111111-2222-3333-4444-555555555555';
@@ -228,64 +229,61 @@ void main() {
     expect(again.sharedNames, isEmpty);
   });
 
-  test(
-    'what was agreed is sent: the pitch map by its switch, the ball marks; and withdrawn',
-    () async {
-      final shared = Shared();
-      final ctl = controller(fakeServer(shared: shared));
-      await ctl.open();
-      await ctl.startDownload();
-      await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
-      expect(ctl.phase, Phase.readyToRun);
+  test('what was agreed is sent: the pitch map by its switch, the ball marks; and withdrawn', () async {
+    final shared = Shared();
+    final ctl = controller(fakeServer(shared: shared));
+    await ctl.open();
+    await ctl.startDownload();
+    await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: true));
+    expect(ctl.phase, Phase.readyToRun);
 
-      // The checks are answered, but the sharing wording isn't agreed: nothing goes.
-      await ctl.sendAgreed();
-      expect(shared.live, isEmpty);
-      expect(File('${ctl.folder!.path}/engine/share/pitch.json').existsSync(), isFalse);
+    // The checks are answered, but the sharing wording isn't agreed: nothing goes.
+    await ctl.sendAgreed();
+    expect(shared.live, isEmpty);
+    expect(File('${ctl.folder!.path}/engine/share/pitch.json').existsSync(), isFalse);
 
-      // Agreed: the pitch map goes.
-      await settings.setSharingAgreed(true);
-      await ctl.sendAgreed();
-      expect(ctl.shareError, isNull);
-      expect(shared.live, {'c1': 'pitch'});
-      expect(shared.files, {'c1/pitch/pitch.json', 'c1/pitch/background.png'});
-      expect(ctl.sharedNames, ['pitch']);
+    // Agreed: the pitch map goes.
+    await settings.setSharingAgreed(true);
+    await ctl.sendAgreed();
+    expect(ctl.shareError, isNull);
+    expect(shared.live, {'c1': 'pitch'});
+    expect(shared.files, {'c1/pitch/pitch.json', 'c1/pitch/background.png'});
+    expect(ctl.sharedNames, ['pitch']);
 
-      // The run sends nothing new; ball marks go when they are saved, and
-      // again (the older copy withdrawn) when more are added.
-      await ctl.run();
-      await ctl.sendAgreed();
-      expect(shared.live, {'c1': 'pitch'});
-      final set = await ctl.ballSet();
-      var now = await ctl.saveBallLabels(set, {'b0': const BallAt(1000, 500)});
-      await ctl.sendAgreed();
-      expect(shared.live, {'c1': 'pitch', 'c2': 'ball-1'});
-      expect(shared.files, contains('c2/engine/labels/ball-1/images/b0.jpg'));
-      expect(shared.files, isNot(contains('c2/engine/labels/ball-1/images/b1.jpg'))); // not marked, not sent
-      now = await ctl.saveBallLabels(now, {'b1': const NoBall()});
-      await ctl.sendAgreed();
-      expect(shared.live, {'c1': 'pitch', 'c3': 'ball-1'});
-      expect(ctl.sharedNames, ['ball-1', 'pitch']);
+    // The run sends nothing new; ball marks go when they are saved, and
+    // again (the older copy withdrawn) when more are added.
+    await ctl.run();
+    await ctl.sendAgreed();
+    expect(shared.live, {'c1': 'pitch'});
+    final set = await ctl.ballSet();
+    var now = await ctl.saveBallLabels(set, {'b0': const BallAt(1000, 500)});
+    await ctl.sendAgreed();
+    expect(shared.live, {'c1': 'pitch', 'c2': 'ball-1'});
+    expect(shared.files, contains('c2/engine/labels/ball-1/images/b0.jpg'));
+    expect(shared.files, isNot(contains('c2/engine/labels/ball-1/images/b1.jpg'))); // not marked, not sent
+    now = await ctl.saveBallLabels(now, {'b1': const NoBall()});
+    await ctl.sendAgreed();
+    expect(shared.live, {'c1': 'pitch', 'c3': 'ball-1'});
+    expect(ctl.sharedNames, ['ball-1', 'pitch']);
 
-      // A new launch knows what was sent, and sends nothing twice.
-      final again = controller(fakeServer(shared: shared));
-      await again.open();
-      await again.sendAgreed();
-      expect(again.sharedNames, ['ball-1', 'pitch']);
-      expect(shared.live.keys, ['c1', 'c3']);
+    // A new launch knows what was sent, and sends nothing twice.
+    final again = controller(fakeServer(shared: shared));
+    await again.open();
+    await again.sendAgreed();
+    expect(again.sharedNames, ['ball-1', 'pitch']);
+    expect(shared.live.keys, ['c1', 'c3']);
 
-      // Withdrawn: deleted from the project, and nothing more goes from this game.
-      await again.withdrawShared();
-      expect(shared.live, isEmpty);
-      expect(again.sharedNames, isEmpty);
-      expect(again.shareStopped, isTrue);
-      await again.saveBallLabels(now, {'b2': const BallUnsure()});
-      await again.sendAgreed();
-      expect(shared.live, isEmpty);
-      await again.shareAgain();
-      expect(shared.live.values, unorderedEquals(['pitch', 'ball-1']));
-    },
-  );
+    // Withdrawn: deleted from the project, and nothing more goes from this game.
+    await again.withdrawShared();
+    expect(shared.live, isEmpty);
+    expect(again.sharedNames, isEmpty);
+    expect(again.shareStopped, isTrue);
+    await again.saveBallLabels(now, {'b2': const BallUnsure()});
+    await again.sendAgreed();
+    expect(shared.live, isEmpty);
+    await again.shareAgain();
+    expect(shared.live.values, unorderedEquals(['pitch', 'ball-1']));
+  });
 
   test('the YouTube copy: made beside game.mp4, and alone for a game already done', () async {
     final ctl = controller(fakeServer());
@@ -438,6 +436,83 @@ void main() {
     expect(ctl.phase, Phase.needsDownload);
     expect(ctl.canDeleteLocal, isFalse);
     expect(settings.knownGame(recId)!.folder, dir.path);
+  });
+
+  test('regenerating: the stages picked are made again, the others and the checks are kept', () async {
+    await settings.set('youtubeCopy', true);
+    final ctl = controller(fakeServer());
+    await ctl.open();
+    await ctl.startDownload();
+    await ctl.answer((a) => a.approvePitch(ctl.questions!.pitch!.round, share: false));
+    expect(ctl.canRegenerate, isFalse); // never processed
+    await ctl.run();
+    expect(ctl.phase, Phase.done);
+    expect(ctl.canRegenerate, isTrue);
+    final dir = ctl.folder!;
+    // What the real engine leaves beside the video (the stand-in makes only the video).
+    File write(String path, [String text = 'old']) => File('${dir.path}/$path')
+      ..createSync(recursive: true)
+      ..writeAsStringSync(text);
+    final ballFile = write('detect/ball_0_0_600.win.json');
+    final roles = write('detect/roles_0_0_600.json');
+    final followLog = write('fullgame/logs/follow_00.log');
+    final ballLog = write('fullgame/logs/ball_00.log');
+    final events = write('engine/events.jsonl');
+    final done = write('fullgame/done.json', '{}');
+    final game = File(ctl.output!)..writeAsStringSync('the old video');
+    final copy = File(ctl.youtubeOutput!)..writeAsStringSync('the old copy');
+    final answers = File('${dir.path}/engine/answers.json').readAsStringSync();
+
+    // The YouTube copy alone: the video isn't touched.
+    await ctl.regenerate({RegenPart.youtube});
+    expect(ctl.error, isNull);
+    expect(ctl.phase, Phase.done);
+    expect(game.readAsStringSync(), 'the old video');
+    expect(copy.readAsStringSync(), isNot('the old copy'));
+    expect(done.existsSync(), isTrue);
+
+    // The video: the camera and the render again, from the ball and the players found before.
+    copy.writeAsStringSync('the old copy');
+    final fractions = <double?>[];
+    ctl.addListener(() => fractions.add(ctl.fraction));
+    await ctl.regenerate({RegenPart.video});
+    expect(ctl.error, isNull);
+    expect(ctl.phase, Phase.done);
+    expect(fractions.whereType<double>(), isNotEmpty); // processed again
+    expect(game.readAsStringSync(), isNot('the old video'));
+    expect(copy.readAsStringSync(), isNot('the old copy')); // made from the video, so made again
+    expect([done, followLog, events].map((f) => f.existsSync()), everyElement(isFalse));
+    expect([ballFile, roles, ballLog].map((f) => f.existsSync()), everyElement(isTrue));
+    expect(File('${dir.path}/engine/answers.json').readAsStringSync(), answers);
+    expect(ctl.questions!.pending, isEmpty);
+
+    // The players: their results go, and the video with them; the ball's stay.
+    game.writeAsStringSync('the old video');
+    await ctl.regenerate({RegenPart.players});
+    expect(ctl.phase, Phase.done);
+    expect(game.readAsStringSync(), isNot('the old video'));
+    expect(roles.existsSync(), isFalse);
+    expect(ballFile.existsSync(), isTrue);
+
+    // A game whose video was moved away still has its earlier results to choose from.
+    game.deleteSync();
+    copy.deleteSync();
+    final again = controller(fakeServer());
+    await again.open();
+    expect(again.phase, Phase.readyToRun);
+    expect(again.canRegenerate, isTrue);
+    await again.regenerate({RegenPart.ball});
+    expect(again.phase, Phase.done);
+    expect(ballFile.existsSync(), isFalse);
+  });
+
+  test('what is made again with what: the video with the ball or the players, the YouTube copy with the video', () {
+    expect(regenWith({RegenPart.ball}, youtubeCopy: true), {RegenPart.ball, RegenPart.video, RegenPart.youtube});
+    expect(regenWith({RegenPart.players}, youtubeCopy: false), {RegenPart.players, RegenPart.video});
+    expect(regenWith({RegenPart.video}, youtubeCopy: true), {RegenPart.video, RegenPart.youtube});
+    expect(regenWith({RegenPart.youtube}, youtubeCopy: true), {RegenPart.youtube});
+    expect(regenWith({RegenPart.youtube}, youtubeCopy: false), isEmpty); // Settings ask for no copy
+    expect(regenWith({}, youtubeCopy: true), isEmpty);
   });
 
   test('without an engine it says where to set one', () async {

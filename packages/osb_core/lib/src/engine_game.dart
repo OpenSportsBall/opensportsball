@@ -41,17 +41,22 @@ class BallCheck {
 
 /// One of a chunk's two stages.
 class ChunkStage {
-  const ChunkStage({required this.status, this.seconds, this.startedAt, this.log});
+  const ChunkStage({required this.status, this.seconds, this.kept = false, this.startedAt, this.log});
 
   /// `waiting`, `running`, `done` or `failed`.
   final String status;
   final double? seconds;
+
+  /// Done without running: its results were there from an earlier run (the
+  /// game is being made again, or carried on). No [seconds] then.
+  final bool kept;
   final DateTime? startedAt;
   final String? log;
 
   factory ChunkStage.fromJson(Map<String, Object?> j) => ChunkStage(
         status: j['status'] as String? ?? 'waiting',
         seconds: (j['seconds'] as num?)?.toDouble(),
+        kept: j['kept'] == true,
         startedAt: _time(j['startedAt'] as String?),
         log: j['log'] as String?,
       );

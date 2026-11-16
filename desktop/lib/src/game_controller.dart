@@ -17,6 +17,7 @@ import 'package:flutter/painting.dart';
 import 'package:osb_core/osb_core.dart';
 import 'package:osb_core/osb_core.dart' as osb show withdrawShared;
 
+import 'regenerate.dart';
 import 'services.dart';
 
 enum Phase {
@@ -362,9 +363,17 @@ class GameController extends ChangeNotifier {
     final r = await Process.run(engine, ['status', _job.path]);
     final status = statusLine(r.stdout as String);
     if (status == null) return;
+    // Asked while the engine was working: by now it may have made the
+    // YouTube copy and said so, which this older answer doesn't know.
+    final copy = youtubeOutput;
     _takeStatus(status);
+    youtubeOutput ??= copy;
     notifyListeners();
   }
+
+  /// [loadChunkDetails] asked for during a run and not answered yet: the
+  /// run waits for them, so none changes the game after it has ended.
+  final _detailLoads = <Future<void>>{};
 
   Future<void> _runChecks() async {
     final bytes = recording?.expectedBytes ?? 0;
@@ -684,7 +693,9 @@ class GameController extends ChangeNotifier {
     } else if (e.event == 'ball') {
       ball = BallCheck.of(e.raw) ?? ball;
       notifyListeners();
-      unawaited(loadChunkDetails());
+      late final Future<void> load;
+      load = loadChunkDetails().whenComplete(() => _detailLoads.remove(load));
+      _detailLoads.add(load);
     } else if (e.event == 'done' && e.output != null) {
       output = e.output;
       youtubeOutput = e.youtubeOutput;
@@ -886,6 +897,7 @@ class GameController extends ChangeNotifier {
       '--answers',
       EngineAnswers.fileIn(folder!).path,
     ], onEvent: _onStep);
+    await Future.wait(_detailLoads.toList());
     _powerTimer?.cancel();
     _powerTimer = null;
     if (exit == EngineExit.ok) {
@@ -902,6 +914,42 @@ class GameController extends ChangeNotifier {
       if (_failureCode == 'not_enough_disk') await recheck();
     }
     notifyListeners();
+  }
+
+  /// The game has a video, or results of a run stopped part-way, to make
+  /// again, and nothing is working on it.
+  bool get canRegenerate =>
+      !busy && folder != null && (phase == Phase.done || (phase == Phase.readyToRun && hasRunResults(folder!)));
+
+  /// Makes the game video again: deletes what the engine made in the
+  /// stages picked (and in those made from them, [regenWith]) and runs it.
+  /// The stages left out keep their results, so the engine skips them.
+  Future<void> regenerate(Set<RegenPart> picked) async {
+    final dir = folder;
+    if (dir == null || !canRegenerate) return;
+    final parts = regenWith(picked, youtubeCopy: settings.youtubeCopy);
+    if (parts.isEmpty) return;
+    phase = Phase.loading;
+    error = null;
+    errorLog = null;
+    notifyListeners();
+    await _sendingNow;
+    await _stopStale();
+    try {
+      await clearForRegen(dir, parts);
+    } on FileSystemException catch (e) {
+      await _refresh();
+      _fail('Not all of the earlier results could be deleted (${e.osError?.message ?? e.message}).');
+      return;
+    }
+    if (parts.contains(RegenPart.video)) {
+      output = null;
+      chunkDetails = const [];
+      ball = null;
+    }
+    youtubeOutput = null;
+    await _refresh();
+    if (phase == Phase.readyToRun || youtubeCopyMissing) await run();
   }
 
   /// Pauses on battery (the run carries on where it was once plugged in).

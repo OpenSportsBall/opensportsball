@@ -218,6 +218,7 @@ class _StageCell extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final running = stage.status == 'running';
     final (icon, color, text) = switch (stage.status) {
+      'done' when stage.kept => (Icons.check_circle_outline, c.grass, 'Kept from last time'),
       'done' => (Icons.check_circle, c.grass, stage.seconds == null ? 'Done' : 'Done in ${_took(stage.seconds!)}'),
       'failed' => (Icons.cancel, c.coral, 'Failed'),
       'running' when live => (
