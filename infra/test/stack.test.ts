@@ -557,7 +557,10 @@ describe('cloud processing', () => {
     // Prepare and run go to the GPU queue, refits to the CPU queue.
     for (const name of ['Prepare', 'Run']) {
       expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_REQUIRE_GPU', Value: '1' });
+      expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_DETECTOR_HALF', Value: 'people' });
+      expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_DETECTOR_COMPILED', Value: 'ball=1,2,4,8' });
     }
+    expect(JSON.stringify(d.Refit.ContainerProperties.Environment)).not.toContain('OSB_DETECTOR');
     expect(d.Refit.ContainerProperties.Environment).not.toContainEqual({ Name: 'OSB_REQUIRE_GPU', Value: '1' });
     expect(d.Refit.ContainerProperties.EphemeralStorage).toEqual({ SizeInGiB: 100 });
     const web = Object.values(gpu.findResources('AWS::Lambda::Function')).find((f) => f.Properties.Environment?.Variables?.BATCH_JOBS)!;
