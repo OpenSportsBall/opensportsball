@@ -80,6 +80,10 @@ describe('download links', () => {
     }
     expect(r.body.manifestUrl.startsWith(`${prefix}manifest.json?`)).toBe(true);
     expect(signedByUs(r.body.manifestUrl)).toBe(true);
+    // What the phones said, for filling in a phone's video from a computer.
+    expect(r.body.manifest.sessionId).toBe(recordingId);
+    expect(r.body.manifest.devices[0].segments).toHaveLength(files.length);
+    expect(r.body.reports).toEqual([]);
     const hours = (Date.parse(r.body.expiresAt) - before) / 3_600_000;
     expect(hours).toBeGreaterThan(11.9);
     expect(hours).toBeLessThan(12.1);
@@ -91,6 +95,7 @@ describe('download links', () => {
     expect(r.status).toBe(200);
     expect(r.body.status).toBe('waiting_for_manifest');
     expect(r.body.manifestUrl).toBeNull();
+    expect(r.body.manifest).toBeNull();
     // No manifest or report has listed it, so there is no checksum to give.
     expect(r.body.files).toEqual([
       expect.objectContaining({ fileName: fileName(main, 0), bytes: files[0]!.length, sha256: null }),

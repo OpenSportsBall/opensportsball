@@ -20,6 +20,8 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   path_provider: ^2.1.6
   url_launcher: ^6.3.3
+  file_selector: ^1.1.0
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

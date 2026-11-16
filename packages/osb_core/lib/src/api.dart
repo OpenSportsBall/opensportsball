@@ -142,6 +142,26 @@ class Session {
 
   Future<DownloadLinks> downloads(String gameId, String recordingId) async =>
       DownloadLinks.fromJson((await call('POST', '/games/$gameId/recordings/$recordingId/downloads') as Map).cast());
+
+  /// An upload-permission ticket for a phone that recorded [gameId] without
+  /// one (`POST /games/{gameId}/grant-tickets`).
+  Future<GameTicket> createGameTicket(String gameId) async =>
+      GameTicket.fromJson((await call('POST', '/games/$gameId/grant-tickets') as Map).cast());
+}
+
+/// `POST /games/{gameId}/grant-tickets`: what the phone needs to send its
+/// footage of that game to this account.
+class GameTicket {
+  const GameTicket({required this.ticket, required this.expiresAt});
+  final String ticket;
+  final DateTime expiresAt;
+
+  /// The page that opens the phone app with the ticket (the website's
+  /// /grant; the ticket is in the fragment, so it reaches no server log).
+  String pageUrl(String siteUrl) => '${siteUrl.replaceFirst(RegExp(r'/+$'), '')}/grant#$ticket';
+
+  factory GameTicket.fromJson(Map<String, Object?> j) =>
+      GameTicket(ticket: j['ticket'] as String, expiresAt: DateTime.parse(j['expiresAt'] as String));
 }
 
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
@@ -235,16 +255,29 @@ class DownloadLinks {
     required this.expiresAt,
     required this.files,
     this.manifestUrl,
+    this.manifest,
+    this.reports = const [],
   });
   final String status;
   final DateTime expiresAt;
+
+  /// The merged manifest, once the recording is ready.
   final Uri? manifestUrl;
   final List<FootageFile> files;
+
+  /// What the phones have said so far: Main's manifest as it sent it (null
+  /// before it has) and each other phone's report of its own segments (a
+  /// manifest device entry). For filling in what a phone never uploaded
+  /// from video on this computer (local_footage.dart).
+  final Map<String, Object?>? manifest;
+  final List<Map<String, Object?>> reports;
 
   factory DownloadLinks.fromJson(Map<String, Object?> j) => DownloadLinks(
         status: j['status'] as String,
         expiresAt: DateTime.parse(j['expiresAt'] as String),
         manifestUrl: j['manifestUrl'] is String ? Uri.parse(j['manifestUrl'] as String) : null,
+        manifest: (j['manifest'] as Map?)?.cast(),
+        reports: [for (final r in (j['reports'] as List? ?? [])) (r as Map).cast()],
         files: [for (final f in j['files'] as List) FootageFile.fromJson((f as Map).cast())],
       );
 }

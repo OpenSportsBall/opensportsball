@@ -129,6 +129,36 @@ void main() {
     expect(File(ctl.output!).existsSync(), isTrue);
   });
 
+  testWidgets('the disk space line has a refresh that looks again', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('osb_refresh');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final ctl = _controller(dir)
+      ..phase = Phase.readyToRun
+      ..folder = Directory('${dir.path}/game')
+      ..checks = const [
+        Check(true, 'Memory', '32 GB'),
+        Check(
+          false,
+          'Disk space',
+          '32 GB free; this game needs about 39 GB. Free 7 GB more.',
+          blocking: true,
+          refreshable: true,
+        ),
+      ];
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    expect(find.byTooltip('Check the disk space again'), findsOneWidget);
+    expect(find.byTooltip('Check the memory again'), findsNothing);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull); // no room: not started
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Check the disk space again'));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    });
+    await tester.pumpWidget(app(GamePane(controller: ctl)));
+    // Asked again: the checks are this Mac's now, not the ones put there.
+    expect(find.textContaining('Free 7 GB more'), findsNothing);
+    expect(find.textContaining('this game needs about'), findsOneWidget);
+  });
+
   testWidgets('a ball the engine doesn\'t know is said from the second segment, with the segments to look at', (
     tester,
   ) async {

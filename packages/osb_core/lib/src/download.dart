@@ -54,7 +54,7 @@ class FootageCorrupt implements Exception {
 }
 
 /// A name the server gave that is safe as one path part.
-bool _plainName(String s) =>
+bool isPlainName(String s) =>
     s.isNotEmpty && s != '.' && s != '..' && !s.contains('/') && !s.contains('\\') && !s.contains('\x00');
 
 /// SHA-256 of a file, hex.
@@ -67,8 +67,15 @@ class FootageDownloader {
     required this.client,
     this.parallel = 2,
     this.maxSegments,
+    this.only,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
+
+  /// Only these files (objectKeys), of a recording that needn't be ready,
+  /// and no manifest: the rest of the folder comes from video on this
+  /// computer, which writes the manifest once it is all there
+  /// (local_footage.dart). Null: the whole ready recording.
+  final Set<String>? only;
 
   /// The recording folder (the engine job's `recording`).
   final Directory folder;
@@ -148,26 +155,37 @@ class FootageDownloader {
   Future<void> run({void Function(DownloadProgress)? onProgress}) async {
     _stop = false;
     final l = await _fresh(force: true);
-    if (l.status != 'ready' || l.manifestUrl == null) {
+    final only = this.only;
+    if (only == null && (l.status != 'ready' || l.manifestUrl == null)) {
       throw const OsbException('This recording is still uploading. Try again once both phones have finished.');
     }
     for (final f in l.files) {
-      if (!_plainName(f.deviceId) || !_plainName(f.fileName)) {
+      if (!isPlainName(f.deviceId) || !isPlainName(f.fileName)) {
         throw OsbException('The server listed an unexpected file name (${f.objectKey}).');
       }
     }
     await folder.create(recursive: true);
-    final manifestFile = File('${folder.path}/manifest.json');
-    await _getSmall(l.manifestUrl!, manifestFile);
     var files = l.files;
-    if (maxSegments != null) {
-      final keep = await _trimManifest(manifestFile, maxSegments!);
+    var manifestSha = <String, String>{};
+    if (only != null) {
       files = [
         for (final f in l.files)
-          if (keep.contains(f.objectKey)) f
+          if (only.contains(f.objectKey)) f
       ];
+      final gone = only.difference({for (final f in files) f.objectKey});
+      if (gone.isNotEmpty) throw OsbException('${gone.first} is not in the account.');
+    } else {
+      final manifestFile = File('${folder.path}/manifest.json');
+      await _getSmall(l.manifestUrl!, manifestFile);
+      if (maxSegments != null) {
+        final keep = await _trimManifest(manifestFile, maxSegments!);
+        files = [
+          for (final f in l.files)
+            if (keep.contains(f.objectKey)) f
+        ];
+      }
+      manifestSha = _manifestHashes(await manifestFile.readAsString());
     }
-    final manifestSha = _manifestHashes(await manifestFile.readAsString());
 
     final verified = await _verified();
     final total = files.fold<int>(0, (a, f) => a + f.bytes);

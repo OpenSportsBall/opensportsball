@@ -69,14 +69,17 @@ class BallNotice extends StatelessWidget {
                   'the players more than the ball. Processing ${done ? 'finished' : 'carries on'} as usual.',
                   style: t.bodyMedium,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'You can teach it: mark the ball in 50 pictures from this game. That doesn’t change this video; it '
-                  'goes into the next version of the engine, for every game with a ball like this one.',
-                  style: t.bodyMedium?.copyWith(color: c.inkMuted),
-                ),
-                const SizedBox(height: 12),
-                FilledButton(onPressed: () => showBallLabelling(context, ctl), child: const Text('Mark the ball')),
+                // Marks are made to be shared, and a game added from this Mac isn't in the account to share from.
+                if (!ctl.isLocal) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'You can teach it: mark the ball in 50 pictures from this game. That doesn’t change this video; it '
+                    'goes into the next version of the engine, for every game with a ball like this one.',
+                    style: t.bodyMedium?.copyWith(color: c.inkMuted),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(onPressed: () => showBallLabelling(context, ctl), child: const Text('Mark the ball')),
+                ],
               ],
             ),
           ),
