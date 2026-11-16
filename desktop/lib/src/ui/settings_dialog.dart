@@ -62,7 +62,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   value: '1080+youtube',
                   child: Text('1080p, and a 1440p copy for YouTube (25 GB more)', overflow: TextOverflow.ellipsis),
                 ),
-                DropdownMenuItem(value: '1440', child: Text('1440p only (a bigger file)')),
+                DropdownMenuItem(value: '1440', child: Text('1440p only (for YouTube)')),
               ],
               onChanged: (v) => setState(() {
                 _height = v == '1440' ? 1440 : 1080;
