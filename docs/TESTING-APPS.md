@@ -178,9 +178,11 @@ quickly.
    Main, then press "Stop on this phone" on the Secondary and walk back.
    The manifest should complete once they reconnect (keep the Main screen
    open).
-6. **Interruption.** Call one phone while it records. An Android phone
-   should stop, save the segment in progress, and the Main phone should
-   show an error. An iPhone should keep recording: set an alarm for a
+6. **Interruption.** Call one phone while it records and let it ring
+   out. An Android phone should keep recording, with the ringtone in the
+   sound. If the call is answered, or Android otherwise takes the camera,
+   it should stop, save the segment in progress, and the Main phone
+   should show an error. An iPhone should keep recording: set an alarm for a
    minute ahead, start recording, let the alarm ring for 20 seconds and
    dismiss it, record another minute, then stop. The files should cover
    the whole time except a second or two when the alarm started, with no
