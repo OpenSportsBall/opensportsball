@@ -49,15 +49,16 @@ const stepNames = {
   'cleanup': 'Tidying up',
 };
 
-/// How long each `prepare` step usually takes, from two games on an M-series
-/// Mac (rec3 and a Pixel + iPhone game, 4 segments a phone): shown beside
-/// the time so far, so a long step doesn't look stuck.
+/// How long each `prepare` step, and `run`'s two kit steps before the game,
+/// usually take, from a Pixel + iPhone game on an M-series Mac (4 segments a
+/// phone, engine of 2026-11-16): shown beside the time so far, so a long
+/// step doesn't look stuck.
 const usualStepSeconds = {
   'verify-footage': 30,
-  'sync': 60,
-  'pitch': 180,
+  'sync': 30,
+  'pitch': 100,
   'goals': 30,
-  'kit-sample': 450,
+  'kit-sample': 60,
   'kits': 120,
   'pitch-review': 30,
 };

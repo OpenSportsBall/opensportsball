@@ -154,11 +154,11 @@ void main() {
       ..phase = Phase.preparing
       ..activity = stepName('kit-sample')
       ..step = 'kit-sample'
-      ..stepStartedAt = DateTime.now().subtract(const Duration(minutes: 9, seconds: 5))
+      ..stepStartedAt = DateTime.now().subtract(const Duration(minutes: 1, seconds: 5))
       ..stepLog = '${ctl.folder!.path}/engine/logs/kit-sample.log';
     await show();
     expect(find.text('Finding people on the pitch'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^9 min 0\d s so far · usually about 8 min$')), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^1 min 0\d s so far · usually about 1 min$')), findsOneWidget);
     expect(find.text('Show the log'), findsOneWidget);
     ctl.stepStartedAt = DateTime.now().subtract(const Duration(minutes: 20));
     await show();
