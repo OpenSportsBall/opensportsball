@@ -554,6 +554,9 @@ describe('cloud processing', () => {
       expect(JSON.stringify(d[name].ContainerProperties.Image)).toContain(':v1');
     }
     expect(d.Refit.PlatformCapabilities).toEqual(['FARGATE']);
+    for (const name of ['Prepare', 'Run', 'Refit']) {
+      expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_FOOTAGE_ON_DEMAND', Value: '1' });
+    }
     // Prepare and run go to the GPU queue, refits to the CPU queue.
     for (const name of ['Prepare', 'Run']) {
       expect(d[name].ContainerProperties.Environment).toContainEqual({ Name: 'OSB_REQUIRE_GPU', Value: '1' });
