@@ -858,6 +858,7 @@ and these variables:
 | `OSB_OUTPUT_PREFIX` | `outputs/.../jobs/<jobId>/` (read and write) |
 | `OSB_WORK_PREFIX` | `work/.../jobs/<jobId>/` (read and write) |
 | `OSB_REQUIRE_GPU` | `1` on the GPU queue: stop at once (`no_gpu`) rather than work without one |
+| `OSB_FOOTAGE_ON_DEMAND` | `1`: `prepare`, and a `refit` that wants the video, leave the footage in S3 and fetch only the bytes their steps read; `run` fetches it whole |
 
 Its role can read `accounts/` and `models/`, read and write `outputs/`
 and `work/`, and get and update table items whose partition key starts

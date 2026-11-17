@@ -130,7 +130,15 @@ export class Processing extends Construct {
       image,
       jobRole,
       logging: ecs.LogDriver.awsLogs({ streamPrefix: 'engine', logGroup }),
-      environment: { OSB_BUCKET: footage.bucketName, OSB_TABLE: table.tableName, AWS_DEFAULT_REGION: cdk.Stack.of(this).region },
+      environment: {
+        OSB_BUCKET: footage.bucketName,
+        OSB_TABLE: table.tableName,
+        AWS_DEFAULT_REGION: cdk.Stack.of(this).region,
+        // Prepare, and a refit that wants the video, leave the footage in
+        // S3 and fetch only the bytes their steps read: about 4 GB of a
+        // 45 GB game. A run always fetches the files whole.
+        OSB_FOOTAGE_ON_DEMAND: '1',
+      },
     };
 
     // --- GPU: Spot (or On-Demand), scaling to zero ---------------------------------------------
