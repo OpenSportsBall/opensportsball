@@ -39,6 +39,8 @@ const stepNames = {
   'sync': 'Syncing the two phones and stitching their views',
   'pitch': 'Fitting the pitch',
   'goals': 'Finding the goals',
+  'cameras-joint': 'Fitting the lenses with the pitch',
+  'pitch-refit': 'Fitting the pitch to your points',
   'kit-sample': 'Finding people on the pitch',
   'kits': 'Grouping people by kit',
   'pitch-review': 'Drawing the pitch for checking',
@@ -58,6 +60,7 @@ const usualStepSeconds = {
   'sync': 30,
   'pitch': 100,
   'goals': 30,
+  'cameras-joint': 30,
   'kit-sample': 60,
   'kits': 120,
   'pitch-review': 30,
@@ -69,7 +72,12 @@ const usualStepSeconds = {
 /// its first chunk).
 const usualChunkSeconds = 3320;
 
-String stepName(String? step) => stepNames[step] ?? (step == null ? 'Working' : step.replaceAll('_', ' '));
+/// A step's name on screen. The steps of a round of pitch points carry the
+/// round ("pitch-refit-2", "cameras-joint-2", "goals-2"): named as the step.
+String stepName(String? step) {
+  if (step == null) return 'Working';
+  return stepNames[step] ?? stepNames[step.replaceFirst(RegExp(r'-\d+$'), '')] ?? step.replaceAll('_', ' ');
+}
 
 class GameController extends ChangeNotifier {
   GameController({

@@ -35,6 +35,15 @@ GameController _controller(Directory dir) => GameController(
 );
 
 void main() {
+  test('the steps of a round of pitch points are named as the step', () {
+    expect(stepName('cameras-joint'), 'Fitting the lenses with the pitch');
+    expect(stepName('cameras-joint-2'), 'Fitting the lenses with the pitch');
+    expect(stepName('pitch-refit-1'), 'Fitting the pitch to your points');
+    expect(stepName('goals-3'), 'Finding the goals');
+    expect(stepName('something_new'), 'something new');
+    expect(stepName(null), 'Working');
+  });
+
   test('before the engine can estimate, the app does, from the chunk count; then the engine\'s', () {
     final dir = Directory.systemTemp.createTempSync('osb_eta');
     addTearDown(() => dir.deleteSync(recursive: true));
