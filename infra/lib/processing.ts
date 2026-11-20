@@ -190,6 +190,13 @@ export class Processing extends Construct {
       maxvCpus: GPU_MAX_VCPUS,
       launchTemplate,
     });
+    // Batch takes a template's default version unless told otherwise, and
+    // a changed template is a new version with the default left where it
+    // was: the drive mount above was version 2 and no instance ran it.
+    (gpu.node.defaultChild as batch.CfnComputeEnvironment).addPropertyOverride(
+      'ComputeResources.LaunchTemplate.Version',
+      launchTemplate.latestVersionNumber,
+    );
     const gpuQueue = new batch.JobQueue(this, 'GpuQueue', {
       computeEnvironments: [{ computeEnvironment: gpu, order: 1 }],
       // A job that can never start, or has waited half a day for a Spot

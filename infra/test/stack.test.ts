@@ -508,6 +508,16 @@ describe('cloud processing', () => {
     expect(userData).toContain('mount -o noatime \\"$dev\\" /scratch');
   });
 
+  it("has the GPU instances boot from the launch template's latest version", () => {
+    // Batch's default is the template's default version, which stays at 1.
+    const [id] = Object.keys(t.findResources('AWS::EC2::LaunchTemplate'));
+    t.hasResourceProperties('AWS::Batch::ComputeEnvironment', {
+      ComputeResources: Match.objectLike({
+        LaunchTemplate: Match.objectLike({ Version: { 'Fn::GetAtt': [id, 'LatestVersionNumber'] } }),
+      }),
+    });
+  });
+
   it('runs the stub on Fargate by default, with a timeout per command', () => {
     const d = defs(t);
     expect(Object.keys(d).sort()).toEqual(['Prepare', 'Refit', 'Run']);
