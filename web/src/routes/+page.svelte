@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import AppStoreLink from '#lib/components/AppStoreLink.svelte';
 	import MacDownloadLink from '#lib/components/MacDownloadLink.svelte';
+	import PlayStoreLink from '#lib/components/PlayStoreLink.svelte';
 	import { session } from '#lib/session.svelte.ts';
 	import { REPO_URL } from '#lib/site.ts';
 
@@ -25,6 +26,7 @@
 		<div class="actions">
 			<button class="btn btn-primary big" onclick={() => session.signIn('/games')}>Sign in</button>
 			<AppStoreLink />
+			<PlayStoreLink />
 			<MacDownloadLink />
 		</div>
 		<p class="muted small">New here? Choose "Sign up" on the next screen to create an account.</p>
