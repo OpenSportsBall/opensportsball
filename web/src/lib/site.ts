@@ -7,9 +7,11 @@ export const SUPPORT_EMAIL = 'support@opensportsball.com';
 
 export const REPO_URL = 'https://github.com/OpenSportsBall/opensportsball';
 
-/** The iPhone app (App Store id 6827012317, also in app.html's Smart App Banner).
- *  Android is in a closed Play test, so there is no public link for it yet. */
+/** The iPhone app (App Store id 6827012317, also in app.html's Smart App Banner). */
 export const APP_STORE_URL = 'https://apps.apple.com/app/id6827012317';
+
+/** The Android app on Google Play. */
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=dev.opensportsball.opensportsball';
 
 /** The Mac app: the newest release's DMG. GitHub serves release files with no
  *  bandwidth limit; desktop/tool/release_mac.sh names the file the same in
